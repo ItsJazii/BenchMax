@@ -1,0 +1,81 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "benchmax-local",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-07-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "site-creator-d1",
+      "database_id": "00000000-0000-4000-8000-000000000000",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "site-creator-r2"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "GENERATION_SESSION",
+        "class_name": "GenerationSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["GenerationSession"]
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * 1"]
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "GENERATE_PLATFORM_QUEUE",
+        "queue": "benchmax-generate-platform"
+      },
+      {
+        "binding": "EVALUATE_QUEUE",
+        "queue": "benchmax-evaluate"
+      },
+      {
+        "binding": "JUDGE_QUEUE",
+        "queue": "benchmax-judge"
+      },
+      {
+        "binding": "PIPELINE_DLQ",
+        "queue": "benchmax-pipeline-dlq"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "benchmax-generate-platform",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "benchmax-pipeline-dlq"
+      },
+      {
+        "queue": "benchmax-evaluate",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "benchmax-pipeline-dlq"
+      },
+      {
+        "queue": "benchmax-judge",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "benchmax-pipeline-dlq"
+      }
+    ]
+  }
+}

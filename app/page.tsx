@@ -1,0 +1,277 @@
+import Link from "next/link";
+import {
+  categoryLabels,
+  showcaseFeed,
+} from "@/lib/domain/catalog";
+import { ShowcaseCard } from "./components/ShowcaseCard";
+import { RunCard } from "./components/RunCard";
+import { SiteHeader } from "./components/SiteHeader";
+import { SiteFooter } from "./components/SiteFooter";
+import { listPublicShowcaseCards } from "@/lib/data/showcases";
+import { listAggregateLeaderboard } from "@/lib/data/leaderboards";
+import { listRecentPublicRuns } from "@/lib/data/runs";
+import { listPublicBenchmarkVersions } from "@/lib/data/public-catalog";
+
+export default async function Home() {
+  const scopes = [
+    ["overall", "Overall"],
+    ["frontend", "Frontend"],
+    ["browser-game", "Browser games"],
+    ["browser-3d", "Browser 3D"],
+  ] as const;
+  const [databaseFeed, recentRuns, aggregateSets, benchmarkVersions] =
+    await Promise.all([
+      listPublicShowcaseCards(6).catch(() => []),
+      listRecentPublicRuns(3).catch(() => []),
+      Promise.all(
+        scopes.map(([scope]) =>
+          listAggregateLeaderboard(scope).catch(() => []),
+        ),
+      ),
+      listPublicBenchmarkVersions().catch(() => []),
+    ]);
+  const visibleFeed = databaseFeed.length > 0 ? databaseFeed : showcaseFeed;
+  const coverage = new Map<string, Set<string>>();
+  for (const version of benchmarkVersions) {
+    const entries = coverage.get(version.category) ?? new Set<string>();
+    entries.add(version.slug);
+    coverage.set(version.category, entries);
+  }
+  return (
+    <div className="site-shell">
+      <SiteHeader />
+      <main>
+        <section className="hero section-wrap">
+          <div className="hero-copy">
+            <div className="eyebrow">
+              <span className="live-dot" aria-hidden="true" />
+              Community tests, evidence first
+            </div>
+            <h1>
+              See what models
+              <br />
+              <span>actually built.</span>
+            </h1>
+            <p className="hero-intro">
+              Benchmax is a public record of real model tests—prompts, source,
+              videos, settings, and failures included. Showcases stay honest.
+              Rankings only use runs the platform generated itself.
+            </p>
+            <div className="hero-actions">
+              <Link className="button button-primary" href="/upload">
+                Share a test <span aria-hidden="true">↗</span>
+              </Link>
+              <Link className="button button-secondary" href="/methodology">
+                Read the methodology
+              </Link>
+            </div>
+            <div className="hero-proof" aria-label="Benchmax trust principles">
+              <span>Public evidence</span>
+              <span>Exact configurations</span>
+              <span>Reproducible scoring</span>
+            </div>
+          </div>
+
+          <aside className="hero-panel" aria-label="Latest test snapshot">
+            <div className="panel-topline">
+              <span>TEST SNAPSHOT</span>
+              <span>COMMUNITY SHOWCASE</span>
+            </div>
+            <div className="voxel-preview" aria-hidden="true">
+              <div className="voxel-sky" />
+              <div className="voxel-sun" />
+              <div className="voxel-land voxel-land-one" />
+              <div className="voxel-land voxel-land-two" />
+              <div className="voxel-crosshair">+</div>
+            </div>
+            <div className="panel-result">
+              <div>
+                <span className="result-label">MODEL</span>
+                <strong>K3</strong>
+              </div>
+              <div>
+                <span className="result-label">TASK</span>
+                <strong>Voxel world</strong>
+              </div>
+              <div>
+                <span className="result-label">REASONING</span>
+                <strong>High</strong>
+              </div>
+            </div>
+            <div className="panel-foot">
+              <span>Source + video + prompt</span>
+              <span className="status-pill neutral">Not ranked</span>
+            </div>
+          </aside>
+        </section>
+
+        <section className="rankings section-wrap" id="rankings">
+          <div className="section-heading">
+            <div>
+              <span className="section-index">01 / LEADERBOARDS</span>
+              <h2>Rankings without the hand-waving.</h2>
+            </div>
+            <p>
+              Every row is one exact model, endpoint, harness, reasoning
+              level, and settings hash. No silent merging.
+            </p>
+          </div>
+
+          <div className="ranking-board">
+            <div className="ranking-head">
+              <span>Category</span>
+              <span>Leader</span>
+              <span>Coverage</span>
+              <span>Status</span>
+            </div>
+            {scopes.map(([scope, label], index) => {
+              const row = aggregateSets[index][0];
+              return (
+              <div className="ranking-row" key={scope}>
+                <div className="ranking-category">
+                  <span className="rank-number">{row ? "1" : "—"}</span>
+                  <strong>{label}</strong>
+                </div>
+                <span className={row ? undefined : "muted"}>
+                  {row
+                    ? `${row.model_name} · ${row.reasoning_level}`
+                    : "Waiting for platform runs"}
+                </span>
+                <span className="mono">
+                  {row
+                    ? `${(row.score_bps / 100).toFixed(2)} · ${row.total_run_count} runs`
+                    : scope === "overall"
+                      ? "0 / 3 categories"
+                      : `0 / ${coverage.get(scope)?.size ?? 0} benchmarks`}
+                </span>
+                <span
+                  className={`status-pill ${
+                    row && !row.provisional ? "approved" : "pending"
+                  }`}
+                >
+                  {row
+                    ? row.provisional
+                      ? "Provisional"
+                      : "Established"
+                    : "Runner ready"}
+                </span>
+              </div>
+            )})}
+            <div className="ranking-note">
+              <span>Why no winners yet?</span>
+              <p>
+                We will not rank self-reported uploads. Official boards activate
+                when Benchmax runs the generation and evaluation end-to-end.
+              </p>
+              <Link href="/methodology">How verification works →</Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="latest section-wrap">
+          <div className="section-heading compact">
+            <div>
+              <span className="section-index">02 / PLATFORM RUNS</span>
+              <h2>Generated, executed, and scored here.</h2>
+            </div>
+            <Link className="text-link" href="/leaderboards">
+              Open leaderboards →
+            </Link>
+          </div>
+          {recentRuns.length > 0 ? (
+            <div className="card-grid">
+              {recentRuns.map((run) => (
+                <RunCard key={run.id} run={run} />
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <strong>No published platform runs yet.</strong>
+              <p>
+                The board stays empty until generation, execution, and scoring
+                complete under the frozen contract.
+              </p>
+              <Link className="button button-primary" href="/run">
+                Launch the first run
+              </Link>
+            </div>
+          )}
+        </section>
+
+        <section className="latest section-wrap">
+          <div className="section-heading compact">
+            <div>
+              <span className="section-index">03 / COMMUNITY SHOWCASES</span>
+              <h2>Everything needed to inspect the claim.</h2>
+            </div>
+            <Link className="text-link" href="/explore">
+              Explore all tests →
+            </Link>
+          </div>
+          <div className="card-grid">
+            {visibleFeed.slice(0, 6).map((showcase) => (
+              <ShowcaseCard key={showcase.id} showcase={showcase} />
+            ))}
+          </div>
+        </section>
+
+        <section className="protocol section-wrap">
+          <div className="protocol-card">
+            <div className="protocol-copy">
+              <span className="section-index">04 / TWO TRACKS</span>
+              <h2>Share freely. Rank carefully.</h2>
+              <p>
+                Your existing Cursor, Codex, Claude Code, or custom-harness work
+                belongs here as a public Test Report. Official Benchmark Runs
+                are different: Benchmax controls every generation attempt.
+              </p>
+            </div>
+            <div className="track-list">
+              <div className="track">
+                <span className="track-number">A</span>
+                <div>
+                  <strong>Community showcase</strong>
+                  <p>Any real test, clearly labeled and never mixed into ranks.</p>
+                </div>
+                <span className="track-state">Open now</span>
+              </div>
+              <div className="track">
+                <span className="track-number">B</span>
+                <div>
+                  <strong>Platform-generated run</strong>
+                  <p>
+                    Pinned prompt, harness, environment, attempts, and scoring.
+                  </p>
+                </div>
+                <span className="track-state">Ready when configured</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="category-strip section-wrap">
+          {Object.entries(categoryLabels).map(([key, label], index) => (
+            <Link href={`/explore?category=${key}`} key={key}>
+              <span>0{index + 1}</span>
+              <strong>{label}</strong>
+              <span>
+                {key === "other"
+                  ? "Showcases"
+                  : `${coverage.get(key)?.size ?? 0} benchmarks`} ↗
+              </span>
+            </Link>
+          ))}
+        </section>
+
+        <section className="closing-cta section-wrap">
+          <p>Have a model test sitting in a folder?</p>
+          <h2>Put the evidence on the record.</h2>
+          <Link className="button button-primary" href="/upload">
+            Create a test report <span aria-hidden="true">↗</span>
+          </Link>
+        </section>
+      </main>
+      <SiteFooter />
+    </div>
+  );
+}

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1785320819920,
+      "tag": "0000_colossal_shooting_star",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785321131158,
+      "tag": "0001_legal_sally_floyd",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785324262329,
+      "tag": "0002_ranked_run_core",
+      "breakpoints": true
+    }
+  ]
+}

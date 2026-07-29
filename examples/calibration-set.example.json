@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "reference-frontend-001",
+      "benchmark": "A frozen benchmark prompt and evaluator context.",
+      "rubric": [
+        {
+          "key": "visual-quality",
+          "description": "Visual hierarchy, coherence, and polish.",
+          "expectedScoreBps": 7500
+        },
+        {
+          "key": "usability",
+          "description": "Clarity of the primary flow and interaction feedback.",
+          "expectedScoreBps": 7000
+        }
+      ],
+      "evidence": "A reviewed, model-blinded description of a reference output and its permitted visual evidence."
+    }
+  ]
+}

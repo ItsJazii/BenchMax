@@ -27,7 +27,13 @@ type DashboardData = {
 
 export function Dashboard({ authConfigured }: { authConfigured: boolean }) {
   if (!authConfigured) {
-    return <div className="security-gate">Dashboard access is locked until auth is configured.</div>;
+    return (
+      <div className="security-gate">
+        <strong>The contributor dashboard is not available yet.</strong>
+        <p>It will open when verified sign-in and uploads are enabled.</p>
+        <span className="status-pill pending">Coming soon</span>
+      </div>
+    );
   }
   return <ConfiguredDashboard />;
 }
@@ -103,8 +109,8 @@ function ConfiguredDashboard() {
       </section>
       <section>
         <div className="section-heading compact">
-          <h2>Test Reports</h2>
-          <Link href="/upload">New report →</Link>
+          <h2>Community tests</h2>
+          <Link href="/upload">Upload a test →</Link>
         </div>
         <div className="dashboard-list">
           {data.showcases.map((showcase) => (
@@ -119,7 +125,7 @@ function ConfiguredDashboard() {
               )}
             </article>
           ))}
-          {data.showcases.length === 0 && <p className="muted">No Test Reports yet.</p>}
+          {data.showcases.length === 0 && <p className="muted">No community tests yet.</p>}
         </div>
       </section>
     </div>

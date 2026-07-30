@@ -30,7 +30,7 @@ export function SiteFooter() {
       </div>
       <div className="footer-base section-wrap">
         <span>© 2026 Benchmax</span>
-        <span>Pre-launch community seed</span>
+        <span>Public methodology · v0.1</span>
       </div>
     </footer>
   );

@@ -23,14 +23,11 @@ export function SiteHeader() {
         </nav>
         <div className="header-actions">
           <AuthControls configured={authConfigured} />
-          <Link className="sign-in-link" href="/dashboard">
-            Dashboard
-          </Link>
-          <Link className="sign-in-link" href="/run">
-            Run benchmark
+          <Link className="header-run" href="/run">
+            Run a benchmark
           </Link>
           <Link className="header-upload" href="/upload">
-            Upload test <span aria-hidden="true">↗</span>
+            Upload a test
           </Link>
         </div>
         <details className="mobile-menu">
@@ -39,12 +36,15 @@ export function SiteHeader() {
             <Link href="/explore">Explore</Link>
             <Link href="/leaderboards">Leaderboards</Link>
             <Link href="/compare">Compare</Link>
-            <Link href="/run">Run benchmark</Link>
-            <Link href="/dashboard">Dashboard</Link>
             <Link href="/benchmarks">Benchmarks</Link>
             <Link href="/models">Models</Link>
             <Link href="/methodology">Methodology</Link>
-            <Link href="/upload">Upload test</Link>
+            <span className="mobile-menu-divider" aria-hidden="true" />
+            <Link href="/run">Run a benchmark</Link>
+            <Link className="mobile-upload" href="/upload">
+              Upload a test
+            </Link>
+            <AuthControls configured={authConfigured} />
           </nav>
         </details>
       </div>

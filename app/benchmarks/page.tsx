@@ -14,7 +14,7 @@ const categories = [
   {
     index: "01",
     title: "Frontend",
-    status: "Runner ready",
+    status: "Definition ready",
     count: "5",
     description:
       "Responsive interfaces, interactions, accessibility, runtime stability, and task adherence.",
@@ -22,7 +22,7 @@ const categories = [
   {
     index: "02",
     title: "Browser games",
-    status: "Runner ready",
+    status: "Definition ready",
     count: "5",
     description:
       "Playable loops, input response, console stability, frame pacing, and game-specific rubric checks.",
@@ -30,7 +30,7 @@ const categories = [
   {
     index: "03",
     title: "Browser 3D",
-    status: "Runner ready",
+    status: "Definition ready",
     count: "4",
     description:
       "WebGL scenes, navigation, seeded capture milestones, load stability, and bounded performance checks.",

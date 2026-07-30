@@ -56,14 +56,13 @@ function AuthSetupNotice() {
         !
       </span>
       <div>
-        <strong>Account creation is locked until production auth is connected.</strong>
+        <strong>Uploads are temporarily unavailable.</strong>
         <p>
-          Benchmax will not enable anonymous or placeholder writes. Google,
-          GitHub, and email-code signup activate after the verified Clerk keys
-          are installed as encrypted runtime values.
+          Verified contributor accounts are required before Benchmax can accept
+          any files. Browsing remains open while sign-in is being prepared.
         </p>
       </div>
-      <span className="status-pill pending">Fail closed</span>
+      <span className="status-pill pending">Protected</span>
     </div>
   );
 }

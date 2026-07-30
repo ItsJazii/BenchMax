@@ -20,8 +20,8 @@ export default function UploadPage() {
           <span className="section-index">CREATE A TEST REPORT</span>
           <h1>Put your model test on the record.</h1>
           <p>
-            Describe the exact setup, then attach the evidence. Every upload is
-            quarantined and scanned before it can be published.
+            Describe the exact setup, then attach the evidence. Files stay
+            private during safety checks and publish only after they pass.
           </p>
         </header>
         <UploadWizard authConfigured={authConfigured} />

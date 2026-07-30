@@ -5,7 +5,7 @@ import { isClerkConfigured } from "@/lib/auth/server";
 import { RunWizard } from "./RunWizard";
 
 export const metadata: Metadata = {
-  title: "Launch benchmark run",
+  title: "Run a benchmark",
   description:
     "Launch a platform-generated pass@1 benchmark run with a frozen prompt, harness, environment, and scoring protocol.",
 };
@@ -17,11 +17,11 @@ export default function RunPage() {
       <main className="upload-page section-wrap">
         <header className="upload-title">
           <span className="section-index">PLATFORM-GENERATED BENCHMARK</span>
-          <h1>Launch one honest attempt.</h1>
+          <h1>Run one controlled benchmark.</h1>
           <p>
-            Pick a frozen benchmark and exact configuration. Benchmax performs
-            generation, isolated execution, three-sample judging, and
-            publication. There is no hidden retry path.
+            Choose a frozen benchmark and exact model configuration. Benchmax
+            handles generation, isolated execution, scoring, and publication
+            in one recorded attempt.
           </p>
         </header>
         <RunWizard authConfigured={isClerkConfigured()} />

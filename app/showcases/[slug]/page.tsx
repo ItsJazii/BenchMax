@@ -80,7 +80,7 @@ export default async function ShowcasePage({
               </Link>
               <span>{showcase.published}</span>
               <span>
-                {databaseShowcase ? "Approved public record" : "Pre-launch seed record"}
+                {databaseShowcase ? "Approved public record" : "Community test record"}
               </span>
             </div>
           </div>

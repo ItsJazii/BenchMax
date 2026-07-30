@@ -8,7 +8,7 @@ import {
 } from "@/lib/data/leaderboards";
 
 export const metadata: Metadata = {
-  title: "Frontend leaderboard",
+  title: "Model leaderboards",
   description:
     "Exact-configuration frontend benchmark rankings built only from platform-generated runs.",
 };
@@ -34,6 +34,14 @@ export default async function LeaderboardsPage({
   const aggregateRows = await listAggregateLeaderboard(scope).catch(() => []);
   const rows = await listFrontendLeaderboard().catch(() => []);
   const grouped = Map.groupBy(rows, (row) => row.benchmarkTitle);
+  const scopeLabel =
+    scope === "overall"
+      ? "Overall"
+      : scope === "frontend"
+        ? "Frontend"
+        : scope === "browser-game"
+          ? "Browser games"
+          : "Browser 3D";
   return (
     <div className="site-shell">
       <SiteHeader />
@@ -41,7 +49,7 @@ export default async function LeaderboardsPage({
         <header className="page-title split-title">
           <div>
             <span className="section-index">PLATFORM-GENERATED ONLY</span>
-            <h1>Frontend leaderboard.</h1>
+            <h1>{`${scopeLabel} leaderboard.`}</h1>
           </div>
           <p>
             Every row is an exact model version, provider endpoint, harness,
@@ -72,13 +80,7 @@ export default async function LeaderboardsPage({
                   EQUAL-WEIGHT AGGREGATE
                 </span>
                 <h2>
-                  {scope === "overall"
-                    ? "Overall"
-                    : scope === "frontend"
-                      ? "Frontend"
-                      : scope === "browser-game"
-                        ? "Browser games"
-                        : "Browser 3D"}
+                  {scopeLabel}
                 </h2>
               </div>
             </div>

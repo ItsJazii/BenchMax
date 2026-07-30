@@ -11,23 +11,23 @@ export const metadata: Metadata = {
 const principles = [
   {
     number: "01",
-    title: "No self-reported inputs in rankings",
-    body: "Official runs begin when Benchmax calls the provider itself. Uploaded work remains valuable public evidence, but never changes a leaderboard.",
+    title: "Uploaded tests never affect rankings",
+    body: "Community work remains useful public evidence, but only runs generated and evaluated by Benchmax can change a leaderboard.",
   },
   {
     number: "02",
-    title: "Configuration identity stays exact",
-    body: "Model version, endpoint, harness, reasoning level, sampling parameters, and benchmark version define one row. Different contexts are never silently merged.",
+    title: "Every configuration stays separate",
+    body: "Model version, endpoint, harness, reasoning level, sampling settings, and benchmark version define one row. Different test conditions are never silently merged.",
   },
   {
     number: "03",
-    title: "Objective checks carry the floor",
-    body: "Build stability, scripted interaction, console errors, accessibility, bundle size, and bounded performance measurements make up the default 60% objective score.",
+    title: "Objective checks come first",
+    body: "Build stability, scripted interaction, console errors, accessibility, bundle size, and bounded performance measurements make up 60% of the default score.",
   },
   {
     number: "04",
-    title: "The judge is pinned and blinded",
-    body: "The judge does not receive the tested model or contributor identity. Prompt, rubric, judge version, samples, and any moderator override remain auditable.",
+    title: "AI judging is fixed and blinded",
+    body: "The judge never receives the tested model or contributor identity. Its prompt, rubric, version, samples, and any moderator override remain auditable.",
   },
 ];
 
@@ -38,11 +38,11 @@ export default function MethodologyPage() {
       <main className="inner-page methodology-page section-wrap">
         <header className="page-title">
           <span className="section-index">PUBLISHED METHODOLOGY / V0.1</span>
-          <h1>Trust comes from the protocol.</h1>
+          <h1>How Benchmax verifies every ranked run.</h1>
           <p>
-            Benchmax is designed around the difference between proving that
-            code works and proving which model generated it under which
-            conditions.
+            Uploaded tests show what people built. Rankings require more:
+            Benchmax must generate, execute, and score the work under one
+            frozen, inspectable contract.
           </p>
         </header>
 
@@ -62,7 +62,7 @@ export default function MethodologyPage() {
           <div className="section-heading compact">
             <div>
               <span className="section-index">PLATFORM RUN FLOW</span>
-              <h2>Generate → execute → judge → publish</h2>
+              <h2>One fixed path from prompt to score.</h2>
             </div>
           </div>
           <div className="flow-steps">

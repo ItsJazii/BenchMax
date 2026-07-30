@@ -27,6 +27,9 @@ export function AuthControls({ configured }: { configured: boolean }) {
         </SignInButton>
       </SignedOut>
       <SignedIn>
+        <Link className="sign-in-link" href="/dashboard">
+          Dashboard
+        </Link>
         <UserButton />
       </SignedIn>
     </>

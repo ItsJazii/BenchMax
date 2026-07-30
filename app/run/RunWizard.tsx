@@ -45,12 +45,12 @@ export function RunWizard({
   if (!authConfigured) {
     return (
       <div className="security-gate">
-        <strong>Benchmark writes are locked.</strong>
+        <strong>Benchmark runs are temporarily unavailable.</strong>
         <p>
-          Clerk and its strict authorized-party list must be configured before
-          any model key or platform credit can be used.
+          Verified sign-in must be active before Benchmax can accept a provider
+          key or use platform credits.
         </p>
-        <span className="status-pill pending">Fail closed</span>
+        <span className="status-pill pending">Protected</span>
       </div>
     );
   }
@@ -248,12 +248,12 @@ function ConfiguredRunWizard() {
   if (!catalog?.benchmarks.length || !catalog.configurations.length) {
     return (
       <div className="security-gate">
-        <strong>The ranked catalog has not been activated.</strong>
+        <strong>The benchmark catalog is being prepared.</strong>
         <p>
-          An owner must seed the frozen catalog after the E2B template, judge,
-          and calibration hashes are configured. Launch remains locked.
+          Runs remain unavailable until every benchmark, execution environment,
+          model configuration, and scoring contract is frozen.
         </p>
-        <span className="status-pill pending">No unsafe fallback</span>
+        <span className="status-pill pending">Not available yet</span>
       </div>
     );
   }

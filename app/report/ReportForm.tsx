@@ -17,13 +17,13 @@ export function ReportForm({
           !
         </span>
         <div>
-          <strong>Reporting is locked until verified auth is connected.</strong>
+          <strong>Reports are temporarily unavailable.</strong>
           <p>
-            Benchmax does not accept anonymous reports because the moderation
-            channel itself must resist spam and abuse.
+            Verified accounts are required to limit spam and give moderators a
+            safe way to follow up.
           </p>
         </div>
-        <span className="status-pill pending">Fail closed</span>
+        <span className="status-pill pending">Protected</span>
       </div>
     );
   }

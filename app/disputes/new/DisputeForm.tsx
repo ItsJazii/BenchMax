@@ -11,7 +11,13 @@ export function DisputeForm({
   runId: string;
 }) {
   if (!authConfigured) {
-    return <div className="security-gate">Disputes are locked until auth is configured.</div>;
+    return (
+      <div className="security-gate">
+        <strong>Run disputes are temporarily unavailable.</strong>
+        <p>Verified contributor accounts are required before filing a dispute.</p>
+        <span className="status-pill pending">Coming soon</span>
+      </div>
+    );
   }
   return <ConfiguredDisputeForm runId={runId} />;
 }

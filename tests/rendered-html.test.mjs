@@ -94,23 +94,23 @@ test("server-renders the Benchmax public home with the trust boundary visible", 
   assert.match(html, /<title>Benchmax[^<]*<\/title>/i);
   assert.match(html, /See what models/);
   assert.match(html, /actually built/);
-  assert.match(html, /Community showcase/);
+  assert.match(html, /Community test/);
   assert.match(html, /Not ranked/);
-  assert.match(html, /Rankings without the hand-waving/);
+  assert.match(html, /Rankings you can inspect/);
   assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton/);
 });
 
 for (const [path, phrase] of [
-  ["/explore", "Explore what models built"],
+  ["/explore", "Browse real model tests"],
   ["/benchmarks", "A benchmark is a contract"],
-  ["/models", "Models are versions, not vibes"],
-  ["/methodology", "Trust comes from the protocol"],
+  ["/models", "A model name is not a configuration"],
+  ["/methodology", "How Benchmax verifies every ranked run"],
   ["/upload", "Put your model test on the record"],
   ["/security", "Untrusted by default"],
   ["/report", "Report unsafe or dishonest content"],
   ["/leaderboards", "Frontend leaderboard"],
   ["/compare", "Compare like with like"],
-  ["/run", "Launch one honest attempt"],
+  ["/run", "Run one controlled benchmark"],
   ["/dashboard", "Your tests and runs"],
   ["/terms", "Rights before reach"],
   ["/privacy", "The key is not a record"],

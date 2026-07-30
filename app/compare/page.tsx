@@ -149,7 +149,7 @@ export default async function ComparePage({
           <div className="empty-state">
             <strong>Select configurations to compare.</strong>
             <p>
-              Community showcases never appear here. This page reads only
+              Community tests never appear here. This page reads only
               platform-generated, published aggregate snapshots.
             </p>
             <Link className="text-link" href="/methodology">

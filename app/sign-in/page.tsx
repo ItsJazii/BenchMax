@@ -12,15 +12,15 @@ export default function SignInPage() {
       <main className="auth-page section-wrap">
         <div className="auth-copy">
           <span className="section-index">CONTRIBUTOR ACCESS</span>
-          <h1>Own the work you put on record.</h1>
+          <h1>Publish and manage your model tests.</h1>
           <p>
             Sign in with Google, GitHub, or a one-time email code. Browsing
             remains public.
           </p>
           <ul>
-            <li>No password stored by Benchmax</li>
-            <li>No anonymous uploads</li>
-            <li>Every write tied to an auditable account</li>
+            <li>Benchmax never stores your password</li>
+            <li>Uploads require a verified account</li>
+            <li>Every published test has a clear owner</li>
           </ul>
         </div>
         <SignInPanel

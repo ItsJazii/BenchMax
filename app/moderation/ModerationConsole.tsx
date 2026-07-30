@@ -21,7 +21,13 @@ export function ModerationConsole({
   authConfigured: boolean;
 }) {
   if (!authConfigured) {
-    return <div className="security-gate">Moderation is locked until auth is configured.</div>;
+    return (
+      <div className="security-gate">
+        <strong>The moderation workspace is unavailable.</strong>
+        <p>Verified staff sign-in must be active before this queue can open.</p>
+        <span className="status-pill pending">Staff only</span>
+      </div>
+    );
   }
   return <ConfiguredModerationConsole />;
 }

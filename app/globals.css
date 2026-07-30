@@ -16,6 +16,9 @@
   --danger: #b72b2b;
   --shadow: 0 18px 45px rgba(23, 27, 24, 0.09);
   --radius: 20px;
+  --font-sans-stack: var(--font-geist-sans), "Helvetica Neue", Arial, sans-serif;
+  --font-mono-stack: var(--font-geist-mono), "SFMono-Regular", Consolas,
+    "Liberation Mono", monospace;
 }
 
 * {
@@ -36,7 +39,7 @@ body {
     var(--paper);
   background-size: 28px 28px;
   color: var(--ink);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans-stack);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -92,15 +95,17 @@ summary:focus-visible {
 }
 
 .header-inner {
+  width: min(1380px, calc(100% - 40px));
   display: flex;
   min-height: 76px;
   align-items: center;
   justify-content: space-between;
-  gap: 28px;
+  gap: 22px;
 }
 
 .brand {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 10px;
   font-size: 19px;
@@ -117,7 +122,7 @@ summary:focus-visible {
   border-radius: 8px;
   background: var(--acid);
   box-shadow: 3px 3px 0 var(--ink);
-  font-family: "Courier New", monospace;
+  font-family: var(--font-mono-stack);
   font-size: 13px;
   letter-spacing: -0.08em;
 }
@@ -127,15 +132,28 @@ summary:focus-visible {
 .footer-links {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
+}
+
+.desktop-nav {
+  min-width: 0;
+}
+
+.header-actions {
+  flex: 0 0 auto;
+  gap: 10px;
 }
 
 .desktop-nav a,
 .sign-in-link,
 .footer-links a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   color: #3d443e;
   font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .desktop-nav a:hover,
@@ -143,6 +161,28 @@ summary:focus-visible {
 .footer-links a:hover,
 .text-link:hover {
   color: var(--rust);
+}
+
+.header-run,
+.header-upload {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.header-run {
+  padding: 9px 14px;
+  border: 1px solid var(--line-dark);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.header-run:hover {
+  border-color: var(--ink);
+  background: var(--panel);
 }
 
 .header-upload {
@@ -164,6 +204,13 @@ summary:focus-visible {
 }
 
 .mobile-menu summary {
+  display: inline-flex;
+  min-width: 64px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-dark);
+  border-radius: 999px;
   cursor: pointer;
   font-weight: 800;
   list-style: none;
@@ -175,10 +222,13 @@ summary:focus-visible {
 
 .mobile-menu > nav {
   position: absolute;
-  top: 64px;
+  z-index: 60;
+  top: 68px;
   right: 20px;
   display: grid;
   min-width: 210px;
+  max-height: calc(100vh - 86px);
+  overflow-y: auto;
   gap: 6px;
   padding: 12px;
   border: 1px solid var(--ink);
@@ -188,13 +238,27 @@ summary:focus-visible {
 }
 
 .mobile-menu a {
-  padding: 10px;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  padding: 9px 10px;
   border-radius: 8px;
   font-weight: 700;
 }
 
 .mobile-menu a:hover {
   background: var(--acid);
+}
+
+.mobile-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--line);
+}
+
+.mobile-menu .mobile-upload {
+  background: var(--ink);
+  color: white;
 }
 
 .hero {
@@ -213,7 +277,7 @@ summary:focus-visible {
 .review-summary span,
 .showcase-spec dt,
 .context-grid dt {
-  font-family: "Courier New", monospace;
+  font-family: var(--font-mono-stack);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.11em;
@@ -611,6 +675,9 @@ summary:focus-visible {
 }
 
 .text-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   font-size: 14px;
   font-weight: 800;
 }
@@ -1042,7 +1109,7 @@ summary:focus-visible {
 
 .filter-bar input,
 .filter-bar select {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 11px;
   border: 1px solid var(--line-dark);
   border-radius: 9px;
@@ -1052,7 +1119,7 @@ summary:focus-visible {
 .filter-bar .button {
   align-self: end;
   width: auto;
-  min-height: 40px;
+  min-height: 44px;
 }
 
 .explore-track + .explore-track {
@@ -1065,6 +1132,9 @@ summary:focus-visible {
 }
 
 .filter-bar a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   padding: 9px 12px;
   border: 1px solid var(--line-dark);
   border-radius: 999px;
@@ -1085,6 +1155,13 @@ summary:focus-visible {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.results-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
 }
 
 .empty-state {
@@ -1176,11 +1253,16 @@ summary:focus-visible {
 
 .benchmark-base h2,
 .security-grid h2,
-.method-principles h3,
+.method-principles h2,
 .aggregation-grid h3 {
   margin: 20px 0 10px;
   font-size: 23px;
   letter-spacing: -0.035em;
+}
+
+.method-principles h2 {
+  font-size: clamp(27px, 3vw, 38px);
+  line-height: 1.04;
 }
 
 .benchmark-base p,
@@ -1228,7 +1310,7 @@ summary:focus-visible {
 
 .flow-steps {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-top: 28px;
   counter-reset: method-step;
@@ -1252,6 +1334,10 @@ summary:focus-visible {
 }
 
 .score-formula {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 34px;
+  align-items: center;
   margin-top: 28px;
   padding: 34px;
   overflow-x: auto;
@@ -1754,16 +1840,18 @@ summary:focus-visible {
   font-family: "Courier New", monospace;
 }
 
-@media (max-width: 920px) {
+@media (max-width: 1160px) {
   .desktop-nav,
-  .header-actions .sign-in-link,
-  .header-actions .header-upload {
+  .header-actions {
     display: none;
   }
 
   .mobile-menu {
     display: block;
   }
+}
+
+@media (max-width: 920px) {
 
   .hero,
   .protocol-card,
@@ -1893,6 +1981,11 @@ summary:focus-visible {
   .locked-contract {
     align-items: start;
     flex-direction: column;
+  }
+
+  .score-formula {
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
 
   .rankings,

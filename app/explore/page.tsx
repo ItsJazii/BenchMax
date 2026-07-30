@@ -101,10 +101,11 @@ export default async function ExplorePage({
       <main className="inner-page section-wrap">
         <header className="page-title">
           <span className="section-index">PUBLIC TEST RECORD</span>
-          <h1>Explore what models built.</h1>
+          <h1>Browse real model tests.</h1>
           <p>
-            Filter by the exact context around the output. Community showcases
-            are evidence, not official rankings.
+            Search by model, harness, benchmark, reasoning level, or
+            contributor. Community uploads stay clearly labeled and never
+            affect rankings.
           </p>
         </header>
 
@@ -177,7 +178,7 @@ export default async function ExplorePage({
             </select>
           </label>
           <button className="button button-primary" type="submit">
-            Apply
+            Apply filters
           </button>
         </form>
 
@@ -201,7 +202,7 @@ export default async function ExplorePage({
             {showcaseResults.length > 0 && (
               <section className="explore-track">
                 <span className="section-index">
-                  COMMUNITY SHOWCASES · NOT RANKED
+                  COMMUNITY TESTS · NOT RANKED
                 </span>
                 <div className="card-grid">
                   {showcaseResults.map((showcase) => (

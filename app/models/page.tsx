@@ -43,11 +43,12 @@ export default async function ModelsPage() {
         <header className="page-title split-title">
           <div>
             <span className="section-index">CANONICAL CATALOG</span>
-            <h1>Models are versions, not vibes.</h1>
+            <h1>A model name is not a configuration.</h1>
           </div>
           <p>
-            Benchmax keeps provider, endpoint, harness, reasoning, and settings
-            distinct so similar names never silently collapse into one score.
+            Provider, endpoint, model version, harness, reasoning level, and
+            settings stay separate so unlike runs never collapse into one
+            score.
           </p>
         </header>
         <div className="model-table">
@@ -93,7 +94,7 @@ export default async function ModelsPage() {
         </div>
         <div className="catalog-note">
           <span>CATALOG POLICY</span>
-          <h2>No free-text names in official rankings.</h2>
+          <h2>Official rankings use approved configuration IDs.</h2>
           <p>
             Ranked configurations will reference approved catalog entries with
             resolved model IDs and immutable settings hashes. Uploaded

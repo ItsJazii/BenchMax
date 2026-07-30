@@ -20,7 +20,13 @@ export function OperationsDashboard({
   authConfigured: boolean;
 }) {
   if (!authConfigured) {
-    return <div className="security-gate">Operations are locked until auth is configured.</div>;
+    return (
+      <div className="security-gate">
+        <strong>The operations workspace is unavailable.</strong>
+        <p>Verified owner sign-in must be active before this dashboard can open.</p>
+        <span className="status-pill pending">Owner only</span>
+      </div>
+    );
   }
   return <ConfiguredOperationsDashboard />;
 }

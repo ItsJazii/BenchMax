@@ -5,7 +5,13 @@ import { useState } from "react";
 
 export function ProposalForm({ authConfigured }: { authConfigured: boolean }) {
   if (!authConfigured) {
-    return <div className="security-gate">Proposals are locked until auth is configured.</div>;
+    return (
+      <div className="security-gate">
+        <strong>Benchmark proposals are temporarily unavailable.</strong>
+        <p>Verified contributor accounts are required before submission.</p>
+        <span className="status-pill pending">Coming soon</span>
+      </div>
+    );
   }
   return <ConfiguredProposalForm />;
 }

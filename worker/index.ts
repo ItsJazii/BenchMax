@@ -18,7 +18,6 @@ import {
 } from "../lib/pipeline/platform-generation";
 import {
   EvaluationContractError,
-  EvaluationDeterministicError,
   evaluateFrontendRun,
 } from "../lib/evaluation/frontend";
 import { judgeRun } from "../lib/judging/judge-run";
@@ -36,6 +35,12 @@ import {
   refundRunCredits,
   settlePlatformRunCredits,
 } from "../lib/data/credits";
+import {
+  recoverStalledPipelineRuns,
+  stageClaimDisposition,
+} from "../lib/pipeline/recovery";
+import { processPipelineDeadLetter } from "../lib/pipeline/dead-letter";
+import { sweepExpiredUploadSessions } from "../lib/data/upload-maintenance";
 
 export { GenerationSession } from "./generation-session";
 
@@ -132,7 +137,14 @@ const worker = {
     const response = await handler.fetch(request, env, ctx);
     return withSecurityHeaders(request, response);
   },
-  async queue(batch: MessageBatch<PipelineMessage>): Promise<void> {
+  async queue(
+    batch: MessageBatch<PipelineMessage>,
+    env: Env,
+  ): Promise<void> {
+    if (batch.queue === "benchmax-pipeline-dlq") {
+      await consumePipelineDeadLetters(batch);
+      return;
+    }
     for (const message of batch.messages) {
       const body = message.body;
       if (!isPipelineMessage(body)) {
@@ -140,25 +152,40 @@ const worker = {
         continue;
       }
       const claim = await claimStage(body);
-      if (!claim) {
+      const disposition = stageClaimDisposition(claim);
+      if (disposition.action === "ack") {
         message.ack();
+        continue;
+      }
+      if (disposition.action === "retry") {
+        message.retry({ delaySeconds: disposition.delaySeconds });
         continue;
       }
       try {
         await executePipelineMessage(body);
-        await completeStage(claim.id);
+        await completeStage(disposition.claimId);
         message.ack();
       } catch (error) {
         const code = pipelineErrorCode(error);
-        await failStage(claim.id, code);
+        await failStage(disposition.claimId, code);
         const terminal = await handleTerminalPipelineFailure({
           attempts: message.attempts,
           body,
           code,
           error,
         });
-        if (terminal) message.ack();
-        else message.retry({ delaySeconds: Math.min(300, 5 * 2 ** message.attempts) });
+        if (terminal) {
+          try {
+            await env.PIPELINE_DLQ.send(body);
+            message.ack();
+          } catch {
+            message.retry({ delaySeconds: 300 });
+          }
+        } else {
+          message.retry({
+            delaySeconds: Math.min(300, 5 * 2 ** message.attempts),
+          });
+        }
       }
     }
   },
@@ -167,17 +194,87 @@ const worker = {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<void> {
-    void controller;
-    void env;
-    ctx.waitUntil(
-      runJudgeCalibration().catch((error) => {
-        console.error("Benchmax scheduled calibration failed", {
+    const jobs: Promise<unknown>[] = [];
+    if (controller.cron === "0 3 * * 1") {
+      jobs.push(
+        runJudgeCalibration().catch((error) => {
+          console.error("Benchmax scheduled calibration failed", {
+            name: error instanceof Error ? error.name : "UnknownError",
+          });
+        }),
+      );
+    }
+    jobs.push(
+      recoverPipelineRuns(env).catch((error) => {
+        console.error("Benchmax pipeline recovery sweep failed", {
           name: error instanceof Error ? error.name : "UnknownError",
         });
       }),
     );
+    jobs.push(
+      sweepExpiredUploadSessions().catch((error) => {
+        console.error("Benchmax upload quarantine sweep failed", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
+      }),
+    );
+    ctx.waitUntil(Promise.all(jobs));
   },
 };
+
+async function recoverPipelineRuns(env: Env) {
+  const messages = await recoverStalledPipelineRuns({
+    auditTransition: ({ from, runId, stage, to }) =>
+      appendAuditEvent({
+        actorUserId: null,
+        entityType: "run",
+        entityId: runId,
+        action: "run.recovery_transitioned",
+        metadata: { from, stage, to },
+      }),
+    db: env.DB,
+    queues: {
+      evaluate: env.EVALUATE_QUEUE,
+      generatePlatform: env.GENERATE_PLATFORM_QUEUE,
+      judge: env.JUDGE_QUEUE,
+    },
+  });
+  for (const message of messages) {
+    await appendAuditEvent({
+      actorUserId: null,
+      entityType: "run",
+      entityId: message.runId,
+      action: "run.pipeline_recovered",
+      metadata: { stage: message.stage, stageVersion: message.stageVersion },
+    });
+  }
+}
+
+async function consumePipelineDeadLetters(
+  batch: MessageBatch<PipelineMessage>,
+) {
+  for (const message of batch.messages) {
+    if (!isPipelineMessage(message.body)) {
+      message.ack();
+      continue;
+    }
+    await processPipelineDeadLetter(message.body, {
+      getRunStatus,
+      markFailed: ({ code, runId, stage }) =>
+        failRunAtCurrentStage(runId, stage, code),
+      audit: ({ action, entityId, metadata }) =>
+        appendAuditEvent({
+          actorUserId: null,
+          entityType: "run",
+          entityId,
+          action,
+          metadata,
+        }),
+      },
+    );
+    message.ack();
+  }
+}
 
 async function executePipelineMessage(message: PipelineMessage) {
   if (message.stage === "generate-platform") {
@@ -185,32 +282,24 @@ async function executePipelineMessage(message: PipelineMessage) {
     return;
   }
   if (message.stage === "evaluate") {
-    try {
-      await evaluateFrontendRun(message.runId);
-      await enqueueJudge(message.runId);
-    } catch (error) {
-      if (error instanceof EvaluationDeterministicError) {
-        await transitionRun({
-          id: message.runId,
-          from: "evaluating",
-          to: "scored",
-          patch: {
-            overallScoreBps: 0,
-            rankEligible: true,
-            scoredAt: new Date(),
-            failureCode: error.code,
-            failureSummary:
-              "The generated pass@1 project failed deterministic execution checks.",
-          },
-        });
-        await enqueuePublish(message.runId);
-        return;
-      }
-      throw error;
+    const status = await getRunStatus(message.runId);
+    if (status === "judging") return;
+    if (status === "scored") {
+      await enqueuePublish(message.runId);
+      return;
     }
+    if (status === "published") return;
+    await evaluateFrontendRun(message.runId);
+    await enqueueJudge(message.runId);
     return;
   }
   if (message.stage === "judge") {
+    const status = await getRunStatus(message.runId);
+    if (status === "scored") {
+      await enqueuePublish(message.runId);
+      return;
+    }
+    if (status === "published") return;
     await judgeRun(message.runId);
     await enqueuePublish(message.runId);
     return;
@@ -272,6 +361,15 @@ async function executePipelineMessage(message: PipelineMessage) {
   });
 }
 
+async function getRunStatus(runId: string) {
+  const [run] = await getDb()
+    .select({ status: runs.status })
+    .from(runs)
+    .where(eq(runs.id, runId))
+    .limit(1);
+  return run?.status ?? null;
+}
+
 async function handleTerminalPipelineFailure(input: {
   attempts: number;
   body: PipelineMessage;
@@ -302,6 +400,7 @@ async function failRunAtCurrentStage(
     .where(eq(runs.id, runId))
     .limit(1);
   if (!row) return;
+  let failed = false;
   if (
     stage === "generate-platform" &&
     (row.status === "queued_generation" || row.status === "generating")
@@ -316,6 +415,7 @@ async function failRunAtCurrentStage(
           "Platform generation stopped after the bounded retry policy.",
       },
     });
+    failed = true;
     if (row.credentialMode === "platform-credit") {
       await refundRunCredits({
         amountMilliCredits: 100_000,
@@ -340,7 +440,24 @@ async function failRunAtCurrentStage(
           "Evaluation stopped after the bounded infrastructure retry policy.",
       },
     });
+    failed = true;
+  } else if (
+    stage === "publish" &&
+    row.status === "scored"
+  ) {
+    await transitionRun({
+      id: runId,
+      from: row.status,
+      to: "evaluation_failed",
+      patch: {
+        failureCode: code,
+        failureSummary:
+          "Publishing stopped after the bounded infrastructure retry policy.",
+      },
+    });
+    failed = true;
   }
+  if (!failed) return;
   await appendAuditEvent({
     actorUserId: null,
     entityType: "run",

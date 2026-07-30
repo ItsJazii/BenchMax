@@ -38,6 +38,7 @@ export async function POST(request: Request) {
       byteSize: validated.value.byteSize,
     });
     const directTarget = await createR2PresignedUpload({
+      byteSize: session.expectedBytes,
       contentType: session.contentType,
       objectKey: session.objectKey,
       sessionId: session.id,

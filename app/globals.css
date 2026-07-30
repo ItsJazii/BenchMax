@@ -422,58 +422,33 @@ summary:focus-visible {
   background: var(--acid);
 }
 
-.voxel-preview {
-  position: relative;
-  overflow: hidden;
-  height: 300px;
-  background: #8fcbe8;
-}
-
-.voxel-sky {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(#82c6ed 0 62%, #a6d773 62%);
-}
-
-.voxel-sun {
-  position: absolute;
-  top: 40px;
-  right: 55px;
-  width: 50px;
-  height: 50px;
-  background: #fff5ae;
-  box-shadow: 0 0 30px rgba(255, 247, 172, 0.7);
-}
-
-.voxel-land {
-  position: absolute;
-  bottom: -25px;
-  width: 58%;
-  height: 170px;
+.hero-record {
+  display: grid;
+  min-height: 300px;
+  align-content: center;
+  gap: 14px;
+  padding: clamp(30px, 5vw, 52px);
   background:
-    linear-gradient(#4f9e51 0 24px, transparent 24px),
-    repeating-linear-gradient(90deg, #80522f 0 36px, #6f482a 36px 72px);
-  clip-path: polygon(0 48%, 24% 48%, 24% 26%, 54% 26%, 54% 9%, 100% 9%, 100% 100%, 0 100%);
-  filter: drop-shadow(0 -6px 0 #437f45);
+    linear-gradient(135deg, rgba(217, 255, 67, 0.48), transparent 58%),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(23, 27, 24, 0.035) 0 1px,
+      transparent 1px 12px
+    );
 }
 
-.voxel-land-one {
-  left: -2%;
+.hero-record strong {
+  max-width: 560px;
+  font-size: clamp(28px, 4vw, 44px);
+  letter-spacing: -0.055em;
+  line-height: 1.02;
 }
 
-.voxel-land-two {
-  right: -12%;
-  bottom: -60px;
-  transform: scale(1.2);
-}
-
-.voxel-crosshair {
-  position: absolute;
-  top: 45%;
-  left: 50%;
-  color: rgba(255, 255, 255, 0.85);
-  font: 28px/1 monospace;
-  transform: translate(-50%, -50%);
+.hero-record p {
+  max-width: 570px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .panel-result {
@@ -1840,7 +1815,7 @@ summary:focus-visible {
   font-family: "Courier New", monospace;
 }
 
-@media (max-width: 1160px) {
+@media (max-width: 1280px) {
   .desktop-nav,
   .header-actions {
     display: none;
@@ -1961,8 +1936,8 @@ summary:focus-visible {
     transform: none;
   }
 
-  .voxel-preview {
-    height: 235px;
+  .hero-record {
+    min-height: 235px;
   }
 
   .panel-result {

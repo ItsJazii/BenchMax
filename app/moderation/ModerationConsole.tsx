@@ -4,6 +4,19 @@ import { SignInButton, useAuth } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 
 type Queue = {
+  calibrationAlerts: Array<{
+    id: string;
+    version: number;
+    status: string;
+    updatedAt: string;
+  }>;
+  flaggedRuns: Array<{
+    id: string;
+    publicSlug: string;
+    status: string;
+    rankEligible: boolean;
+    injectionFlag: boolean;
+  }>;
   reports: Array<{
     id: string;
     reason: string;
@@ -74,7 +87,7 @@ function ConfiguredModerationConsole() {
   }, [isSignedIn]);
 
   async function decide(
-    kind: "report" | "dispute" | "proposal",
+    kind: "report" | "dispute" | "proposal" | "run",
     id: string,
     decision: string,
   ) {
@@ -93,6 +106,14 @@ function ConfiguredModerationConsole() {
       } else if (kind === "proposal") {
         url = `/api/moderation/proposals/${id}`;
         body = { status: decision, reason };
+      } else if (kind === "run") {
+        url = "/api/moderation/actions";
+        body = {
+          entityType: "run",
+          entityId: id,
+          action: decision,
+          reason,
+        };
       } else {
         url = "/api/moderation/actions";
         body = {
@@ -144,6 +165,60 @@ function ConfiguredModerationConsole() {
           value={reason}
         />
       </label>
+      <QueueSection title="Critical judge calibration alerts">
+        {queue.calibrationAlerts.length === 0 ? (
+          <p>No frozen judge evaluations require attention.</p>
+        ) : (
+          queue.calibrationAlerts.map((item) => (
+            <QueueItem
+              key={item.id}
+              title={`Evaluation v${item.version} is frozen`}
+              body={`Calibration failed at ${new Date(item.updatedAt).toLocaleString()}. Ranked judging is stopped for this evaluation version. An owner must investigate the audit event and activate a newly pinned, calibrated version.`}
+            >
+              <span className="status-pill blocked">Critical</span>
+            </QueueItem>
+          ))
+        )}
+      </QueueSection>
+      <QueueSection title="Judge injection flags">
+        {queue.flaggedRuns.length === 0 ? (
+          <p>No flagged runs are waiting for review.</p>
+        ) : (
+          queue.flaggedRuns.map((item) => {
+            const reviewable = ["scored", "published"].includes(item.status);
+            return (
+              <QueueItem
+                key={item.id}
+                title={`Run ${item.publicSlug}`}
+                body={`Status: ${item.status}. This run is excluded from rankings until a moderator clears the flag or disqualifies it.`}
+              >
+                {reviewable ? (
+                  <>
+                    <button
+                      disabled={busyId === item.id}
+                      onClick={() => void decide("run", item.id, "dismiss")}
+                      type="button"
+                    >
+                      Clear benign flag
+                    </button>
+                    <button
+                      disabled={busyId === item.id}
+                      onClick={() => void decide("run", item.id, "disqualify")}
+                      type="button"
+                    >
+                      Disqualify
+                    </button>
+                  </>
+                ) : (
+                  <span className="status-pill pending">
+                    Review actions unlock after judging
+                  </span>
+                )}
+              </QueueItem>
+            );
+          })
+        )}
+      </QueueSection>
       <QueueSection title="Abuse reports">
         {queue.reports.map((item) => (
           <QueueItem key={item.id} title={`${item.reason} · ${item.id}`} body={item.details}>

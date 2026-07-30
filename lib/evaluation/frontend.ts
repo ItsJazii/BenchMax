@@ -15,18 +15,19 @@ import { EVALUATION_ENVIRONMENT_V1 } from "@/lib/domain/ranked-catalog";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
 import { sha256Hex } from "@/lib/security/policy";
 import { transitionRun } from "@/lib/data/runs";
+import { evaluatorReportContractError } from "@/lib/evaluation/report-contract";
 
 const evaluatorReportSchema = z
   .object({
     protocolVersion: z.literal("frontend-static-evaluator-v1"),
-    environmentHash: z.string().regex(/^[a-f0-9]{64}$/),
+    templateBuildHash: z.string().regex(/^[a-f0-9]{64}$/),
     weightedScoreBps: z.number().int().min(0).max(10_000),
     objectiveResults: z
       .array(
         z.object({
           checkKey: z.string().min(1).max(120),
           kind: z.string().min(1).max(80),
-          status: z.enum(["pass", "fail"]),
+          status: z.enum(["pass", "fail", "error"]),
           scoreBps: z.number().int().min(0).max(10_000),
           weightBps: z.number().int().min(1).max(10_000),
           metric: z.record(z.string(), z.unknown()),
@@ -36,6 +37,8 @@ const evaluatorReportSchema = z
       .max(50),
     consoleErrors: z.array(z.string().max(500)).max(100),
     serverLog: z.string().max(20_000),
+    videoCaptureMs: z.literal(5_000),
+    videoDurationMs: z.number().int().min(4_950).max(5_050),
   })
   .strict();
 
@@ -43,9 +46,11 @@ export async function evaluateFrontendRun(runId: string) {
   const contract = await getEvaluationContract(runId);
   if (!contract) throw new EvaluationContractError("missing_contract");
   const templateId = requiredSecret("E2B_TEMPLATE_ID");
+  const templateBuildHash = requiredSha256("E2B_TEMPLATE_BUILD_HASH");
   const expectedEnvironmentHash = await canonicalSha256({
-    ...EVALUATION_ENVIRONMENT_V1,
-    e2bTemplateId: templateId,
+    evaluationPolicy: EVALUATION_ENVIRONMENT_V1,
+    templateBuildHash,
+    templateId,
   });
   if (
     contract.runEnvironmentHash !== expectedEnvironmentHash ||
@@ -89,7 +94,6 @@ export async function evaluateFrontendRun(runId: string) {
     const specJson = canonicalJson({
       benchmarkVersionId: definition.id,
       checks: definition.checks,
-      environmentHash: expectedEnvironmentHash,
       fixedClock: definition.fixedClock,
       interactionSteps: definition.interactionSteps,
       seed: definition.seed,
@@ -102,25 +106,49 @@ export async function evaluateFrontendRun(runId: string) {
       { timeoutMs: 20_000 },
     );
     if (extract.exitCode !== 0) {
-      throw new EvaluationDeterministicError("source_extract_failed");
+      throw new EvaluationInfrastructureError("source_extract_failed");
     }
     const command = await sandbox.commands.run(
       "node /opt/benchmax/evaluate.mjs",
       { timeoutMs: EVALUATION_ENVIRONMENT_V1.wallClockSeconds * 1000 },
     );
     if (command.exitCode !== 0) {
-      throw new EvaluationDeterministicError("evaluator_process_failed");
+      throw new EvaluationInfrastructureError("evaluator_process_failed");
     }
     const reportText = await sandbox.files.read(
       "/workspace/output/report.json",
     );
     const parsed = evaluatorReportSchema.parse(JSON.parse(reportText));
-    if (parsed.environmentHash !== expectedEnvironmentHash) {
+    if (parsed.templateBuildHash !== templateBuildHash) {
       throw new EvaluationContractError("report_environment_mismatch");
+    }
+    const reportContractError = evaluatorReportContractError({
+      checks: definition.checks,
+      objectiveResults: parsed.objectiveResults,
+      weightedScoreBps: parsed.weightedScoreBps,
+    });
+    if (reportContractError) {
+      throw new EvaluationContractError(reportContractError);
+    }
+    if (parsed.objectiveResults.some((result) => result.status === "error")) {
+      throw new EvaluationInfrastructureError(
+        "objective_checks_not_completed",
+      );
     }
     const screenshot = await sandbox.files
       .read("/workspace/output/milestone.png", { format: "bytes" })
       .catch(() => null);
+    const video = await sandbox.files
+      .read("/workspace/output/milestone.webm", { format: "bytes" })
+      .catch(() => null);
+    if (
+      !screenshot ||
+      screenshot.byteLength === 0 ||
+      !video ||
+      video.byteLength === 0
+    ) {
+      throw new EvaluationInfrastructureError("evaluator_evidence_missing");
+    }
     await persistEvaluation({
       commandLog: canonicalJson({
         exitCode: command.exitCode,
@@ -132,6 +160,7 @@ export async function evaluateFrontendRun(runId: string) {
       reportText,
       runId,
       screenshot,
+      video,
     });
     return parsed;
   } finally {
@@ -175,6 +204,7 @@ async function persistEvaluation(input: {
   reportText: string;
   runId: string;
   screenshot: Uint8Array | null;
+  video: Uint8Array | null;
 }) {
   const now = new Date();
   const reportBytes = new TextEncoder().encode(input.reportText);
@@ -242,6 +272,28 @@ async function persistEvaluation(input: {
       .onConflictDoNothing();
   }
 
+  if (input.video && input.video.byteLength > 0) {
+    const videoSha = await sha256Hex(input.video.slice().buffer);
+    const videoObjectKey = `runs/${input.runId}/evaluation/${videoSha}.webm`;
+    await env.UPLOADS.put(videoObjectKey, input.video, {
+      httpMetadata: { contentType: "video/webm" },
+    });
+    await getDb()
+      .insert(runArtifacts)
+      .values({
+        id: crypto.randomUUID(),
+        runId: input.runId,
+        kind: "video",
+        objectKey: videoObjectKey,
+        contentType: "video/webm",
+        byteSize: input.video.byteLength,
+        sha256: videoSha,
+        public: true,
+        createdAt: now,
+      })
+      .onConflictDoNothing();
+  }
+
   const objectiveDimension =
     input.definition.rubric.find((dimension) => dimension.mechanism === "objective")
       ?.key ?? input.definition.rubric[0].key;
@@ -270,11 +322,23 @@ async function persistEvaluation(input: {
       })
       .onConflictDoNothing();
   }
+  await getDb()
+    .update(runs)
+    .set({ evaluatedAt: now, updatedAt: now })
+    .where(eq(runs.id, input.runId));
 }
 
 function requiredSecret(name: string) {
   const value = process.env[name]?.trim();
   if (!value || value.length > 4096) {
+    throw new EvaluationConfigurationError(name);
+  }
+  return value;
+}
+
+function requiredSha256(name: string) {
+  const value = requiredSecret(name).toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(value)) {
     throw new EvaluationConfigurationError(name);
   }
   return value;
@@ -294,9 +358,9 @@ export class EvaluationContractError extends Error {
   }
 }
 
-export class EvaluationDeterministicError extends Error {
+export class EvaluationInfrastructureError extends Error {
   constructor(readonly code: string) {
-    super("The generated project could not execute under the frozen evaluator.");
-    this.name = "EvaluationDeterministicError";
+    super("The frozen evaluator infrastructure could not complete the run.");
+    this.name = "EvaluationInfrastructureError";
   }
 }

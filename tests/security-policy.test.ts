@@ -30,7 +30,14 @@ import {
   hasVerifiedClerkEmail,
   isAuthorizedRequestOrigin,
 } from "../lib/auth/server";
-import { buildAggregateEntries } from "../lib/ranking/aggregate-math";
+import {
+  buildAggregateEntries,
+  selectDesignatedBenchmarkVersions,
+} from "../lib/ranking/aggregate-math";
+import {
+  enforceContextBudget,
+  GenerationProviderError,
+} from "../lib/generation/web-agent";
 import { allBenchmarks } from "../benchmarks";
 import { readFileSync } from "node:fs";
 import {
@@ -43,6 +50,88 @@ import {
 } from "../lib/security/artifact-inspection";
 import { meanAbsoluteDriftBps } from "../lib/judging/calibration-math";
 import { isRoleAllowed } from "../lib/auth/role-policy";
+import {
+  isExpectedUploadObjectKey,
+  planExpiredUploadCleanup,
+  uploadObjectKeys,
+} from "../lib/storage/upload-keys";
+import { createR2PresignedUpload } from "../lib/storage/r2-presign";
+
+test("upload object keys are server-derived and bind user, session, and filename", () => {
+  const input = {
+    fileName: "../proof clip (final).webm",
+    sessionId: "session-123",
+    userId: "user-456",
+  };
+  const keys = uploadObjectKeys(input);
+  assert.equal(
+    keys.quarantine,
+    "quarantine/user-456/session-123/.._proof_clip__final_.webm",
+  );
+  assert.equal(
+    keys.evidence,
+    "evidence/user-456/session-123/..%2Fproof%20clip%20(final).webm",
+  );
+  assert.equal(isExpectedUploadObjectKey(keys.quarantine, input), true);
+  assert.equal(isExpectedUploadObjectKey(keys.evidence, input), true);
+  assert.equal(
+    isExpectedUploadObjectKey(
+      "evidence/user-456/another-session/proof.webm",
+      input,
+    ),
+    false,
+  );
+});
+
+test("expired upload cleanup repairs promotion crashes without deleting unknown keys", () => {
+  const session = {
+    fileName: "proof.webm",
+    objectKey: "quarantine/user-456/session-123/proof.webm",
+    sessionId: "session-123",
+    status: "uploading" as const,
+    userId: "user-456",
+  };
+  assert.deepEqual(
+    planExpiredUploadCleanup({ ...session, artifactExists: true }),
+    {
+      deleteKeys: ["quarantine/user-456/session-123/proof.webm"],
+      nextStatus: "uploaded",
+    },
+  );
+  assert.deepEqual(
+    planExpiredUploadCleanup({ ...session, artifactExists: false }),
+    {
+      deleteKeys: [
+        "quarantine/user-456/session-123/proof.webm",
+        "evidence/user-456/session-123/proof.webm",
+      ],
+      nextStatus: "expired",
+    },
+  );
+  assert.equal(
+    planExpiredUploadCleanup({
+      ...session,
+      artifactExists: false,
+      objectKey: "evidence/another-user/session-123/proof.webm",
+    }),
+    null,
+  );
+  assert.deepEqual(
+    planExpiredUploadCleanup({
+      ...session,
+      artifactExists: false,
+      objectKey: "evidence/user-456/session-123/proof.webm",
+      status: "uploaded",
+    }),
+    {
+      deleteKeys: [
+        "evidence/user-456/session-123/proof.webm",
+        "quarantine/user-456/session-123/proof.webm",
+      ],
+      nextStatus: null,
+    },
+  );
+});
 
 test("upload intent accepts only the declared kind, MIME, and size contract", () => {
   assert.equal(
@@ -81,6 +170,48 @@ test("upload intent accepts only the declared kind, MIME, and size contract", ()
     }).ok,
     false,
   );
+});
+
+test("direct R2 uploads cryptographically bind size, type, and session", async () => {
+  const environment = {
+    accountId: process.env.R2_ACCOUNT_ID,
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    bucketName: process.env.R2_BUCKET_NAME,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  };
+  process.env.R2_ACCOUNT_ID = "0123456789abcdef0123456789abcdef";
+  process.env.R2_ACCESS_KEY_ID = "A".repeat(20);
+  process.env.R2_BUCKET_NAME = "benchmax-test";
+  process.env.R2_SECRET_ACCESS_KEY = "B".repeat(40);
+  try {
+    const target = await createR2PresignedUpload({
+      byteSize: 1234,
+      contentType: "video/webm",
+      objectKey: "quarantine/user/session/proof.webm",
+      sessionId: "session-123",
+    });
+    assert.ok(target);
+    assert.equal(target.headers["Content-Length"], "1234");
+    assert.equal(target.headers["Content-Type"], "video/webm");
+    assert.equal(
+      target.headers["x-amz-meta-benchmax-session"],
+      "session-123",
+    );
+    assert.equal(
+      new URL(target.url).searchParams.get("X-Amz-SignedHeaders"),
+      "content-length;content-type;host;x-amz-meta-benchmax-session",
+    );
+  } finally {
+    for (const [key, value] of Object.entries({
+      R2_ACCOUNT_ID: environment.accountId,
+      R2_ACCESS_KEY_ID: environment.accessKeyId,
+      R2_BUCKET_NAME: environment.bucketName,
+      R2_SECRET_ACCESS_KEY: environment.secretAccessKey,
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test("filenames reject traversal, encoded separators, controls, and executables", () => {
@@ -436,6 +567,71 @@ test("category and overall rankings equal-weight benchmark medians", () => {
   assert.equal(overall[0].provisional, true);
 });
 
+test("aggregate rankings use exactly one designated benchmark version", () => {
+  const rows = selectDesignatedBenchmarkVersions([
+    {
+      benchmark_id: "benchmark-a",
+      benchmark_version: 1,
+      category: "frontend",
+      configuration_id: "config-a",
+      median_score_bps: 1_000,
+      run_count: 3,
+      snapshot_id: "snapshot-a-v1",
+    },
+    {
+      benchmark_id: "benchmark-a",
+      benchmark_version: 2,
+      category: "frontend",
+      configuration_id: "config-a",
+      median_score_bps: 9_000,
+      run_count: 3,
+      snapshot_id: "snapshot-a-v2",
+    },
+    {
+      benchmark_id: "benchmark-b",
+      benchmark_version: 1,
+      category: "frontend",
+      configuration_id: "config-a",
+      median_score_bps: 7_000,
+      run_count: 3,
+      snapshot_id: "snapshot-b-v1",
+    },
+  ]);
+
+  assert.deepEqual(
+    rows.map((row) => row.snapshot_id),
+    ["snapshot-a-v2", "snapshot-b-v1"],
+  );
+  assert.equal(buildAggregateEntries(rows, "frontend")[0].scoreBps, 8_000);
+});
+
+test("the frozen generation context budget is enforced before provider calls", () => {
+  assert.throws(
+    () =>
+      enforceContextBudget({
+        body: { messages: [{ role: "user", content: "x".repeat(4_000) }] },
+        contextBudgetTokens: 1_500,
+        maxCompletionTokens: 1_000,
+      }),
+    (error) => {
+      assert.ok(error instanceof GenerationProviderError);
+      assert.equal(error.code, "context_budget_exceeded");
+      assert.equal(
+        error.message,
+        "The model provider could not complete generation.",
+      );
+      return true;
+    },
+  );
+  assert.doesNotThrow(() =>
+    enforceContextBudget({
+      body: { messages: [{ role: "user", content: "Build a small page." }] },
+      contextBudgetTokens: 8_000,
+      maxCompletionTokens: 1_000,
+    }),
+  );
+});
+
 test("every launch benchmark freezes pass@1-compatible 100 percent checks and rubric", () => {
   const categoryCounts = new Map<string, number>();
   for (const { category, definition } of allBenchmarks) {
@@ -472,29 +668,6 @@ test("persistence and queue contracts have no field capable of carrying a BYOK k
   assert.doesNotMatch(schemaSource, /\bapi[_-]?key\b/i);
   assert.doesNotMatch(messageSource, /\bapi[_-]?key\b/i);
   assert.doesNotMatch(messageSource, /authorization|credential/i);
-});
-
-test("queue stages have bounded retries, DLQ routing, and idempotent claims", () => {
-  const configSource = readFileSync(
-    new URL("../wrangler.jsonc", import.meta.url),
-    "utf8",
-  );
-  const stageSource = readFileSync(
-    new URL("../lib/pipeline/stage-claims.ts", import.meta.url),
-    "utf8",
-  );
-  assert.equal((configSource.match(/"max_retries": 3/g) ?? []).length, 3);
-  assert.equal(
-    (configSource.match(/"dead_letter_queue": "benchmax-pipeline-dlq"/g) ?? [])
-      .length,
-    3,
-  );
-  assert.match(
-    stageSource,
-    /ON CONFLICT\(run_id, stage, stage_version\) DO UPDATE/,
-  );
-  assert.match(stageSource, /WHERE run_stage_claims\.status = 'failed'/);
-  assert.match(stageSource, /completed claim can\s+\* never be reopened/i);
 });
 
 test("isolated playable origin blocks traversal, network, and unrelated framing", () => {

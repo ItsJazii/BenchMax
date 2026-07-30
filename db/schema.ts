@@ -380,6 +380,9 @@ export const uploadSessions = sqliteTable(
       .notNull()
       .default("created"),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    quarantineCleanedAt: integer("quarantine_cleaned_at", {
+      mode: "timestamp_ms",
+    }),
     ...timestamps,
   },
   (table) => [
@@ -593,6 +596,7 @@ export const evaluationVersions = sqliteTable(
     judgeProvider: text("judge_provider").notNull(),
     judgeModel: text("judge_model").notNull(),
     judgeModelVersion: text("judge_model_version").notNull(),
+    endpointOrigin: text("endpoint_origin").notNull(),
     promptTemplate: text("prompt_template").notNull(),
     promptTemplateHash: text("prompt_template_hash").notNull(),
     rubricProtocolVersion: text("rubric_protocol_version").notNull(),

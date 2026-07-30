@@ -1,0 +1,9 @@
+{
+  "name": "benchmax-browser-web-v1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "axe-core": "4.10.3",
+    "playwright": "1.55.0"
+  }
+}

@@ -5,6 +5,10 @@ import { getOwnedRun, transitionRun } from "@/lib/data/runs";
 import { apiErrorResponse } from "@/lib/http/api";
 import { secureJson } from "@/lib/security/http";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
+import {
+  findLatestFailedPipelineStage,
+  manualRetryPlan,
+} from "@/lib/pipeline/recovery";
 
 export async function POST(
   request: Request,
@@ -25,26 +29,32 @@ export async function POST(
         { status: 404 },
       );
     }
+    const failedStage = await findLatestFailedPipelineStage(env.DB, run.id);
+    const retry = manualRetryPlan(failedStage, {
+      alreadyScored: run.overallScoreBps !== null,
+    });
     const queued = await transitionRun({
       id: run.id,
       from: "evaluation_failed",
-      to: "queued_evaluation",
+      to: retry.targetStatus,
       patch: { failureCode: null, failureSummary: null },
     });
     try {
-      await env.EVALUATE_QUEUE.send({
+      const queue =
+        retry.queue === "evaluate" ? env.EVALUATE_QUEUE : env.JUDGE_QUEUE;
+      await queue.send({
         runId: run.id,
-        stage: "evaluate",
+        stage: retry.stage,
         stageVersion: "1",
       });
     } catch {
       await transitionRun({
         id: run.id,
-        from: "queued_evaluation",
+        from: retry.targetStatus,
         to: "evaluation_failed",
         patch: {
-          failureCode: "evaluation_queue_unavailable",
-          failureSummary: "Evaluation could not be re-queued.",
+          failureCode: `${retry.stage}_queue_unavailable`,
+          failureSummary: "The failed pipeline stage could not be re-queued.",
         },
       });
       throw new EvaluationRetryUnavailableError();
@@ -54,7 +64,10 @@ export async function POST(
       entityType: "run",
       entityId: run.id,
       action: "run.evaluation_requeued",
-      metadata: { generationKeyRequired: false },
+      metadata: {
+        generationKeyRequired: false,
+        stage: retry.stage,
+      },
     });
     return secureJson({ run: queued }, { status: 202 });
   } catch (error) {

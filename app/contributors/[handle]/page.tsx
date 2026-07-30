@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { ShowcaseCard } from "@/app/components/ShowcaseCard";
 import { SiteFooter } from "@/app/components/SiteFooter";
 import { SiteHeader } from "@/app/components/SiteHeader";
-import { showcaseFeed } from "@/lib/domain/catalog";
 import {
   getPublicContributor,
   listPublicShowcaseCards,
@@ -25,16 +24,11 @@ export default async function ContributorPage({
 }) {
   const { handle } = await params;
   const contributor = await getPublicContributor(handle).catch(() => null);
-  const databaseTests = contributor
-    ? (await listPublicShowcaseCards(50)).filter(
-        (item) => item.contributor === handle,
-      )
-    : [];
-  const tests =
-    databaseTests.length > 0
-      ? databaseTests
-      : showcaseFeed.filter((item) => item.contributor === handle);
-  if (tests.length === 0) notFound();
+  if (!contributor) notFound();
+  const publicTests = await listPublicShowcaseCards(50).catch(() => null);
+  const tests = (publicTests ?? []).filter(
+    (item) => item.contributor === contributor.handle,
+  );
 
   return (
     <div className="site-shell">
@@ -42,15 +36,14 @@ export default async function ContributorPage({
       <main className="inner-page section-wrap">
         <header className="profile-header">
           <div className="profile-avatar" aria-hidden="true">
-            {handle.slice(0, 2).toUpperCase()}
+            {contributor.handle.slice(0, 2).toUpperCase()}
           </div>
           <div>
             <span className="section-index">CONTRIBUTOR</span>
-            <h1>@{handle}</h1>
+            <h1>@{contributor.handle}</h1>
             <p>
-              {contributor
-                ? `${contributor.displayName} shares inspectable model tests and their evidence.`
-                : "Sharing inspectable model tests across code, games, and browser experiences."}
+              {contributor.displayName} shares inspectable model tests and
+              their evidence.
             </p>
           </div>
           <dl>
@@ -60,7 +53,7 @@ export default async function ContributorPage({
             </div>
             <div>
               <dt>Ranked runs</dt>
-              <dd>{contributor?.rankedRunCount ?? 0}</dd>
+              <dd>{contributor.rankedRunCount}</dd>
             </div>
           </dl>
         </header>
@@ -70,11 +63,29 @@ export default async function ContributorPage({
             <h2>Shared tests</h2>
           </div>
         </div>
-        <div className="card-grid">
-          {tests.map((test) => (
-            <ShowcaseCard key={test.id} showcase={test} />
-          ))}
-        </div>
+        {tests.length > 0 ? (
+          <div className="card-grid">
+            {tests.map((test) => (
+              <ShowcaseCard key={test.id} showcase={test} />
+            ))}
+          </div>
+        ) : publicTests === null ? (
+          <div className="empty-state">
+            <strong>Public tests are temporarily unavailable.</strong>
+            <p>
+              Benchmax does not show substitute tests when this contributor’s
+              public records cannot be read.
+            </p>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <strong>No public community tests yet.</strong>
+            <p>
+              This active contributor has not published an approved community
+              test.
+            </p>
+          </div>
+        )}
       </main>
       <SiteFooter />
     </div>

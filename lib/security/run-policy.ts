@@ -44,10 +44,15 @@ const transitions: Readonly<Record<RunStatus, ReadonlySet<RunStatus>>> = {
   queued_evaluation: new Set(["evaluating", "evaluation_failed", "disqualified"]),
   evaluating: new Set(["judging", "scored", "evaluation_failed", "disqualified"]),
   judging: new Set(["scored", "evaluation_failed", "disqualified"]),
-  scored: new Set(["published", "disqualified"]),
+  scored: new Set(["published", "evaluation_failed", "disqualified"]),
   published: new Set(["disqualified"]),
   generation_failed: new Set(["scored"]),
-  evaluation_failed: new Set(["queued_evaluation", "disqualified"]),
+  evaluation_failed: new Set([
+    "queued_evaluation",
+    "judging",
+    "scored",
+    "disqualified",
+  ]),
   disqualified: new Set([]),
 };
 

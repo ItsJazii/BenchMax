@@ -10,32 +10,11 @@ export const metadata: Metadata = {
     "Canonical model and provider configurations tracked by Benchmax.",
 };
 
-const models = [
-  {
-    name: "K3",
-    provider: "Kimi",
-    tests: 1,
-    coverage: ["Browser games"],
-    status: "Community evidence",
-  },
-  {
-    name: "Opus 4.6",
-    provider: "Anthropic",
-    tests: 1,
-    coverage: ["Frontend"],
-    status: "Platform replayed",
-  },
-  {
-    name: "GPT coding model",
-    provider: "OpenAI",
-    tests: 1,
-    coverage: ["Browser 3D"],
-    status: "Community evidence",
-  },
-];
-
 export default async function ModelsPage() {
-  const configurations = await listPublicConfigurations().catch(() => []);
+  const configurationsResult = await listPublicConfigurations().catch(
+    () => null,
+  );
+  const configurations = configurationsResult ?? [];
   return (
     <div className="site-shell">
       <SiteHeader />
@@ -51,16 +30,16 @@ export default async function ModelsPage() {
             score.
           </p>
         </header>
-        <div className="model-table">
-          <div className="model-table-head">
-            <span>Model</span>
-            <span>Provider</span>
-            <span>Evidence</span>
-            <span>Coverage</span>
-            <span>Status</span>
-          </div>
-          {configurations.length > 0
-            ? configurations.map((configuration) => (
+        {configurations.length > 0 ? (
+          <div className="model-table">
+            <div className="model-table-head">
+              <span>Model</span>
+              <span>Provider</span>
+              <span>Evidence</span>
+              <span>Coverage</span>
+              <span>Status</span>
+            </div>
+            {configurations.map((configuration) => (
                 <div className="model-row" key={configuration.id}>
                   <strong>
                     <Link href={`/models/${configuration.model_slug}`}>
@@ -81,17 +60,28 @@ export default async function ModelsPage() {
                     {configuration.settings_hash.slice(0, 8)}
                   </span>
                 </div>
-              ))
-            : models.map((model) => (
-                <div className="model-row" key={model.name}>
-                  <strong>{model.name}</strong>
-                  <span>{model.provider}</span>
-                  <span className="mono">{model.tests} test</span>
-                  <span>{model.coverage.join(", ")}</span>
-                  <span className="status-pill neutral">{model.status}</span>
-                </div>
               ))}
-        </div>
+          </div>
+        ) : configurationsResult === null ? (
+          <div className="empty-state">
+            <strong>The model catalog is temporarily unavailable.</strong>
+            <p>
+              Benchmax does not show placeholder models while approved
+              configurations cannot be read.
+            </p>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <strong>No approved model configurations yet.</strong>
+            <p>
+              Models will appear here only after their provider, endpoint,
+              version, harness, reasoning level, and settings hash are recorded.
+            </p>
+            <Link className="button button-secondary" href="/methodology">
+              Read configuration identity
+            </Link>
+          </div>
+        )}
         <div className="catalog-note">
           <span>CATALOG POLICY</span>
           <h2>Official rankings use approved configuration IDs.</h2>

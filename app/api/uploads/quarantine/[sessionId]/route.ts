@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import {
   getUploadSession,
   markSessionUploading,
+  releaseSessionUploadClaim,
 } from "@/lib/data/uploads";
 import { apiErrorResponse } from "@/lib/http/api";
 import { secureJson } from "@/lib/security/http";
@@ -60,11 +61,21 @@ export async function PUT(
       return secureJson({ error: "Upload body is required." }, { status: 400 });
     }
 
-    await markSessionUploading(session.id);
-    await env.UPLOADS.put(session.objectKey, request.body, {
-      httpMetadata: { contentType: session.contentType },
-      customMetadata: { benchmaxSession: session.id },
-    });
+    if (!(await markSessionUploading(session.id))) {
+      return secureJson(
+        { error: "Upload session is already in use." },
+        { status: 409 },
+      );
+    }
+    try {
+      await env.UPLOADS.put(session.objectKey, request.body, {
+        httpMetadata: { contentType: session.contentType },
+        customMetadata: { benchmaxSession: session.id },
+      });
+    } catch (error) {
+      await releaseSessionUploadClaim(session.id).catch(() => undefined);
+      throw error;
+    }
     return secureJson({ uploaded: true, sessionId: session.id });
   } catch (error) {
     return apiErrorResponse(error);

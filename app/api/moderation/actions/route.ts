@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import {
   requireAuthorizedUser,
   requireRole,
@@ -20,6 +21,29 @@ export async function POST(request: Request) {
     });
     const input = await parseJson(request, moderationActionSchema);
     const result = await applyModerationAction(user.id, input);
+    let publishRefreshDeferred = false;
+    if (input.entityType === "run" && input.action === "dismiss") {
+      await env.JUDGE_QUEUE.send({
+        runId: input.entityId,
+        stage: "publish",
+        stageVersion: "1",
+      }).catch((error: unknown) => {
+        publishRefreshDeferred = true;
+        console.error("Moderated run publish refresh was deferred", {
+          name: error instanceof Error ? error.name : "UnknownError",
+          runId: input.entityId,
+        });
+      });
+    }
+    if (publishRefreshDeferred) {
+      await appendAuditEvent({
+        actorUserId: user.id,
+        entityType: "run",
+        entityId: input.entityId,
+        action: "run.publish_refresh_deferred",
+        metadata: { stage: "publish", stageVersion: "1" },
+      });
+    }
     await appendAuditEvent({
       actorUserId: user.id,
       entityType: input.entityType,

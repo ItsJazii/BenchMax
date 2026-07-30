@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { categoryLabels, showcaseFeed } from "@/lib/domain/catalog";
+import { categoryLabels } from "@/lib/domain/catalog";
 import { ShowcaseCard } from "@/app/components/ShowcaseCard";
 import { RunCard } from "@/app/components/RunCard";
 import { SiteFooter } from "@/app/components/SiteFooter";
@@ -29,17 +29,21 @@ export default async function ExplorePage({
   }>;
 }) {
   const filters = await searchParams;
-  const [databaseFeed, publicRuns] = await Promise.all([
-    listPublicShowcaseCards(50).catch(() => []),
-    listRecentPublicRuns(100).catch(() => []),
+  const [databaseFeedResult, publicRunsResult] = await Promise.all([
+    listPublicShowcaseCards(50).catch(() => null),
+    listRecentPublicRuns(100).catch(() => null),
   ]);
-  const feed = databaseFeed.length > 0 ? databaseFeed : showcaseFeed;
+  const databaseFeed = databaseFeedResult ?? [];
+  const publicRuns = publicRunsResult ?? [];
+  const recordsUnavailable =
+    databaseFeedResult === null || publicRunsResult === null;
+  const hasFilters = Object.values(filters).some((value) => value?.trim());
   const query = filters.q?.trim().toLowerCase() ?? "";
   const model = filters.model?.trim().toLowerCase() ?? "";
   const benchmark = filters.benchmark?.trim().toLowerCase() ?? "";
   const contributor = filters.contributor?.trim().toLowerCase() ?? "";
   const since = filters.date ? Date.parse(`${filters.date}T00:00:00Z`) : NaN;
-  const showcaseResults = feed.filter((item) => {
+  const showcaseResults = databaseFeed.filter((item) => {
     const categoryMatch =
       !filters.category || filters.category === item.category;
     const trustMatch =
@@ -183,8 +187,10 @@ export default async function ExplorePage({
         </form>
 
         <div className="results-line">
-          <span>{resultCount} tests</span>
-          <span>Newest first</span>
+          <span>
+            {resultCount} {recordsUnavailable ? "visible tests" : "tests"}
+          </span>
+          <span>{recordsUnavailable ? "Some records unavailable" : "Newest first"}</span>
         </div>
 
         {resultCount > 0 ? (
@@ -214,15 +220,31 @@ export default async function ExplorePage({
           </>
         ) : (
           <div className="empty-state">
-            <strong>No tests match those filters.</strong>
-            <p>Clear the filters or put a new test on the record.</p>
+            <strong>
+              {recordsUnavailable
+                ? "Public test records are temporarily unavailable."
+                : hasFilters
+                ? "No tests match those filters."
+                : "No public tests have been published yet."}
+            </strong>
+            <p>
+              {recordsUnavailable
+                ? "Benchmax does not show sample submissions when the public catalog cannot be read."
+                : hasFilters
+                ? "Clear the filters or put a new test on the record."
+                : "Approved community uploads and completed platform runs will appear here."}
+            </p>
             <div>
-              <Link className="button button-secondary" href="/explore">
-                Clear filters
-              </Link>
-              <Link className="button button-primary" href="/upload">
-                Upload a test
-              </Link>
+              {!recordsUnavailable && hasFilters && (
+                <Link className="button button-secondary" href="/explore">
+                  Clear filters
+                </Link>
+              )}
+              {!recordsUnavailable && (
+                <Link className="button button-primary" href="/upload">
+                  {hasFilters ? "Upload a test" : "Upload the first test"}
+                </Link>
+              )}
             </div>
           </div>
         )}

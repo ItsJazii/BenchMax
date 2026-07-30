@@ -4,7 +4,9 @@ import {
   abuseReports,
   benchmarkProposals,
   disputes,
+  evaluationVersions,
   moderationActions,
+  runStageClaims,
   runs,
   showcases,
   users,
@@ -12,6 +14,7 @@ import {
 import type { z } from "zod";
 import {
   benchmarkProposalSchema,
+  buildRunModerationDecision,
   disputeCreateSchema,
   disputeResolutionSchema,
   moderationActionSchema,
@@ -133,9 +136,13 @@ export async function applyModerationAction(
   let previous: Record<string, unknown>;
   let next: Record<string, unknown>;
   if (parsed.entityType === "run") {
-    if (parsed.action !== "disqualify") throw new InvalidModerationActionError();
     const [record] = await getDb()
-      .select({ status: runs.status, rankEligible: runs.rankEligible })
+      .select({
+        status: runs.status,
+        rankEligible: runs.rankEligible,
+        injectionFlag: runs.injectionFlag,
+        playableEnabled: runs.playableEnabled,
+      })
       .from(runs)
       .where(eq(runs.id, parsed.entityId))
       .limit(1);
@@ -143,18 +150,49 @@ export async function applyModerationAction(
       throw new CommunityTargetError();
     }
     previous = record;
-    next = { status: "disqualified", rankEligible: false, playableEnabled: false };
-    await getDb()
-      .update(runs)
-      .set({
-        status: "disqualified",
-        rankEligible: false,
-        playableEnabled: false,
-        failureCode: "moderator_disqualified",
-        failureSummary: parsed.reason.slice(0, 300),
-        updatedAt: now,
-      })
-      .where(eq(runs.id, parsed.entityId));
+    if (parsed.action !== "disqualify" && parsed.action !== "dismiss") {
+      throw new InvalidModerationActionError();
+    }
+    const decision = buildRunModerationDecision(
+      record,
+      parsed.action,
+      parsed.reason,
+    );
+    if (!decision) throw new InvalidModerationActionError();
+    next = decision.next;
+    if (parsed.action === "disqualify") {
+      await getDb()
+        .update(runs)
+        .set({
+          ...decision.patch,
+          updatedAt: now,
+        })
+        .where(eq(runs.id, parsed.entityId));
+    } else {
+      await getDb()
+        .update(runStageClaims)
+        .set({
+          completedAt: null,
+          errorCode: "moderator_publish_refresh",
+          status: "failed",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(runStageClaims.runId, parsed.entityId),
+            eq(runStageClaims.stage, "publish"),
+          ),
+        );
+      const [cleared] = await getDb()
+        .update(runs)
+        .set({
+          ...decision.patch,
+          updatedAt: now,
+        })
+        .where(and(eq(runs.id, parsed.entityId), eq(runs.injectionFlag, true)))
+        .returning({ id: runs.id });
+      if (!cleared) throw new CommunityConflictError();
+    }
   } else if (parsed.entityType === "showcase") {
     const [record] = await getDb()
       .select({
@@ -276,7 +314,13 @@ export async function reviewBenchmarkProposal(
 }
 
 export async function listModerationQueue() {
-  const [reports, openDisputes, proposals] = await Promise.all([
+  const [
+    reports,
+    openDisputes,
+    proposals,
+    flaggedRuns,
+    latestEvaluation,
+  ] = await Promise.all([
     getDb()
       .select()
       .from(abuseReports)
@@ -295,8 +339,44 @@ export async function listModerationQueue() {
       .where(eq(benchmarkProposals.status, "submitted"))
       .orderBy(benchmarkProposals.createdAt)
       .limit(100),
+    getDb()
+      .select({
+        id: runs.id,
+        publicSlug: runs.publicSlug,
+        status: runs.status,
+        rankEligible: runs.rankEligible,
+        injectionFlag: runs.injectionFlag,
+        createdAt: runs.createdAt,
+      })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.injectionFlag, true),
+          inArray(runs.status, ["judging", "scored", "published"]),
+        ),
+      )
+      .orderBy(runs.createdAt)
+      .limit(100),
+    getDb()
+      .select({
+        id: evaluationVersions.id,
+        version: evaluationVersions.version,
+        status: evaluationVersions.status,
+        updatedAt: evaluationVersions.updatedAt,
+      })
+      .from(evaluationVersions)
+      .orderBy(desc(evaluationVersions.version))
+      .limit(1),
   ]);
-  return { reports, disputes: openDisputes, proposals };
+  return {
+    reports,
+    disputes: openDisputes,
+    proposals,
+    flaggedRuns,
+    calibrationAlerts: latestEvaluation.filter(
+      (evaluation) => evaluation.status === "frozen",
+    ),
+  };
 }
 
 export class CommunityTargetError extends Error {

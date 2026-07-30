@@ -4,10 +4,7 @@ import { notFound } from "next/navigation";
 import { SiteFooter } from "@/app/components/SiteFooter";
 import { SiteHeader } from "@/app/components/SiteHeader";
 import { TrustBadge } from "@/app/components/TrustBadge";
-import {
-  categoryLabels,
-  showcaseFeed,
-} from "@/lib/domain/catalog";
+import { categoryLabels } from "@/lib/domain/catalog";
 import { getPublicShowcaseBySlug } from "@/lib/data/showcases";
 
 export async function generateMetadata({
@@ -16,24 +13,10 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const databaseShowcase = await getPublicShowcaseBySlug(slug).catch(() => null);
-  const fixture = showcaseFeed.find((item) => item.slug === slug);
-  const showcase = databaseShowcase
-    ? {
-        ...databaseShowcase,
-        description: databaseShowcase.summary,
-        evidence: databaseShowcase.artifacts.map(
-          (artifact) =>
-            artifact.kind.charAt(0).toUpperCase() + artifact.kind.slice(1),
-        ),
-        published:
-          databaseShowcase.publishedAt?.toISOString() ?? "Published",
-        trust: "Community Showcase" as const,
-      }
-    : fixture;
+  const showcase = await getPublicShowcaseBySlug(slug).catch(() => null);
   return {
     title: showcase?.title ?? "Test report",
-    description: showcase?.description,
+    description: showcase?.summary,
   };
 }
 
@@ -44,21 +27,19 @@ export default async function ShowcasePage({
 }) {
   const { slug } = await params;
   const databaseShowcase = await getPublicShowcaseBySlug(slug).catch(() => null);
-  const fixture = showcaseFeed.find((item) => item.slug === slug);
-  const showcase = databaseShowcase
-    ? {
-        ...databaseShowcase,
-        description: databaseShowcase.summary,
-        evidence: databaseShowcase.artifacts.map(
-          (artifact) =>
-            artifact.kind.charAt(0).toUpperCase() + artifact.kind.slice(1),
-        ),
-        published:
-          databaseShowcase.publishedAt?.toISOString() ?? "Published",
-        trust: "Community Showcase" as const,
-      }
-    : fixture;
-  if (!showcase) notFound();
+  if (!databaseShowcase) notFound();
+  const showcase = {
+    ...databaseShowcase,
+    description: databaseShowcase.summary,
+    evidence: databaseShowcase.artifacts.map(
+      (artifact) =>
+        artifact.kind.charAt(0).toUpperCase() + artifact.kind.slice(1),
+    ),
+    published:
+      databaseShowcase.publishedAt?.toISOString() ??
+      "Publication time unavailable",
+    trust: "Community Showcase" as const,
+  };
 
   return (
     <div className="site-shell">
@@ -79,9 +60,7 @@ export default async function ShowcasePage({
                 @{showcase.contributor}
               </Link>
               <span>{showcase.published}</span>
-              <span>
-                {databaseShowcase ? "Approved public record" : "Community test record"}
-              </span>
+              <span>Approved public record</span>
             </div>
           </div>
           <div className="showcase-spec">
@@ -146,20 +125,14 @@ export default async function ShowcasePage({
           <div className="context-grid">
             <article>
               <span>PROMPT</span>
-              <p>
-                {databaseShowcase
-                  ? databaseShowcase.prompt
-                  : "The complete prompt is part of the record. Seed content is hidden until the original artifact is attached."}
-              </p>
+              <p>{databaseShowcase.prompt}</p>
             </article>
             <article>
               <span>SOURCE</span>
               <p>
-                {databaseShowcase
-                  ? databaseShowcase.sourceVisibility === "public"
-                    ? "The contributor selected public source visibility."
-                    : "The contributor kept source private; source bytes and object keys are not exposed."
-                  : "Public source is required for future ranked runs. Community reports disclose the visibility selected by the contributor."}
+                {databaseShowcase.sourceVisibility === "public"
+                  ? "The contributor selected public source visibility."
+                  : "The contributor kept source private; source bytes and object keys are not exposed."}
               </p>
             </article>
             <article>

@@ -1,8 +1,5 @@
 import Link from "next/link";
-import {
-  categoryLabels,
-  showcaseFeed,
-} from "@/lib/domain/catalog";
+import { categoryLabels } from "@/lib/domain/catalog";
 import { ShowcaseCard } from "./components/ShowcaseCard";
 import { RunCard } from "./components/RunCard";
 import { SiteHeader } from "./components/SiteHeader";
@@ -19,29 +16,31 @@ export default async function Home() {
     ["browser-game", "Browser games"],
     ["browser-3d", "Browser 3D"],
   ] as const;
-  const [databaseFeed, recentRuns, aggregateSets, benchmarkVersions] =
+  const [databaseFeedResult, recentRuns, aggregateSets, benchmarkVersionsResult] =
     await Promise.all([
-      listPublicShowcaseCards(6).catch(() => []),
+      listPublicShowcaseCards(6).catch(() => null),
       listRecentPublicRuns(3).catch(() => []),
       Promise.all(
         scopes.map(([scope]) =>
           listAggregateLeaderboard(scope).catch(() => []),
         ),
       ),
-      listPublicBenchmarkVersions().catch(() => []),
+      listPublicBenchmarkVersions().catch(() => null),
     ]);
-  const visibleFeed = databaseFeed.length > 0 ? databaseFeed : showcaseFeed;
-  const launchBenchmarkCounts: Record<string, number> = {
-    frontend: 5,
-    "browser-game": 5,
-    "browser-3d": 4,
-  };
+  const databaseFeed = databaseFeedResult ?? [];
+  const benchmarkVersions = benchmarkVersionsResult ?? [];
+  const publicTestsUnavailable = databaseFeedResult === null;
+  const benchmarkCatalogUnavailable = benchmarkVersionsResult === null;
+  const latestShowcase = databaseFeed[0];
   const coverage = new Map<string, Set<string>>();
   for (const version of benchmarkVersions) {
     const entries = coverage.get(version.category) ?? new Set<string>();
     entries.add(version.slug);
     coverage.set(version.category, entries);
   }
+  const activeBenchmarkCategoryCount = scopes
+    .filter(([scope]) => scope !== "overall")
+    .filter(([scope]) => (coverage.get(scope)?.size ?? 0) > 0).length;
   return (
     <div className="site-shell">
       <SiteHeader />
@@ -79,33 +78,59 @@ export default async function Home() {
 
           <aside className="hero-panel" aria-label="Latest test snapshot">
             <div className="panel-topline">
-              <span>TEST SNAPSHOT</span>
-              <span>COMMUNITY TEST</span>
+              <span>LATEST PUBLIC RECORD</span>
+              <span>
+                {latestShowcase
+                  ? "COMMUNITY TEST"
+                  : publicTestsUnavailable
+                    ? "RECORDS UNAVAILABLE"
+                    : "AWAITING FIRST TEST"}
+              </span>
             </div>
-            <div className="voxel-preview" aria-hidden="true">
-              <div className="voxel-sky" />
-              <div className="voxel-sun" />
-              <div className="voxel-land voxel-land-one" />
-              <div className="voxel-land voxel-land-two" />
-              <div className="voxel-crosshair">+</div>
+            <div className="hero-record">
+              <span className="section-index">
+                {latestShowcase
+                  ? categoryLabels[latestShowcase.category]
+                  : "PUBLIC EVIDENCE"}
+              </span>
+              <strong>
+                {latestShowcase?.title ??
+                  (publicTestsUnavailable
+                    ? "Public test records are temporarily unavailable."
+                    : "No community tests have been published yet.")}
+              </strong>
+              <p>
+                {latestShowcase?.description ??
+                  (publicTestsUnavailable
+                    ? "Benchmax will not substitute sample evidence while the public catalog cannot be read."
+                    : "The first approved test will appear here with its real model, harness, reasoning level, and evidence record.")}
+              </p>
             </div>
             <div className="panel-result">
               <div>
                 <span className="result-label">MODEL</span>
-                <strong>K3</strong>
+                <strong>{latestShowcase?.model ?? "—"}</strong>
               </div>
               <div>
-                <span className="result-label">TASK</span>
-                <strong>Voxel world</strong>
+                <span className="result-label">HARNESS</span>
+                <strong>{latestShowcase?.harness ?? "—"}</strong>
               </div>
               <div>
                 <span className="result-label">REASONING</span>
-                <strong>High</strong>
+                <strong>{latestShowcase?.reasoning ?? "—"}</strong>
               </div>
             </div>
             <div className="panel-foot">
-              <span>Source + video + prompt</span>
-              <span className="status-pill neutral">Not ranked</span>
+              <span>
+                {latestShowcase
+                  ? latestShowcase.evidence.join(" + ") || "No public artifacts"
+                  : publicTestsUnavailable
+                    ? "No substitute records"
+                    : "Nothing is shown until approval"}
+              </span>
+              <span className="status-pill neutral">
+                {latestShowcase ? "Not ranked" : "No record"}
+              </span>
             </div>
           </aside>
         </section>
@@ -145,13 +170,11 @@ export default async function Home() {
                 <span className="mono">
                   {row
                     ? `${(row.score_bps / 100).toFixed(2)} · ${row.total_run_count} runs`
+                    : benchmarkCatalogUnavailable
+                      ? "Coverage unavailable"
                     : scope === "overall"
-                      ? "0 / 3 categories"
-                      : `0 / ${
-                          coverage.get(scope)?.size ??
-                          launchBenchmarkCounts[scope] ??
-                          0
-                        } benchmarks`}
+                      ? `0 / ${activeBenchmarkCategoryCount} categories`
+                      : `0 / ${coverage.get(scope)?.size ?? 0} benchmarks`}
                 </span>
                 <span
                   className={`status-pill ${
@@ -217,11 +240,31 @@ export default async function Home() {
               Explore all tests →
             </Link>
           </div>
-          <div className="card-grid">
-            {visibleFeed.slice(0, 6).map((showcase) => (
-              <ShowcaseCard key={showcase.id} showcase={showcase} />
-            ))}
-          </div>
+          {databaseFeed.length > 0 ? (
+            <div className="card-grid">
+              {databaseFeed.map((showcase) => (
+                <ShowcaseCard key={showcase.id} showcase={showcase} />
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <strong>
+                {publicTestsUnavailable
+                  ? "Public test records are temporarily unavailable."
+                  : "No published community tests yet."}
+              </strong>
+              <p>
+                {publicTestsUnavailable
+                  ? "No sample submissions are shown in place of unavailable records."
+                  : "Approved uploads will appear here with their real prompt, configuration, contributor, and evidence."}
+              </p>
+              {!publicTestsUnavailable && (
+                <Link className="button button-primary" href="/upload">
+                  Upload the first test
+                </Link>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="protocol section-wrap">
@@ -265,12 +308,10 @@ export default async function Home() {
               <strong>{label}</strong>
               <span>
                 {key === "other"
-                  ? "Showcases"
-                  : `${
-                      coverage.get(key)?.size ??
-                      launchBenchmarkCounts[key] ??
-                      0
-                    } benchmarks`} →
+                  ? "Community tests"
+                  : benchmarkCatalogUnavailable
+                    ? "Catalog unavailable"
+                    : `${coverage.get(key)?.size ?? 0} benchmarks`} →
               </span>
             </Link>
           ))}

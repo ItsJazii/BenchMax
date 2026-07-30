@@ -42,6 +42,7 @@ export async function getGenerationContract(
       apiStyle: providers.apiStyle,
       providerModelId: configurations.providerModelId,
       samplingSettingsJson: configurations.samplingSettingsJson,
+      contextBudgetTokens: harnesses.contextBudgetTokens,
       turnLimit: harnesses.turnLimit,
       filePolicyJson: harnesses.filePolicyJson,
     })
@@ -85,6 +86,7 @@ export async function getGenerationContract(
     apiStyle: row.apiStyle,
     providerModelId: row.providerModelId,
     samplingSettingsJson: row.samplingSettingsJson,
+    contextBudgetTokens: row.contextBudgetTokens,
     turnLimit: row.turnLimit,
     maxFiles: policy.data.maxFiles,
     maxFileBytes: policy.data.maxFileBytes,

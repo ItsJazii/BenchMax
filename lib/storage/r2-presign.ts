@@ -8,6 +8,7 @@ export type DirectUploadTarget = {
 };
 
 export async function createR2PresignedUpload(input: {
+  byteSize: number;
   contentType: string;
   objectKey: string;
   sessionId: string;
@@ -19,6 +20,7 @@ export async function createR2PresignedUpload(input: {
   if (!accountId || !accessKeyId || !secretAccessKey || !bucketName) return null;
 
   const headers = {
+    "Content-Length": String(input.byteSize),
     "Content-Type": input.contentType,
     "x-amz-meta-benchmax-session": input.sessionId,
   };
@@ -35,7 +37,15 @@ export async function createR2PresignedUpload(input: {
   });
   const signed = await client.sign(
     new Request(objectUrl, { method: "PUT", headers }),
-    { aws: { signQuery: true } },
+    {
+      aws: {
+        // aws4fetch excludes content-length/content-type unless allHeaders is
+        // enabled. Both must be part of the signature so the bearer URL cannot
+        // be reused for an object with different upload metadata.
+        allHeaders: true,
+        signQuery: true,
+      },
+    },
   );
 
   return { mode: "presigned-r2", method: "PUT", url: signed.url, headers };

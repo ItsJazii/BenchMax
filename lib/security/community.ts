@@ -21,7 +21,72 @@ export const moderationActionSchema = z
     action: z.enum(["unpublish", "restore", "disqualify", "resolve", "dismiss"]),
     reason: z.string().trim().min(10).max(2_000),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const allowedByEntity = {
+      "abuse-report": ["resolve", "dismiss"],
+      run: ["disqualify", "dismiss"],
+      showcase: ["unpublish", "restore"],
+    } as const;
+    if (
+      !(allowedByEntity[value.entityType] as readonly string[]).includes(
+        value.action,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "That moderation action is not valid for this record type.",
+        path: ["action"],
+      });
+    }
+  });
+
+export type ModeratableRunSnapshot = {
+  injectionFlag: boolean;
+  playableEnabled: boolean;
+  rankEligible: boolean;
+  status: string;
+};
+
+export function buildRunModerationDecision(
+  record: ModeratableRunSnapshot,
+  action: "dismiss" | "disqualify",
+  reason: string,
+) {
+  if (!["scored", "published"].includes(record.status)) return null;
+  if (action === "dismiss") {
+    if (!record.injectionFlag) return null;
+    return {
+      next: {
+        status: "scored",
+        rankEligible: true,
+        injectionFlag: false,
+        playableEnabled: false,
+      },
+      patch: {
+        injectionFlag: false as const,
+        playableEnabled: false as const,
+        rankEligible: true as const,
+        status: "scored" as const,
+      },
+    };
+  }
+  return {
+    next: {
+      status: "disqualified",
+      rankEligible: false,
+      injectionFlag: record.injectionFlag,
+      playableEnabled: false,
+    },
+    patch: {
+      status: "disqualified" as const,
+      rankEligible: false as const,
+      playableEnabled: false as const,
+      failureCode: "moderator_disqualified",
+      failureSummary: reason.slice(0, 300),
+    },
+  };
+}
 
 const proposalDimensionSchema = z
   .object({

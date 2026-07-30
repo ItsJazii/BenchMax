@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Benchmax evaluator fixture</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f4f2eb;
+        color: #171b18;
+        font-family: system-ui, sans-serif;
+      }
+      main {
+        display: grid;
+        min-height: 100vh;
+        place-items: center;
+      }
+      button {
+        min-height: 44px;
+        padding: 0 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <button id="verify" type="button">Verify fixture</button>
+    </main>
+    <script>
+      document.querySelector("#verify").addEventListener("click", (event) => {
+        event.currentTarget.textContent = "Verified";
+        event.currentTarget.dataset.verified = "true";
+      });
+    </script>
+  </body>
+</html>

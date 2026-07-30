@@ -13,6 +13,31 @@ export type BenchmarkAggregateInput = {
   snapshot_id: string;
 };
 
+export type VersionedBenchmarkAggregateInput = BenchmarkAggregateInput & {
+  benchmark_version: number;
+};
+
+export function selectDesignatedBenchmarkVersions(
+  rows: readonly VersionedBenchmarkAggregateInput[],
+): BenchmarkAggregateInput[] {
+  const latestVersionByBenchmark = new Map<string, number>();
+  for (const row of rows) {
+    const current = latestVersionByBenchmark.get(row.benchmark_id);
+    if (current === undefined || row.benchmark_version > current) {
+      latestVersionByBenchmark.set(row.benchmark_id, row.benchmark_version);
+    }
+  }
+  return rows
+    .filter(
+      (row) =>
+        row.benchmark_version === latestVersionByBenchmark.get(row.benchmark_id),
+    )
+    .map(({ benchmark_version: benchmarkVersion, ...row }) => {
+      void benchmarkVersion;
+      return row;
+    });
+}
+
 export function buildAggregateEntries(
   rows: readonly BenchmarkAggregateInput[],
   scope: RankingScope,

@@ -62,6 +62,7 @@ export type GenerationContract = {
   apiStyle: "openai-compatible" | "anthropic-compatible";
   benchmarkPrompt: string;
   configurationId: string;
+  contextBudgetTokens: number;
   endpointOrigin: string;
   environmentHash: string;
   harnessContractHash: string;
@@ -130,6 +131,11 @@ export async function executeWebAgentGeneration(input: {
       tool_choice: "auto",
       ...settings,
     };
+    enforceContextBudget({
+      body,
+      contextBudgetTokens: input.contract.contextBudgetTokens,
+      maxCompletionTokens: settings.max_completion_tokens,
+    });
     requests.push(body);
     const response = await fetch(endpoint, {
       method: "POST",
@@ -209,6 +215,31 @@ export async function executeWebAgentGeneration(input: {
     }
   }
   throw new GenerationOutputError("turn_limit_exhausted");
+}
+
+export function enforceContextBudget(input: {
+  body: unknown;
+  contextBudgetTokens: number;
+  maxCompletionTokens: number;
+}) {
+  if (
+    !Number.isInteger(input.contextBudgetTokens) ||
+    input.contextBudgetTokens <= 0
+  ) {
+    throw new GenerationProviderError("invalid_context_budget");
+  }
+  // A tokenizer cannot emit more tokens than the UTF-8 byte length. Using the
+  // byte count is deliberately conservative and prevents a provider-specific
+  // tokenizer from exceeding the frozen context contract.
+  const estimatedInputTokens = new TextEncoder().encode(
+    JSON.stringify(input.body),
+  ).byteLength;
+  if (
+    estimatedInputTokens + input.maxCompletionTokens >
+    input.contextBudgetTokens
+  ) {
+    throw new GenerationProviderError("context_budget_exceeded");
+  }
 }
 
 async function finalizeResult(input: {

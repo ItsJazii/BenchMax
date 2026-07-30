@@ -566,7 +566,7 @@ function ConfiguredUploadWizard() {
             />
             <strong>Choose source, video, screenshots, or logs</strong>
             <span>
-              ZIP up to 100 MB · video up to 500 MB · image up to 20 MB
+              ZIP up to 20 MB · video up to 500 MB · image up to 20 MB
             </span>
           </label>
           {files.length > 0 && (

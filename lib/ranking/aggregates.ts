@@ -2,18 +2,22 @@ import { env } from "cloudflare:workers";
 import { canonicalSha256 } from "@/lib/security/canonical";
 import {
   buildAggregateEntries,
+  selectDesignatedBenchmarkVersions,
   type BenchmarkAggregateInput,
   type RankingScope,
+  type VersionedBenchmarkAggregateInput,
 } from "./aggregate-math";
 
 type Scope = RankingScope;
 type BenchmarkEntry = BenchmarkAggregateInput;
+type QueryBenchmarkEntry = VersionedBenchmarkAggregateInput;
 
 export async function rebuildAggregateSnapshots(evaluationVersionId: string) {
   const result = await env.DB.prepare(
     `SELECT
        b.id AS benchmark_id,
        b.category,
+       bv.version AS benchmark_version,
        le.configuration_id,
        le.median_score_bps,
        le.run_count,
@@ -26,8 +30,8 @@ export async function rebuildAggregateSnapshots(evaluationVersionId: string) {
      ORDER BY b.id, le.configuration_id`,
   )
     .bind(evaluationVersionId)
-    .all<BenchmarkEntry>();
-  const rows = result.results;
+    .all<QueryBenchmarkEntry>();
+  const rows = selectDesignatedBenchmarkVersions(result.results);
   if (rows.length === 0) return [];
   const snapshots = [];
   for (const scope of [

@@ -95,7 +95,7 @@ test("server-renders the Benchmax public home with the trust boundary visible", 
   assert.match(html, /See what models/);
   assert.match(html, /actually built/);
   assert.match(html, /Community test/);
-  assert.match(html, /Not ranked/);
+  assert.match(html, /Not ranked|No record/);
   assert.match(html, /Rankings you can inspect/);
   assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton/);
 });
@@ -126,6 +126,50 @@ for (const [path, phrase] of [
     assert.match(await response.text(), new RegExp(phrase, "i"));
   });
 }
+
+test("empty public catalogs never render fabricated evidence or launch counts", async () => {
+  const [home, explore, models, benchmarks] = await Promise.all([
+    render("/"),
+    render("/explore"),
+    render("/models"),
+    render("/benchmarks"),
+  ]);
+  for (const response of [home, explore, models, benchmarks]) {
+    assert.equal(response.status, 200);
+    assertSecurityHeaders(response);
+  }
+
+  const homeHtml = await home.text();
+  const exploreHtml = await explore.text();
+  const modelsHtml = await models.text();
+  const benchmarksHtml = await benchmarks.text();
+  const publicHtml = `${homeHtml}\n${exploreHtml}\n${modelsHtml}`;
+
+  assert.doesNotMatch(
+    publicHtml,
+    /Opus 4\.6|GPT coding model|@maya|@niko|2h ago|Yesterday/,
+  );
+  assert.doesNotMatch(benchmarksHtml, /[45] launch definitions/);
+  assert.match(
+    modelsHtml,
+    /No approved model configurations yet|model catalog is temporarily unavailable/i,
+  );
+  assert.match(
+    benchmarksHtml,
+    /No active benchmark versions yet|benchmark catalog is temporarily unavailable/i,
+  );
+});
+
+test("unknown showcase and contributor records return 404", async () => {
+  for (const path of [
+    "/showcases/not-a-real-public-record",
+    "/contributors/not-a-real-contributor",
+  ]) {
+    const response = await render(path);
+    assert.equal(response.status, 404);
+    assertSecurityHeaders(response);
+  }
+});
 
 test("public artifact downloads fail closed without a valid published run", async () => {
   const response = await render(

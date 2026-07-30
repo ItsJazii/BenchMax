@@ -79,6 +79,7 @@ export async function runJudgeCalibration() {
     })}`;
     for (let index = 0; index < 3; index += 1) {
       const response = await callPinnedJudge({
+        endpointOrigin: evaluation.endpointOrigin,
         maxTokens: evaluation.maxTokensPerSample,
         model: evaluation.judgeModel,
         prompt,
@@ -144,6 +145,30 @@ async function freezeEvaluation(
     action: "judge.calibration_frozen",
     metadata: { reason, ...metadata },
   });
+  emitCriticalCalibrationAlert({
+    evaluationVersionId,
+    metadata,
+    reason,
+  });
+}
+
+function emitCriticalCalibrationAlert(input: {
+  evaluationVersionId: string;
+  metadata: Record<string, unknown>;
+  reason: string;
+}) {
+  // Cloudflare Workers captures console errors as operational error events.
+  // The structured event is intentionally credential-free so production
+  // alerting can route it without exposing judge or calibration material.
+  console.error(
+    canonicalJson({
+      alert: "judge_calibration_frozen",
+      evaluationVersionId: input.evaluationVersionId,
+      metadata: input.metadata,
+      reason: input.reason,
+      severity: "critical",
+    }),
+  );
 }
 
 function requiredValue(name: string) {

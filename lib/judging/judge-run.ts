@@ -13,12 +13,13 @@ import {
   runs,
 } from "@/db/schema";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
+import { assertSafeProviderOrigin } from "@/lib/security/run-policy";
 import { transitionRun } from "@/lib/data/runs";
 import {
-  buildBlindedSource,
+  buildJudgePromptPayload,
   createJudgeOutputSchema,
   median,
-  screenJudgeInjection,
+  prepareJudgeEvidence,
 } from "./protocol";
 
 const providerResponseSchema = z
@@ -57,13 +58,6 @@ export async function judgeRun(runId: string) {
   const sourceObject = await env.UPLOADS.get(contract.sourceObjectKey);
   if (!sourceObject) throw new JudgeContractError("source_missing");
   const sourceBytes = new Uint8Array(await sourceObject.arrayBuffer());
-  const injection = screenJudgeInjection(sourceBytes);
-  if (injection.flagged) {
-    await getDb()
-      .update(runs)
-      .set({ injectionFlag: true, rankEligible: false, updatedAt: new Date() })
-      .where(eq(runs.id, runId));
-  }
 
   const dimensions = await getDb()
     .select()
@@ -87,12 +81,30 @@ export async function judgeRun(runId: string) {
   const needsSource = judgeDimensions.some(
     (dimension) => dimension.judgeSourceRequired,
   );
+  const objectiveEvidence = inputObjectiveEvidence(objectiveRows);
+  const preparedEvidence = prepareJudgeEvidence({
+    includeSource: needsSource,
+    runtimeEvidence: [
+      {
+        label: "objective-runtime-results",
+        value: objectiveEvidence,
+      },
+    ],
+    sourceBytes,
+  });
+  const injection = preparedEvidence.injection;
+  if (injection.flagged) {
+    await getDb()
+      .update(runs)
+      .set({ injectionFlag: true, rankEligible: false, updatedAt: new Date() })
+      .where(eq(runs.id, runId));
+  }
   const prompt = buildJudgePrompt({
     benchmarkPrompt: contract.benchmarkPrompt,
     injectionFlag: injection.flagged,
     objectiveRows,
     rubric: judgeDimensions,
-    source: needsSource ? buildBlindedSource(sourceBytes) : null,
+    untrustedEvidence: preparedEvidence.untrustedEvidence,
   });
   const outputSchema = createJudgeOutputSchema(
     judgeDimensions.map((dimension) => dimension.key),
@@ -117,6 +129,7 @@ export async function judgeRun(runId: string) {
     }
     const startedAt = Date.now();
     const response = await callPinnedJudge({
+      endpointOrigin: contract.judgeEndpointOrigin,
       maxTokens: contract.maxTokensPerSample,
       model: contract.judgeModel,
       prompt: `${contract.promptTemplate}\n\n${prompt}`,
@@ -239,6 +252,7 @@ async function loadJudgeContract(runId: string) {
       benchmarkVersionId: benchmarkVersions.id,
       evaluationStatus: evaluationVersions.status,
       evaluationVersionId: evaluationVersions.id,
+      judgeEndpointOrigin: evaluationVersions.endpointOrigin,
       judgeModel: evaluationVersions.judgeModel,
       judgeWeightBps: benchmarkVersions.judgeWeightBps,
       maxTokensPerSample: evaluationVersions.maxTokensPerSample,
@@ -296,39 +310,43 @@ function buildJudgePrompt(input: {
   injectionFlag: boolean;
   objectiveRows: Array<typeof objectiveResults.$inferSelect>;
   rubric: Array<typeof rubricDimensions.$inferSelect>;
-  source: string | null;
+  untrustedEvidence: string;
 }) {
-  return canonicalJson({
-    benchmark: input.benchmarkPrompt,
-    injectionScreenFlag: input.injectionFlag,
-    objectiveResults: input.objectiveRows.map((row) => ({
-      checkKey: row.checkKey,
-      dimensionKey: row.dimensionKey,
-      metric: JSON.parse(row.metricValueJson),
-      scoreBps: row.scoreBps,
-      status: row.status,
-    })),
-    rubric: input.rubric.map((dimension) => ({
-      description: dimension.description,
-      key: dimension.key,
-      title: dimension.title,
-      weightBps: dimension.weightBps,
-    })),
-    untrustedEvidence: input.source
-      ? `UNTRUSTED_EVIDENCE_START\n${input.source}\nUNTRUSTED_EVIDENCE_END`
-      : "Screenshots supplied separately. No source was authorized for these dimensions.",
-  });
+  return canonicalJson(
+    buildJudgePromptPayload({
+      benchmarkPrompt: input.benchmarkPrompt,
+      injectionFlag: input.injectionFlag,
+      objectiveResults: input.objectiveRows,
+      rubric: input.rubric,
+      untrustedEvidence: input.untrustedEvidence,
+    }),
+  );
+}
+
+function inputObjectiveEvidence(
+  rows: Array<typeof objectiveResults.$inferSelect>,
+) {
+  return rows.map((row) => ({
+    checkKey: row.checkKey,
+    dimensionKey: row.dimensionKey,
+    metric: JSON.parse(row.metricValueJson) as unknown,
+    scoreBps: row.scoreBps,
+    status: row.status,
+  }));
 }
 
 export async function callPinnedJudge(input: {
+  endpointOrigin: string;
   maxTokens: number;
   model: string;
   prompt: string;
   screenshot: string | null;
 }) {
-  const origin = new URL(requiredSecret("JUDGE_API_ORIGIN"));
-  if (origin.protocol !== "https:" || origin.username || origin.password) {
-    throw new JudgeConfigurationError("JUDGE_API_ORIGIN");
+  let origin: URL;
+  try {
+    origin = assertSafeProviderOrigin(input.endpointOrigin);
+  } catch {
+    throw new JudgeConfigurationError("judgeEndpointOrigin");
   }
   const endpoint = new URL("/v1/chat/completions", origin);
   const content: Array<Record<string, unknown>> = [

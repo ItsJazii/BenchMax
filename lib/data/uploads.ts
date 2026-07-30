@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   artifacts,
@@ -11,6 +11,7 @@ import {
   UPLOAD_SESSION_TTL_MS,
   sha256Hex,
 } from "@/lib/security/policy";
+import { uploadObjectKeys } from "@/lib/storage/upload-keys";
 
 type UserRow = typeof users.$inferSelect;
 
@@ -104,8 +105,11 @@ export async function createUploadSession(input: {
   const id = crypto.randomUUID();
   const token = createOpaqueToken();
   const tokenDigest = await sha256Hex(token);
-  const safeSegment = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const objectKey = `quarantine/${input.user.id}/${id}/${safeSegment}`;
+  const objectKey = uploadObjectKeys({
+    fileName: input.fileName,
+    sessionId: id,
+    userId: input.user.id,
+  }).quarantine;
   const expiresAt = new Date(now.getTime() + UPLOAD_SESSION_TTL_MS);
 
   const [session] = await db
@@ -150,12 +154,49 @@ export async function getOwnedUploadSession(id: string, userId: string) {
 }
 
 export async function markSessionUploading(id: string) {
-  await getDb()
+  const [claimed] = await getDb()
     .update(uploadSessions)
     .set({ status: "uploading", updatedAt: new Date() })
     .where(
       and(eq(uploadSessions.id, id), eq(uploadSessions.status, "created")),
+    )
+    .returning({ id: uploadSessions.id });
+  return Boolean(claimed);
+}
+
+export async function releaseSessionUploadClaim(id: string) {
+  await getDb()
+    .update(uploadSessions)
+    .set({ status: "created", updatedAt: new Date() })
+    .where(
+      and(
+        eq(uploadSessions.id, id),
+        eq(uploadSessions.status, "uploading"),
+        gt(uploadSessions.expiresAt, new Date()),
+      ),
     );
+}
+
+export async function promoteUploadSessionObjectKey(input: {
+  finalObjectKey: string;
+  quarantineObjectKey: string;
+  sessionId: string;
+}) {
+  const [updated] = await getDb()
+    .update(uploadSessions)
+    .set({ objectKey: input.finalObjectKey, updatedAt: new Date() })
+    .where(
+      and(
+        eq(uploadSessions.id, input.sessionId),
+        eq(uploadSessions.objectKey, input.quarantineObjectKey),
+        inArray(uploadSessions.status, ["created", "uploading"]),
+      ),
+    )
+    .returning();
+  if (updated) return updated;
+  const existing = await getUploadSession(input.sessionId);
+  if (existing?.objectKey === input.finalObjectKey) return existing;
+  throw new UploadSessionError("Upload promotion could not be completed.");
 }
 
 export async function finalizeUploadedArtifact(input: {
@@ -210,6 +251,78 @@ export async function finalizeUploadedArtifact(input: {
     .where(eq(showcases.id, session.showcaseId));
 
   return artifact;
+}
+
+export async function listExpiredUploadSessions(limit = 100) {
+  return getDb()
+    .select({
+      id: uploadSessions.id,
+      objectKey: uploadSessions.objectKey,
+      artifactExists: sql<number>`EXISTS(
+        SELECT 1
+        FROM ${artifacts}
+        WHERE ${artifacts.objectKey} = ${uploadSessions.objectKey}
+      )`,
+      fileName: uploadSessions.fileName,
+      status: uploadSessions.status,
+      userId: uploadSessions.userId,
+    })
+    .from(uploadSessions)
+    .where(
+      and(
+        inArray(uploadSessions.status, [
+          "created",
+          "uploading",
+          "uploaded",
+          "expired",
+          "cancelled",
+        ]),
+        sql`${uploadSessions.expiresAt} <= ${new Date()}`,
+        isNull(uploadSessions.quarantineCleanedAt),
+      ),
+    )
+    .limit(Math.min(Math.max(limit, 1), 500));
+}
+
+export async function markUploadSessionsExpired(ids: readonly string[]) {
+  if (ids.length === 0) return;
+  await getDb()
+    .update(uploadSessions)
+    .set({ status: "expired", updatedAt: new Date() })
+    .where(
+      and(
+        inArray(uploadSessions.id, [...ids]),
+        inArray(uploadSessions.status, ["created", "uploading"]),
+      ),
+    );
+}
+
+export async function markUploadSessionsUploaded(ids: readonly string[]) {
+  if (ids.length === 0) return;
+  await getDb()
+    .update(uploadSessions)
+    .set({ status: "uploaded", updatedAt: new Date() })
+    .where(
+      and(
+        inArray(uploadSessions.id, [...ids]),
+        inArray(uploadSessions.status, ["created", "uploading"]),
+      ),
+    );
+}
+
+export async function markUploadSessionsQuarantineCleaned(
+  ids: readonly string[],
+) {
+  if (ids.length === 0) return;
+  await getDb()
+    .update(uploadSessions)
+    .set({ quarantineCleanedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        inArray(uploadSessions.id, [...ids]),
+        isNull(uploadSessions.quarantineCleanedAt),
+      ),
+    );
 }
 
 export class UploadSessionError extends Error {

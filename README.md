@@ -26,7 +26,7 @@ run on a cookieless origin distinct from the main app.
 
 ```powershell
 npm install
-npx wrangler d1 migrations apply site-creator-d1 --local --persist-to .\.wrangler\state
+npx wrangler d1 migrations apply benchmax-d1 --local --persist-to .\.wrangler\state
 npm test
 npx tsc --noEmit
 npx wrangler deploy --dry-run
@@ -44,18 +44,29 @@ filled environment file.
 
 1. Create Clerk Google, GitHub, and email-code sign-in and configure the exact
    HTTPS origins in `CLERK_AUTHORIZED_PARTIES`.
-2. Build `sandbox/browser-web-v1` as an E2B template. Put the immutable returned
-   template ID in `E2B_TEMPLATE_ID`; it becomes part of every environment hash.
+2. Run `npm ci` in `sandbox/browser-web-v1`, then build it as an E2B template.
+   Put the returned template ID in `E2B_TEMPLATE_ID` and the image-generated
+   `/opt/benchmax/environment.sha256` value in `E2B_TEMPLATE_BUILD_HASH`. The
+   evaluator reports that build fingerprint; it never echoes a caller-supplied
+   hash. Benchmax combines the template ID, build fingerprint, and frozen
+   runtime policy into the benchmark environment hash.
 3. Upload a small calibration JSON document shaped like
    `examples/calibration-set.example.json` to private R2, then configure its
    exact object key and SHA-256.
 4. Set a 32-byte base64 provenance encryption key as an encrypted Worker secret.
-5. Configure the pinned judge and, if platform credits are enabled, the
-   Moonshot platform key as encrypted Worker secrets.
+5. Configure the pinned judge provider, model, model version, and HTTPS endpoint
+   origin. The origin is copied into the immutable evaluation version. If
+   platform credits are enabled, configure the Moonshot platform key as an
+   encrypted Worker secret.
 6. Deploy the main Worker and user-content Worker on separate HTTPS origins.
    Set both origins explicitly. Never use a wildcard authorized party.
 7. Call the owner-only catalog seed endpoint once after every dependency is
    present. It fails closed if any frozen value is absent.
+
+The ranked launch catalog is intentionally limited to Kimi K3 through Moonshot,
+with exact low, high, and max reasoning configurations under Benchmax Web Agent
+v1. Community Test Reports may name any model but never enter the ranked tables.
+Adding another ranked model requires a deliberate catalog/version change.
 
 ## Security invariants
 

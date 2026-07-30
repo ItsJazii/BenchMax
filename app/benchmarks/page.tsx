@@ -12,33 +12,38 @@ export const metadata: Metadata = {
 
 const categories = [
   {
+    category: "frontend",
     index: "01",
     title: "Frontend",
-    status: "Definition ready",
-    count: "5",
     description:
       "Responsive interfaces, interactions, accessibility, runtime stability, and task adherence.",
   },
   {
+    category: "browser-game",
     index: "02",
     title: "Browser games",
-    status: "Definition ready",
-    count: "5",
     description:
       "Playable loops, input response, console stability, frame pacing, and game-specific rubric checks.",
   },
   {
+    category: "browser-3d",
     index: "03",
     title: "Browser 3D",
-    status: "Definition ready",
-    count: "4",
     description:
       "WebGL scenes, navigation, seeded capture milestones, load stability, and bounded performance checks.",
   },
 ];
 
 export default async function BenchmarksPage() {
-  const versions = await listPublicBenchmarkVersions().catch(() => []);
+  const versionsResult = await listPublicBenchmarkVersions().catch(() => null);
+  const versions = versionsResult ?? [];
+  const categoryCoverage = new Map<string, Set<string>>();
+  for (const version of versions) {
+    const benchmarks =
+      categoryCoverage.get(version.category) ?? new Set<string>();
+    benchmarks.add(version.slug);
+    categoryCoverage.set(version.category, benchmarks);
+  }
   return (
     <div className="site-shell">
       <SiteHeader />
@@ -54,21 +59,36 @@ export default async function BenchmarksPage() {
         </header>
 
         <div className="benchmark-grid">
-          {categories.map((category) => (
-            <article key={category.title}>
-              <div className="benchmark-number">{category.index}</div>
-              <span className="status-pill pending">{category.status}</span>
-              <h2>{category.title}</h2>
-              <p>{category.description}</p>
-              <div className="benchmark-base">
-                <span>{category.count} launch definitions</span>
-                <span>Owner curated</span>
-              </div>
-            </article>
-          ))}
+          {categories.map((category) => {
+            const count = categoryCoverage.get(category.category)?.size ?? 0;
+            return (
+              <article key={category.title}>
+                <div className="benchmark-number">{category.index}</div>
+                <span
+                  className={`status-pill ${count > 0 ? "approved" : "neutral"}`}
+                >
+                  {versionsResult === null
+                    ? "Catalog unavailable"
+                    : count > 0
+                      ? "Active definitions"
+                      : "Awaiting definitions"}
+                </span>
+                <h2>{category.title}</h2>
+                <p>{category.description}</p>
+                <div className="benchmark-base">
+                  <span>
+                    {versionsResult === null
+                      ? "Count unavailable"
+                      : `${count} active benchmark${count === 1 ? "" : "s"}`}
+                  </span>
+                  <span>Versioned contracts</span>
+                </div>
+              </article>
+            );
+          })}
         </div>
 
-        {versions.length > 0 && (
+        {versions.length > 0 ? (
           <section className="catalog-note">
             <span>ACTIVE VERSIONS</span>
             <h2>Frozen launch contracts</h2>
@@ -93,6 +113,22 @@ export default async function BenchmarksPage() {
                 </article>
               ))}
             </div>
+          </section>
+        ) : versionsResult === null ? (
+          <section className="empty-state">
+            <strong>The benchmark catalog is temporarily unavailable.</strong>
+            <p>
+              Benchmax does not show launch-count placeholders while active
+              contracts cannot be read.
+            </p>
+          </section>
+        ) : (
+          <section className="empty-state">
+            <strong>No active benchmark versions yet.</strong>
+            <p>
+              Published benchmark contracts will appear here after their prompt,
+              harness, environment, attempt policy, and rubric are frozen.
+            </p>
           </section>
         )}
 

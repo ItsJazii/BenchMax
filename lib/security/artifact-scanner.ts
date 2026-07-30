@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { createHash } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
 import { artifacts, showcases } from "@/db/schema";
@@ -7,7 +8,11 @@ import {
   matchesMagicBytes,
   type ScanResult,
 } from "./artifact-inspection";
-import { detectSecretLabels, sha256Hex } from "./policy";
+import {
+  constantTimeEqualHex,
+  detectSecretLabels,
+  sha256Hex,
+} from "./policy";
 
 const MAX_INLINE_SOURCE_BYTES = 20 * 1024 * 1024;
 
@@ -40,10 +45,8 @@ export async function scanQuarantinedArtifact(
 }
 
 async function scanMedia(artifact: ArtifactRow): Promise<ScanResult> {
-  const prefixObject = await env.UPLOADS.get(artifact.objectKey, {
-    range: { offset: 0, length: 64 },
-  });
-  if (!prefixObject) {
+  const object = await env.UPLOADS.get(artifact.objectKey);
+  if (!object) {
     return {
       status: "blocked",
       sha256: null,
@@ -51,16 +54,57 @@ async function scanMedia(artifact: ArtifactRow): Promise<ScanResult> {
       findings: ["Media object is missing."],
     };
   }
-  const prefix = new Uint8Array(await prefixObject.arrayBuffer());
+  const { prefix, sha256 } = await hashObjectBody(object.body);
   const magicValid = matchesMagicBytes(artifact.contentType, prefix);
   return {
     status: magicValid ? "approved" : "blocked",
-    sha256: null,
-    checks: ["declared-size", "content-type-allowlist", "magic-bytes"],
+    sha256,
+    checks: [
+      "declared-size",
+      "content-type-allowlist",
+      "magic-bytes",
+      "content-sha256",
+    ],
     findings: magicValid
       ? []
       : ["File signature does not match its declared media type."],
   };
+}
+
+export async function verifyApprovedShowcaseArtifacts(showcaseId: string) {
+  const rows = await getDb()
+    .select()
+    .from(artifacts)
+    .where(
+      and(
+        eq(artifacts.showcaseId, showcaseId),
+        eq(artifacts.quarantineStatus, "approved"),
+      ),
+    );
+  for (const artifact of rows) {
+    if (
+      !artifact.sha256 ||
+      !artifact.objectKey.startsWith(`evidence/${artifact.uploaderId}/`)
+    ) {
+      await blockChangedArtifact(artifact);
+      throw new ArtifactIntegrityError();
+    }
+    const object = await env.UPLOADS.get(artifact.objectKey);
+    if (
+      !object ||
+      object.size !== artifact.byteSize ||
+      object.httpMetadata?.contentType !== artifact.contentType ||
+      object.customMetadata?.immutableEvidence !== "true"
+    ) {
+      await blockChangedArtifact(artifact);
+      throw new ArtifactIntegrityError();
+    }
+    const { sha256 } = await hashObjectBody(object.body);
+    if (!constantTimeEqualHex(sha256, artifact.sha256)) {
+      await blockChangedArtifact(artifact);
+      throw new ArtifactIntegrityError();
+    }
+  }
 }
 
 async function scanTextArtifact(
@@ -184,4 +228,61 @@ async function recordScanResult(
     }
   }
   return finalResult;
+}
+
+async function hashObjectBody(body: ReadableStream<Uint8Array>) {
+  const hash = createHash("sha256");
+  const prefixChunks: Uint8Array[] = [];
+  let prefixBytes = 0;
+  const reader = body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    hash.update(value);
+    if (prefixBytes < 64) {
+      const remaining = 64 - prefixBytes;
+      const chunk = value.subarray(0, remaining);
+      prefixChunks.push(chunk);
+      prefixBytes += chunk.length;
+    }
+  }
+  const prefix = new Uint8Array(prefixBytes);
+  let offset = 0;
+  for (const chunk of prefixChunks) {
+    prefix.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return { prefix, sha256: hash.digest("hex") };
+}
+
+async function blockChangedArtifact(artifact: ArtifactRow) {
+  const now = new Date();
+  await getDb().batch([
+    getDb()
+      .update(artifacts)
+      .set({
+        quarantineStatus: "blocked",
+        scanReportJson: JSON.stringify({
+          version: 1,
+          checks: ["publish-time-content-sha256"],
+          findings: ["Stored evidence changed after its approved security scan."],
+          scannedAt: now.toISOString(),
+        }),
+        updatedAt: now,
+      })
+      .where(eq(artifacts.id, artifact.id)),
+    getDb()
+      .update(showcases)
+      .set({ safetyStatus: "blocked", updatedAt: now })
+      .where(eq(showcases.id, artifact.showcaseId)),
+  ]);
+}
+
+export class ArtifactIntegrityError extends Error {
+  readonly status = 409;
+
+  constructor() {
+    super("Evidence changed after scanning and must be uploaded again.");
+    this.name = "ArtifactIntegrityError";
+  }
 }

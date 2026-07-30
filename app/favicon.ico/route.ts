@@ -1,0 +1,17 @@
+const favicon = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="16" fill="#171b18"/>
+  <path d="M4 16c0-6.627 5.373-12 12-12h25.6L60 22.4V48c0 6.627-5.373 12-12 12H22.4L4 41.6V16Z" fill="#c8ff38"/>
+  <path d="M41.6 4 60 22.4V48c0 6.627-5.373 12-12 12H22.4L4 41.6" fill="none" stroke="#171b18" stroke-width="4"/>
+  <text x="17" y="38" fill="#171b18" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700">B/</text>
+</svg>`;
+
+export function GET() {
+  return new Response(favicon, {
+    headers: {
+      "Cache-Control": "public, max-age=86400, immutable",
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}

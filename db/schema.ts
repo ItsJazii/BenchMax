@@ -160,19 +160,30 @@ export const benchmarks = sqliteTable(
   "benchmarks",
   {
     id: text("id").primaryKey(),
+    creatorId: text("creator_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
+    goal: text("goal"),
+    successCriteriaJson: text("success_criteria_json").notNull().default("[]"),
     category: text("category", {
       enum: ["frontend", "browser-game", "browser-3d"],
     }).notNull(),
     status: text("status", { enum: ["draft", "active", "retired"] })
       .notNull()
       .default("draft"),
+    rubricStatus: text("rubric_status", {
+      enum: ["drafting", "awaiting_approval", "approved"],
+    })
+      .notNull()
+      .default("drafting"),
     ...timestamps,
   },
   (table) => [
     uniqueIndex("benchmarks_slug_uidx").on(table.slug),
     index("benchmarks_category_status_idx").on(table.category, table.status),
+    index("benchmarks_creator_idx").on(table.creatorId, table.createdAt),
     check(
       "benchmarks_category_allowed",
       sql`${table.category} IN ('frontend', 'browser-game', 'browser-3d')`,
@@ -180,6 +191,10 @@ export const benchmarks = sqliteTable(
     check(
       "benchmarks_status_allowed",
       sql`${table.status} IN ('draft', 'active', 'retired')`,
+    ),
+    check(
+      "benchmarks_rubric_status_allowed",
+      sql`${table.rubricStatus} IN ('drafting', 'awaiting_approval', 'approved')`,
     ),
   ],
 );
@@ -240,6 +255,91 @@ export const benchmarkVersions = sqliteTable(
   ],
 );
 
+export const catalogRequests = sqliteTable(
+  "catalog_requests",
+  {
+    id: text("id").primaryKey(),
+    requesterUserId: text("requester_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    kind: text("kind", { enum: ["model", "model-version", "harness"] })
+      .notNull(),
+    requestedLabel: text("requested_label").notNull(),
+    normalizedLabel: text("normalized_label").notNull(),
+    status: text("status", {
+      enum: ["pending", "approved", "mapped", "rejected"],
+    })
+      .notNull()
+      .default("pending"),
+    mappedEntityId: text("mapped_entity_id"),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    ...timestamps,
+  },
+  (table) => [
+    index("catalog_requests_status_idx").on(table.status, table.createdAt),
+    index("catalog_requests_requester_idx").on(
+      table.requesterUserId,
+      table.createdAt,
+    ),
+    check(
+      "catalog_requests_kind_allowed",
+      sql`${table.kind} IN ('model', 'model-version', 'harness')`,
+    ),
+    check(
+      "catalog_requests_status_allowed",
+      sql`${table.status} IN ('pending', 'approved', 'mapped', 'rejected')`,
+    ),
+  ],
+);
+
+export const resultConfigurations = sqliteTable(
+  "result_configurations",
+  {
+    id: text("id").primaryKey(),
+    modelVersionId: text("model_version_id").references(
+      () => modelVersions.id,
+      { onDelete: "set null" },
+    ),
+    harnessId: text("harness_id").references(() => harnesses.id, {
+      onDelete: "set null",
+    }),
+    modelLabel: text("model_label").notNull(),
+    modelVersionLabel: text("model_version_label").notNull(),
+    harnessLabel: text("harness_label").notNull(),
+    reasoningRaw: text("reasoning_raw").notNull(),
+    reasoningNormalized: text("reasoning_normalized", {
+      enum: ["none", "low", "medium", "high", "max", "unknown"],
+    }).notNull(),
+    declaredSettingsJson: text("declared_settings_json").notNull().default("{}"),
+    metadataHash: text("metadata_hash").notNull(),
+    catalogStatus: text("catalog_status", {
+      enum: ["canonical", "pending"],
+    })
+      .notNull()
+      .default("pending"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("result_configurations_hash_uidx").on(table.metadataHash),
+    index("result_configurations_catalog_idx").on(
+      table.catalogStatus,
+      table.modelVersionId,
+      table.harnessId,
+    ),
+    check(
+      "result_configurations_reasoning_allowed",
+      sql`${table.reasoningNormalized} IN ('none', 'low', 'medium', 'high', 'max', 'unknown')`,
+    ),
+    check(
+      "result_configurations_catalog_status_allowed",
+      sql`${table.catalogStatus} IN ('canonical', 'pending')`,
+    ),
+  ],
+);
+
 export const showcases = sqliteTable(
   "showcases",
   {
@@ -253,6 +353,14 @@ export const showcases = sqliteTable(
     category: text("category", {
       enum: ["frontend", "browser-game", "browser-3d", "other"],
     }).notNull(),
+    benchmarkVersionId: text("benchmark_version_id").references(
+      () => benchmarkVersions.id,
+      { onDelete: "restrict" },
+    ),
+    resultConfigurationId: text("result_configuration_id").references(
+      () => resultConfigurations.id,
+      { onDelete: "restrict" },
+    ),
     modelVersionId: text("model_version_id").references(() => modelVersions.id, {
       onDelete: "set null",
     }),
@@ -271,6 +379,35 @@ export const showcases = sqliteTable(
     })
       .notNull()
       .default("pending"),
+    judgeStatus: text("judge_status", {
+      enum: [
+        "not_queued",
+        "queued",
+        "evaluating",
+        "judging",
+        "scored",
+        "unranked",
+        "overdue",
+        "failed",
+      ],
+    })
+      .notNull()
+      .default("not_queued"),
+    rankingStatus: text("ranking_status", {
+      enum: [
+        "pending",
+        "eligible",
+        "catalog_pending",
+        "insufficient_evidence",
+        "moderation_hold",
+        "superseded",
+        "ineligible",
+      ],
+    })
+      .notNull()
+      .default("pending"),
+    judgeDueAt: integer("judge_due_at", { mode: "timestamp_ms" }),
+    supersededById: text("superseded_by_id"),
     sourceVisibility: text("source_visibility", {
       enum: ["public", "private"],
     })
@@ -308,6 +445,14 @@ export const showcases = sqliteTable(
     check(
       "showcases_source_visibility_allowed",
       sql`${table.sourceVisibility} IN ('public', 'private')`,
+    ),
+    check(
+      "showcases_judge_status_allowed",
+      sql`${table.judgeStatus} IN ('not_queued', 'queued', 'evaluating', 'judging', 'scored', 'unranked', 'overdue', 'failed')`,
+    ),
+    check(
+      "showcases_ranking_status_allowed",
+      sql`${table.rankingStatus} IN ('pending', 'eligible', 'catalog_pending', 'insufficient_evidence', 'moderation_hold', 'superseded', 'ineligible')`,
     ),
   ],
 );
@@ -652,8 +797,11 @@ export const runs = sqliteTable(
       .notNull()
       .references(() => evaluationVersions.id, { onDelete: "restrict" }),
     credentialMode: text("credential_mode", {
-      enum: ["byok", "platform-credit"],
+      enum: ["byok", "platform-credit", "community-submission"],
     }).notNull(),
+    showcaseId: text("showcase_id").references(() => showcases.id, {
+      onDelete: "set null",
+    }),
     status: text("status", {
       enum: [
         "draft",
@@ -702,6 +850,7 @@ export const runs = sqliteTable(
   },
   (table) => [
     uniqueIndex("runs_public_slug_uidx").on(table.publicSlug),
+    uniqueIndex("runs_showcase_uidx").on(table.showcaseId),
     uniqueIndex("runs_pass_attempt_uidx").on(
       table.passGroupId,
       table.attemptIndex,
@@ -716,7 +865,7 @@ export const runs = sqliteTable(
     index("runs_lifecycle_idx").on(table.status, table.updatedAt),
     check(
       "runs_credential_mode_allowed",
-      sql`${table.credentialMode} IN ('byok', 'platform-credit')`,
+      sql`${table.credentialMode} IN ('byok', 'platform-credit', 'community-submission')`,
     ),
     check(
       "runs_status_allowed",

@@ -5,9 +5,6 @@ export function isActivePipelineStageStatus(
   stage: PipelineMessage["stage"],
   status: RunStatus | null,
 ) {
-  if (stage === "generate-platform") {
-    return status === "queued_generation" || status === "generating";
-  }
   if (stage === "evaluate") {
     return status === "queued_evaluation" || status === "evaluating";
   }

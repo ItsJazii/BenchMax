@@ -18,29 +18,11 @@
       "bucket_name": "benchmax-uploads"
     }
   ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "GENERATION_SESSION",
-        "class_name": "GenerationSession"
-      }
-    ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["GenerationSession"]
-    }
-  ],
   "triggers": {
     "crons": ["*/2 * * * *", "0 3 * * 1"]
   },
   "queues": {
     "producers": [
-      {
-        "binding": "GENERATE_PLATFORM_QUEUE",
-        "queue": "benchmax-generate-platform"
-      },
       {
         "binding": "EVALUATE_QUEUE",
         "queue": "benchmax-evaluate"
@@ -55,13 +37,6 @@
       }
     ],
     "consumers": [
-      {
-        "queue": "benchmax-generate-platform",
-        "max_batch_size": 1,
-        "max_batch_timeout": 5,
-        "max_retries": 3,
-        "dead_letter_queue": "benchmax-pipeline-dlq"
-      },
       {
         "queue": "benchmax-evaluate",
         "max_batch_size": 1,

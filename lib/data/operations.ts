@@ -7,7 +7,6 @@ export async function getOperationsSnapshot() {
     lifecycle,
     stages,
     evaluations,
-    credits,
     disputes,
     reports,
     storage,
@@ -36,10 +35,6 @@ export async function getOperationsSnapshot() {
       updated_at: number;
     }>(),
     env.DB.prepare(
-      `SELECT type, count(*) AS entries, coalesce(sum(amount_milli_credits), 0) AS amount
-       FROM credit_ledger GROUP BY type ORDER BY type`,
-    ).all<{ type: string; entries: number; amount: number }>(),
-    env.DB.prepare(
       `SELECT status, count(*) AS count FROM disputes GROUP BY status ORDER BY status`,
     ).all<{ status: string; count: number }>(),
     env.DB.prepare(
@@ -52,7 +47,6 @@ export async function getOperationsSnapshot() {
     lifecycle: lifecycle.results,
     stages: stages.results,
     evaluations: evaluations.results,
-    credits: credits.results,
     disputes: disputes.results,
     reports: reports.results,
     storage,
@@ -66,7 +60,6 @@ export async function writeBackupManifest(actorUserId: string) {
      UNION ALL SELECT 'showcases', count(*) FROM showcases
      UNION ALL SELECT 'artifacts', count(*) FROM artifacts
      UNION ALL SELECT 'runs', count(*) FROM runs
-     UNION ALL SELECT 'generation_records', count(*) FROM generation_records
      UNION ALL SELECT 'run_artifacts', count(*) FROM run_artifacts
      UNION ALL SELECT 'audit_events', count(*) FROM audit_events
      UNION ALL SELECT 'leaderboard_snapshots', count(*) FROM leaderboard_snapshots
@@ -98,7 +91,6 @@ async function summarizeStorage() {
     "quarantine/",
     "showcases/",
     "runs/",
-    "private/provenance/",
     "private/backups/",
   ];
   const summaries = [];

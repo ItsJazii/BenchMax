@@ -1,5 +1,4 @@
 export type PipelineStage =
-  | "generate-platform"
   | "evaluate"
   | "judge"
   | "publish";

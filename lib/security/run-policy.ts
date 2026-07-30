@@ -1,27 +1,3 @@
-import { z } from "zod";
-
-const catalogId = z
-  .string()
-  .trim()
-  .min(3)
-  .max(160)
-  .regex(/^[a-z0-9][a-z0-9:._-]*$/);
-
-export const runDraftSchema = z
-  .object({
-    benchmarkVersionId: catalogId,
-    configurationId: catalogId,
-    credentialMode: z.enum(["byok", "platform-credit"]),
-  })
-  .strict();
-
-export const byokStartMessageSchema = z
-  .object({
-    type: z.literal("start"),
-    apiKey: z.string().min(8).max(4096),
-  })
-  .strict();
-
 export type RunStatus =
   | "draft"
   | "queued_generation"

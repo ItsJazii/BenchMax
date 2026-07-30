@@ -34,10 +34,6 @@ import {
   buildAggregateEntries,
   selectDesignatedBenchmarkVersions,
 } from "../lib/ranking/aggregate-math";
-import {
-  enforceContextBudget,
-  GenerationProviderError,
-} from "../lib/generation/web-agent";
 import { allBenchmarks } from "../benchmarks";
 import { readFileSync } from "node:fs";
 import {
@@ -605,33 +601,6 @@ test("aggregate rankings use exactly one designated benchmark version", () => {
   assert.equal(buildAggregateEntries(rows, "frontend")[0].scoreBps, 8_000);
 });
 
-test("the frozen generation context budget is enforced before provider calls", () => {
-  assert.throws(
-    () =>
-      enforceContextBudget({
-        body: { messages: [{ role: "user", content: "x".repeat(4_000) }] },
-        contextBudgetTokens: 1_500,
-        maxCompletionTokens: 1_000,
-      }),
-    (error) => {
-      assert.ok(error instanceof GenerationProviderError);
-      assert.equal(error.code, "context_budget_exceeded");
-      assert.equal(
-        error.message,
-        "The model provider could not complete generation.",
-      );
-      return true;
-    },
-  );
-  assert.doesNotThrow(() =>
-    enforceContextBudget({
-      body: { messages: [{ role: "user", content: "Build a small page." }] },
-      contextBudgetTokens: 8_000,
-      maxCompletionTokens: 1_000,
-    }),
-  );
-});
-
 test("every launch benchmark freezes pass@1-compatible 100 percent checks and rubric", () => {
   const categoryCounts = new Map<string, number>();
   for (const { category, definition } of allBenchmarks) {
@@ -656,7 +625,7 @@ test("every launch benchmark freezes pass@1-compatible 100 percent checks and ru
   assert.ok((categoryCounts.get("browser-3d") ?? 0) >= 4);
 });
 
-test("persistence and queue contracts have no field capable of carrying a BYOK key", () => {
+test("community result persistence and queue messages carry no tested-model key", () => {
   const schemaSource = readFileSync(
     new URL("../db/schema.ts", import.meta.url),
     "utf8",

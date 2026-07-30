@@ -185,10 +185,6 @@ test("manual recovery resumes the failed evaluate, judge, or publish stage", () 
 });
 
 test("stalled-run stage selection advances past a completed evaluation", () => {
-  assert.equal(
-    recoveryStageForRun({ status: "queued_generation" }),
-    "generate-platform",
-  );
   assert.equal(recoveryStageForRun({ status: "evaluating" }), "evaluate");
   assert.equal(
     recoveryStageForRun({
@@ -213,7 +209,6 @@ test("sweeper re-enqueues each stalled run on the correct queue", async () => {
     run_id: string;
     status: RunStatus;
   }> = [
-    candidate("run-generate", "generating"),
     candidate("run-evaluate", "queued_evaluation"),
     candidate("run-evaluate-complete", "queued_evaluation", {
       completedEvaluate: true,
@@ -246,7 +241,6 @@ test("sweeper re-enqueues each stalled run on the correct queue", async () => {
   } as unknown as D1Database;
   const sent = {
     evaluate: [] as PipelineMessage[],
-    generatePlatform: [] as PipelineMessage[],
     judge: [] as PipelineMessage[],
   };
   const queue = (target: keyof typeof sent) => ({
@@ -266,14 +260,10 @@ test("sweeper re-enqueues each stalled run on the correct queue", async () => {
     now: 1_000_000,
     queues: {
       evaluate: queue("evaluate"),
-      generatePlatform: queue("generatePlatform"),
       judge: queue("judge"),
     },
   });
 
-  assert.deepEqual(sent.generatePlatform.map(summary), [
-    "run-generate:generate-platform",
-  ]);
   assert.deepEqual(sent.evaluate.map(summary), [
     "run-evaluate:evaluate",
     "run-generated:evaluate",
@@ -283,7 +273,7 @@ test("sweeper re-enqueues each stalled run on the correct queue", async () => {
     "run-judge:judge",
     "run-publish:publish",
   ]);
-  assert.equal(recovered.length, 6);
+  assert.equal(recovered.length, 5);
   assert.ok(
     updates.some(
       ({ args, query }) =>

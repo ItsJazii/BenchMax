@@ -19,10 +19,6 @@ import {
   RunTransitionConflictError,
   RunTransitionError,
 } from "@/lib/data/runs";
-import {
-  InsufficientCreditsError,
-  InvalidCreditGrantError,
-} from "@/lib/data/credits";
 import { UnsafeProviderOriginError } from "@/lib/security/run-policy";
 
 const MAX_JSON_BODY_BYTES = 128 * 1024;
@@ -97,8 +93,6 @@ export function apiErrorResponse(error: unknown): Response {
     error instanceof RunContractError ||
     error instanceof RunTransitionError ||
     error instanceof RunTransitionConflictError ||
-    error instanceof InsufficientCreditsError ||
-    error instanceof InvalidCreditGrantError ||
     error instanceof UnsafeProviderOriginError
   ) {
     return secureJson({ error: error.message }, { status: error.status });

@@ -11,7 +11,6 @@ type QueueLike = {
 
 export type PipelineQueues = {
   evaluate: QueueLike;
-  generatePlatform: QueueLike;
   judge: QueueLike;
 };
 
@@ -68,12 +67,6 @@ export function recoveryStageForRun(input: {
   completedPublish?: boolean;
   status: RunStatus;
 }): PipelineStage | null {
-  if (
-    input.status === "queued_generation" ||
-    input.status === "generating"
-  ) {
-    return "generate-platform";
-  }
   if (input.status === "generated") return "evaluate";
   if (
     input.status === "queued_evaluation" ||
@@ -136,8 +129,6 @@ export async function recoverStalledPipelineRuns(input: {
          ) AS completed_publish
        FROM runs r
        WHERE r.status IN (
-         'queued_generation',
-         'generating',
          'generated',
          'queued_evaluation',
          'evaluating',
@@ -253,7 +244,6 @@ export async function recoverStalledPipelineRuns(input: {
 }
 
 function queueForStage(queues: PipelineQueues, stage: PipelineStage) {
-  if (stage === "generate-platform") return queues.generatePlatform;
   if (stage === "evaluate") return queues.evaluate;
   return queues.judge;
 }

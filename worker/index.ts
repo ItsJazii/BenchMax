@@ -2,20 +2,13 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { publicSecurityHeaders } from "../lib/security/http";
-import { apiErrorResponse } from "../lib/http/api";
-import { requireAuthorizedUser } from "../lib/auth/authorization";
-import { getOwnedRun } from "../lib/data/runs";
 import type { PipelineMessage } from "../lib/pipeline/messages";
 import {
   claimStage,
   completeStage,
   failStage,
 } from "../lib/pipeline/stage-claims";
-import {
-  enqueueJudge,
-  enqueuePublish,
-  generatePlatformRun,
-} from "../lib/pipeline/platform-generation";
+import { enqueueJudge, enqueuePublish } from "../lib/pipeline/result-queue";
 import {
   EvaluationContractError,
   evaluateFrontendRun,
@@ -28,13 +21,7 @@ import { eq } from "drizzle-orm";
 import { rebuildBenchmarkSnapshot } from "../lib/ranking/snapshots";
 import { appendAuditEvent } from "../lib/data/audit";
 import { rebuildAggregateSnapshots } from "../lib/ranking/aggregates";
-import { isAuthorizedRequestOrigin } from "../lib/auth/server";
-import { enforceRateLimit } from "../lib/security/rate-limit";
 import { runJudgeCalibration } from "../lib/judging/calibration";
-import {
-  refundRunCredits,
-  settlePlatformRunCredits,
-} from "../lib/data/credits";
 import {
   recoverStalledPipelineRuns,
   stageClaimDisposition,
@@ -42,13 +29,9 @@ import {
 import { processPipelineDeadLetter } from "../lib/pipeline/dead-letter";
 import { sweepExpiredUploadSessions } from "../lib/data/upload-maintenance";
 
-export { GenerationSession } from "./generation-session";
-
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
-  GENERATION_SESSION: DurableObjectNamespace;
-  GENERATE_PLATFORM_QUEUE: Queue<import("../lib/pipeline/messages").PipelineMessage>;
   EVALUATE_QUEUE: Queue<import("../lib/pipeline/messages").PipelineMessage>;
   JUDGE_QUEUE: Queue<import("../lib/pipeline/messages").PipelineMessage>;
   PIPELINE_DLQ: Queue<import("../lib/pipeline/messages").PipelineMessage>;
@@ -76,51 +59,6 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-
-    const byokMatch =
-      /^\/api\/runs\/([0-9a-f-]{36})\/generate\/byok$/i.exec(url.pathname);
-    if (byokMatch && request.headers.get("upgrade")?.toLowerCase() === "websocket") {
-      try {
-        if (!isAuthorizedRequestOrigin(request)) {
-          return withSecurityHeaders(
-            request,
-            new Response("WebSocket origin is not authorized.", {
-              status: 403,
-            }),
-          );
-        }
-        const { user } = await requireAuthorizedUser(request);
-        await enforceRateLimit(user.authSubject, {
-          action: "run-byok-session",
-          limit: 10,
-          windowMs: 24 * 60 * 60 * 1000,
-        });
-        const run = await getOwnedRun(byokMatch[1], user.id);
-        if (
-          !run ||
-          run.status !== "draft" ||
-          run.credentialMode !== "byok"
-        ) {
-          return withSecurityHeaders(
-            request,
-            new Response(JSON.stringify({ error: "BYOK draft not found." }), {
-              status: 404,
-              headers: { "Content-Type": "application/json; charset=utf-8" },
-            }),
-          );
-        }
-        const id = env.GENERATION_SESSION.idFromName(run.id);
-        const stub = env.GENERATION_SESSION.get(id);
-        const headers = new Headers(request.headers);
-        headers.delete("authorization");
-        headers.delete("cookie");
-        headers.set("x-benchmax-run-id", run.id);
-        headers.set("x-benchmax-user-id", user.id);
-        return stub.fetch(new Request(request, { headers }));
-      } catch (error) {
-        return apiErrorResponse(error);
-      }
-    }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
@@ -235,7 +173,6 @@ async function recoverPipelineRuns(env: Env) {
     db: env.DB,
     queues: {
       evaluate: env.EVALUATE_QUEUE,
-      generatePlatform: env.GENERATE_PLATFORM_QUEUE,
       judge: env.JUDGE_QUEUE,
     },
   });
@@ -277,10 +214,6 @@ async function consumePipelineDeadLetters(
 }
 
 async function executePipelineMessage(message: PipelineMessage) {
-  if (message.stage === "generate-platform") {
-    await generatePlatformRun(message.runId);
-    return;
-  }
   if (message.stage === "evaluate") {
     const status = await getRunStatus(message.runId);
     if (status === "judging") return;
@@ -311,7 +244,6 @@ async function executePipelineMessage(message: PipelineMessage) {
       injectionFlag: runs.injectionFlag,
       outputContentHash: runs.outputContentHash,
       contributorId: runs.contributorId,
-      credentialMode: runs.credentialMode,
       rankEligible: runs.rankEligible,
       status: runs.status,
     })
@@ -345,12 +277,6 @@ async function executePipelineMessage(message: PipelineMessage) {
       evaluationVersionId: run.evaluationVersionId,
     });
     await rebuildAggregateSnapshots(run.evaluationVersionId);
-  }
-  if (run.credentialMode === "platform-credit") {
-    await settlePlatformRunCredits({
-      runId: message.runId,
-      userId: run.contributorId,
-    });
   }
   await appendAuditEvent({
     actorUserId: null,
@@ -393,7 +319,6 @@ async function failRunAtCurrentStage(
   const [row] = await getDb()
     .select({
       contributorId: runs.contributorId,
-      credentialMode: runs.credentialMode,
       status: runs.status,
     })
     .from(runs)
@@ -402,29 +327,6 @@ async function failRunAtCurrentStage(
   if (!row) return;
   let failed = false;
   if (
-    stage === "generate-platform" &&
-    (row.status === "queued_generation" || row.status === "generating")
-  ) {
-    await transitionRun({
-      id: runId,
-      from: row.status,
-      to: "generation_failed",
-      patch: {
-        failureCode: code,
-        failureSummary:
-          "Platform generation stopped after the bounded retry policy.",
-      },
-    });
-    failed = true;
-    if (row.credentialMode === "platform-credit") {
-      await refundRunCredits({
-        amountMilliCredits: 100_000,
-        reason: "platform_generation_retry_exhausted",
-        runId,
-        userId: row.contributorId,
-      });
-    }
-  } else if (
     (stage === "evaluate" || stage === "judge") &&
     (row.status === "queued_evaluation" ||
       row.status === "evaluating" ||
@@ -472,7 +374,7 @@ function isPipelineMessage(value: unknown): value is PipelineMessage {
   const body = value as Partial<PipelineMessage>;
   return (
     /^[0-9a-f-]{36}$/i.test(body.runId ?? "") &&
-    ["generate-platform", "evaluate", "judge", "publish"].includes(
+    ["evaluate", "judge", "publish"].includes(
       body.stage ?? "",
     ) &&
     /^[a-z0-9._-]{1,40}$/i.test(body.stageVersion ?? "")

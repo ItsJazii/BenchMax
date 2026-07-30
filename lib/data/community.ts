@@ -142,6 +142,7 @@ export async function applyModerationAction(
         rankEligible: runs.rankEligible,
         injectionFlag: runs.injectionFlag,
         playableEnabled: runs.playableEnabled,
+        showcaseId: runs.showcaseId,
       })
       .from(runs)
       .where(eq(runs.id, parsed.entityId))
@@ -168,6 +169,12 @@ export async function applyModerationAction(
           updatedAt: now,
         })
         .where(eq(runs.id, parsed.entityId));
+      if (record.showcaseId) {
+        await getDb()
+          .update(showcases)
+          .set({ rankingStatus: "ineligible", updatedAt: now })
+          .where(eq(showcases.id, record.showcaseId));
+      }
     } else {
       await getDb()
         .update(runStageClaims)
@@ -192,6 +199,12 @@ export async function applyModerationAction(
         .where(and(eq(runs.id, parsed.entityId), eq(runs.injectionFlag, true)))
         .returning({ id: runs.id });
       if (!cleared) throw new CommunityConflictError();
+      if (record.showcaseId) {
+        await getDb()
+          .update(showcases)
+          .set({ rankingStatus: "eligible", updatedAt: now })
+          .where(eq(showcases.id, record.showcaseId));
+      }
     }
   } else if (parsed.entityType === "showcase") {
     const [record] = await getDb()

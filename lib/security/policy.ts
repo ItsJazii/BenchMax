@@ -75,19 +75,38 @@ const executableExtensions = new Set([
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const reasoningPattern = /^[\p{L}\p{N} ._:+/-]{1,40}$/u;
 const harnessPattern = /^[\p{L}\p{N} ._:+/()-]{1,80}$/u;
+const catalogIdPattern = /^[a-z0-9][a-z0-9:._-]{2,159}$/;
 
 export const showcaseDraftSchema = z
   .object({
+    benchmarkVersionId: z.string().trim().regex(catalogIdPattern),
     title: z.string().trim().min(8).max(120),
     summary: z.string().trim().min(24).max(800),
     category: z.enum(["frontend", "browser-game", "browser-3d", "other"]),
     modelLabel: z.string().trim().min(2).max(100),
+    modelVersionId: z.string().trim().regex(catalogIdPattern).optional(),
+    modelVersionLabel: z.string().trim().min(1).max(100),
     harness: z.string().trim().regex(harnessPattern),
+    harnessId: z.string().trim().regex(catalogIdPattern).optional(),
     reasoningLevel: z.string().trim().regex(reasoningPattern),
+    declaredSettings: z.record(z.string(), z.unknown()).default({}),
     prompt: z.string().trim().min(1).max(40_000),
     systemPrompt: z.string().trim().max(20_000).optional().default(""),
     sourceVisibility: z.enum(["public", "private"]).default("public"),
     rightsConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const communityTestDraftSchema = z
+  .object({
+    title: z.string().trim().min(8).max(120),
+    goal: z.string().trim().min(20).max(2_000),
+    category: z.enum(["frontend", "browser-game", "browser-3d", "other"]),
+    prompt: z.string().trim().min(20).max(40_000),
+    successCriteria: z
+      .array(z.string().trim().min(4).max(500))
+      .min(1)
+      .max(12),
   })
   .strict();
 

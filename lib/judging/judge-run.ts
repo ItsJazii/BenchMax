@@ -4,13 +4,16 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import {
   benchmarkVersions,
+  artifacts,
   dimensionScores,
   evaluationVersions,
   judgeSamples,
   objectiveResults,
+  resultConfigurations,
   rubricDimensions,
   runArtifacts,
   runs,
+  showcases,
 } from "@/db/schema";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
 import { assertSafeProviderOrigin } from "@/lib/security/run-policy";
@@ -46,18 +49,21 @@ export async function judgeRun(runId: string) {
   if (contract.evaluationStatus !== "active") {
     throw new JudgeContractError("evaluation_not_active");
   }
-  if (contract.sampleCount !== 3) {
-    throw new JudgeContractError("sample_count_not_three");
-  }
   if (contract.runStatus === "evaluating") {
     await transitionRun({ id: runId, from: "evaluating", to: "judging" });
-  } else if (contract.runStatus !== "judging") {
+  } else if (
+    contract.runStatus !== "judging" &&
+    contract.runStatus !== "scored" &&
+    contract.runStatus !== "published"
+  ) {
     throw new JudgeContractError("invalid_run_state");
   }
 
-  const sourceObject = await env.UPLOADS.get(contract.sourceObjectKey);
-  if (!sourceObject) throw new JudgeContractError("source_missing");
-  const sourceBytes = new Uint8Array(await sourceObject.arrayBuffer());
+  const evidence = await loadCommunityEvidence(
+    runId,
+    contract.showcaseId,
+  );
+  const sourceBytes = evidence.sourceBytes;
 
   const dimensions = await getDb()
     .select()
@@ -74,9 +80,6 @@ export async function judgeRun(runId: string) {
     .select()
     .from(objectiveResults)
     .where(eq(objectiveResults.runId, runId));
-  if (objectiveRows.length === 0) {
-    throw new JudgeContractError("objective_results_missing");
-  }
   const screenshot = await loadBoundedScreenshot(runId);
   const needsSource = judgeDimensions.some(
     (dimension) => dimension.judgeSourceRequired,
@@ -89,6 +92,11 @@ export async function judgeRun(runId: string) {
         label: "objective-runtime-results",
         value: objectiveEvidence,
       },
+      {
+        label: "submitted-evidence-manifest",
+        value: evidence.manifest,
+      },
+      ...evidence.textEvidence,
     ],
     sourceBytes,
   });
@@ -98,6 +106,16 @@ export async function judgeRun(runId: string) {
       .update(runs)
       .set({ injectionFlag: true, rankEligible: false, updatedAt: new Date() })
       .where(eq(runs.id, runId));
+    if (contract.showcaseId) {
+      await getDb()
+        .update(showcases)
+        .set({
+          judgeStatus: "judging",
+          rankingStatus: "moderation_hold",
+          updatedAt: new Date(),
+        })
+        .where(eq(showcases.id, contract.showcaseId));
+    }
   }
   const prompt = buildJudgePrompt({
     benchmarkPrompt: contract.benchmarkPrompt,
@@ -111,7 +129,15 @@ export async function judgeRun(runId: string) {
   );
 
   const samples: Array<z.infer<typeof outputSchema>> = [];
-  for (let sampleIndex = 1; sampleIndex <= 3; sampleIndex += 1) {
+  const sampleTarget =
+    contract.credentialMode === "community-submission"
+      ? contract.showcaseJudgeStatus === "judging" &&
+        (contract.runStatus === "scored" ||
+          contract.runStatus === "published")
+        ? 3
+        : 1
+      : contract.sampleCount;
+  for (let sampleIndex = 1; sampleIndex <= sampleTarget; sampleIndex += 1) {
     const existing = await getDb()
       .select({ structuredOutputJson: judgeSamples.structuredOutputJson })
       .from(judgeSamples)
@@ -230,18 +256,61 @@ export async function judgeRun(runId: string) {
         createdAt: new Date(),
         updatedAt: new Date(),
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: [
+          dimensionScores.runId,
+          dimensionScores.rubricDimensionId,
+        ],
+        set: {
+          objectiveScoreBps:
+            dimension.mechanism === "judge" ? null : dimensionObjective,
+          judgeMedianScoreBps: dimensionJudge,
+          originalCombinedScoreBps: combined,
+          reasoning:
+            judgeReasoning.get(dimension.key) ??
+            "Computed from the frozen objective checks.",
+          updatedAt: new Date(),
+        },
+      });
   }
-  await transitionRun({
-    id: runId,
-    from: "judging",
-    to: "scored",
-    patch: {
-      overallScoreBps,
-      rankEligible: !injection.flagged,
-      scoredAt: new Date(),
-    },
-  });
+  if (contract.runStatus === "evaluating" || contract.runStatus === "judging") {
+    await transitionRun({
+      id: runId,
+      from: "judging",
+      to: "scored",
+      patch: {
+        overallScoreBps,
+        rankEligible:
+          !injection.flagged && contract.catalogStatus === "canonical",
+        scoredAt: new Date(),
+      },
+    });
+  } else {
+    await getDb()
+      .update(runs)
+      .set({
+        overallScoreBps,
+        rankEligible:
+          !injection.flagged && contract.catalogStatus === "canonical",
+        scoredAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(runs.id, runId));
+  }
+  if (contract.showcaseId) {
+    await getDb()
+      .update(showcases)
+      .set({
+        judgeStatus: "scored",
+        rankingStatus: injection.flagged
+          ? "moderation_hold"
+          : contract.catalogStatus === "canonical"
+            ? "eligible"
+            : "catalog_pending",
+        updatedAt: new Date(),
+      })
+      .where(eq(showcases.id, contract.showcaseId));
+  }
   return { injectionFlag: injection.flagged, overallScoreBps };
 }
 
@@ -250,6 +319,8 @@ async function loadJudgeContract(runId: string) {
     .select({
       benchmarkPrompt: benchmarkVersions.canonicalPrompt,
       benchmarkVersionId: benchmarkVersions.id,
+      catalogStatus: resultConfigurations.catalogStatus,
+      credentialMode: runs.credentialMode,
       evaluationStatus: evaluationVersions.status,
       evaluationVersionId: evaluationVersions.id,
       judgeEndpointOrigin: evaluationVersions.endpointOrigin,
@@ -260,7 +331,8 @@ async function loadJudgeContract(runId: string) {
       promptTemplate: evaluationVersions.promptTemplate,
       runStatus: runs.status,
       sampleCount: evaluationVersions.sampleCount,
-      sourceObjectKey: runArtifacts.objectKey,
+      showcaseId: runs.showcaseId,
+      showcaseJudgeStatus: showcases.judgeStatus,
     })
     .from(runs)
     .innerJoin(
@@ -271,16 +343,95 @@ async function loadJudgeContract(runId: string) {
       evaluationVersions,
       eq(runs.evaluationVersionId, evaluationVersions.id),
     )
-    .innerJoin(
-      runArtifacts,
-      and(
-        eq(runArtifacts.runId, runs.id),
-        eq(runArtifacts.kind, "generated-source"),
-      ),
+    .leftJoin(showcases, eq(showcases.id, runs.showcaseId))
+    .leftJoin(
+      resultConfigurations,
+      eq(resultConfigurations.id, showcases.resultConfigurationId),
     )
     .where(eq(runs.id, runId))
     .limit(1);
   return row ?? null;
+}
+
+async function loadCommunityEvidence(
+  runId: string,
+  showcaseId: string | null,
+) {
+  if (!showcaseId) {
+    const [source] = await getDb()
+      .select({
+        contentType: runArtifacts.contentType,
+        objectKey: runArtifacts.objectKey,
+      })
+      .from(runArtifacts)
+      .where(
+        and(
+          eq(runArtifacts.runId, runId),
+          eq(runArtifacts.kind, "generated-source"),
+        ),
+      )
+      .limit(1);
+    const sourceObject = source
+      ? await env.UPLOADS.get(source.objectKey)
+      : null;
+    return {
+      manifest: [],
+      sourceBytes: sourceObject
+        ? new Uint8Array(await sourceObject.arrayBuffer())
+        : null,
+      textEvidence: [],
+    };
+  }
+  const rows = await getDb()
+    .select({
+      byteSize: artifacts.byteSize,
+      contentType: artifacts.contentType,
+      kind: artifacts.kind,
+      objectKey: artifacts.objectKey,
+    })
+    .from(artifacts)
+    .where(
+      and(
+        eq(artifacts.showcaseId, showcaseId),
+        eq(artifacts.quarantineStatus, "approved"),
+      ),
+    );
+  let sourceBytes: Uint8Array | null = null;
+  const textEvidence: Array<{ label: string; value: unknown }> = [];
+  for (const [index, row] of rows.entries()) {
+    if (row.byteSize > 20 * 1024 * 1024) continue;
+    if (
+      row.kind === "source" &&
+      ["application/zip", "application/x-zip-compressed"].includes(
+        row.contentType,
+      )
+    ) {
+      const object = await env.UPLOADS.get(row.objectKey);
+      if (object) sourceBytes = new Uint8Array(await object.arrayBuffer());
+    } else if (
+      (row.kind === "source" || row.kind === "log") &&
+      (row.contentType.startsWith("text/") ||
+        row.contentType === "application/json" ||
+        row.contentType === "application/x-ndjson")
+    ) {
+      const object = await env.UPLOADS.get(row.objectKey);
+      if (object) {
+        textEvidence.push({
+          label: `submitted-${row.kind}-${index + 1}`,
+          value: (await object.text()).slice(0, 80_000),
+        });
+      }
+    }
+  }
+  return {
+    manifest: rows.map(({ byteSize, contentType, kind }) => ({
+      byteSize,
+      contentType,
+      kind,
+    })),
+    sourceBytes,
+    textEvidence,
+  };
 }
 
 async function loadBoundedScreenshot(runId: string) {

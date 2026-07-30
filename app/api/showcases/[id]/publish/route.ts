@@ -8,6 +8,7 @@ import { apiErrorResponse } from "@/lib/http/api";
 import { secureJson } from "@/lib/security/http";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { verifyApprovedShowcaseArtifacts } from "@/lib/security/artifact-scanner";
+import { queuePublishedResult } from "@/lib/data/results";
 
 export async function POST(
   request: Request,
@@ -30,13 +31,14 @@ export async function POST(
     }
     await verifyApprovedShowcaseArtifacts(id);
     const showcase = await publishShowcase(id, user.id);
+    const run = await queuePublishedResult(showcase.id);
     await appendAuditEvent({
       actorUserId: user.id,
       entityType: "showcase",
       entityId: showcase.id,
       action: "showcase.published",
     });
-    return secureJson({ showcase });
+    return secureJson({ showcase, run });
   } catch (error) {
     return apiErrorResponse(error);
   }

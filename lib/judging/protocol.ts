@@ -24,10 +24,10 @@ export type RuntimeEvidenceInput = {
 };
 
 export function screenJudgeInjection(
-  sourceBytes: Uint8Array,
+  sourceBytes: Uint8Array | null,
   runtimeEvidence: readonly RuntimeEvidenceInput[] = [],
 ) {
-  const texts = extractTextFiles(sourceBytes);
+  const texts = sourceBytes ? extractTextFiles(sourceBytes) : [];
   const findings: JudgeInjectionFinding[] = [];
   for (const [file, text] of texts) {
     screenText(`source-path:${file}`, file, findings);
@@ -57,7 +57,7 @@ export function buildBlindedSource(sourceBytes: Uint8Array): string {
 export function prepareJudgeEvidence(input: {
   includeSource: boolean;
   runtimeEvidence: readonly RuntimeEvidenceInput[];
-  sourceBytes: Uint8Array;
+  sourceBytes: Uint8Array | null;
 }) {
   const injection = screenJudgeInjection(
     input.sourceBytes,
@@ -67,7 +67,7 @@ export function prepareJudgeEvidence(input: {
     label: evidence.label,
     text: serializeBlindedEvidence(evidence.value),
   }));
-  if (input.includeSource) {
+  if (input.includeSource && input.sourceBytes) {
     sections.push({
       label: "generated-source",
       text: buildBlindedSource(input.sourceBytes),

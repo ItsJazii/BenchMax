@@ -52,6 +52,8 @@ import {
   uploadObjectKeys,
 } from "../lib/storage/upload-keys";
 import { createR2PresignedUpload } from "../lib/storage/r2-presign";
+import { normalizeReasoning } from "../lib/data/result-metadata";
+import { rankResultRows } from "../lib/ranking/result-ranking";
 
 test("upload object keys are server-derived and bind user, session, and filename", () => {
   const input = {
@@ -239,10 +241,12 @@ test("secret-like content is detected before persistence", () => {
 
 test("showcase and report payloads are strict and bounded", () => {
   const draft = {
+    benchmarkVersionId: "frontend-command-center-v1",
     title: "A secure model test",
     summary: "A sufficiently detailed and inspectable test summary.",
     category: "frontend",
-    modelLabel: "K3",
+    modelLabel: "Example model",
+    modelVersionLabel: "2026-07 snapshot",
     harness: "Benchmax Web Agent",
     reasoningLevel: "High",
     prompt: "Build the requested interface.",
@@ -262,6 +266,33 @@ test("showcase and report payloads are strict and bounded", () => {
       status: "resolved",
     }).success,
     false,
+  );
+});
+
+test("declared reasoning is normalized without inventing precision", () => {
+  assert.equal(normalizeReasoning("Off"), "none");
+  assert.equal(normalizeReasoning("standard"), "medium");
+  assert.equal(normalizeReasoning("xhigh"), "max");
+  assert.equal(normalizeReasoning("adaptive thinking"), "unknown");
+});
+
+test("per-test result ranking shares ties and preserves judge sample count", () => {
+  assert.deepEqual(
+    rankResultRows([
+      { runId: "a", showcaseId: "sa", scoreBps: 9_000, sampleCount: 3 },
+      { runId: "b", showcaseId: "sb", scoreBps: 9_000, sampleCount: 1 },
+      { runId: "c", showcaseId: "sc", scoreBps: 8_000, sampleCount: 0 },
+      { runId: "d", showcaseId: "sd", scoreBps: null, sampleCount: 0 },
+    ]).map(({ rank, runId, sampleCount }) => ({
+      rank,
+      runId,
+      sampleCount,
+    })),
+    [
+      { rank: 1, runId: "a", sampleCount: 3 },
+      { rank: 1, runId: "b", sampleCount: 1 },
+      { rank: 3, runId: "c", sampleCount: 1 },
+    ],
   );
 });
 

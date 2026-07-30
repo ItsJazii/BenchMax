@@ -16,11 +16,12 @@ import {
 import { judgeRun } from "../lib/judging/judge-run";
 import { transitionRun } from "../lib/data/runs";
 import { getDb } from "../db";
-import { runs } from "../db/schema";
+import { runs, showcases } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { rebuildBenchmarkSnapshot } from "../lib/ranking/snapshots";
 import { appendAuditEvent } from "../lib/data/audit";
 import { rebuildAggregateSnapshots } from "../lib/ranking/aggregates";
+import { rebuildResultLeaderboard } from "../lib/ranking/result-snapshots";
 import { runJudgeCalibration } from "../lib/judging/calibration";
 import {
   recoverStalledPipelineRuns,
@@ -28,6 +29,7 @@ import {
 } from "../lib/pipeline/recovery";
 import { processPipelineDeadLetter } from "../lib/pipeline/dead-letter";
 import { sweepExpiredUploadSessions } from "../lib/data/upload-maintenance";
+import { markOverdueResults } from "../lib/data/results";
 
 interface Env {
   ASSETS: Fetcher;
@@ -156,6 +158,13 @@ const worker = {
         });
       }),
     );
+    jobs.push(
+      markOverdueResults().catch((error) => {
+        console.error("Benchmax overdue result sweep failed", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
+      }),
+    );
     ctx.waitUntil(Promise.all(jobs));
   },
 };
@@ -245,6 +254,7 @@ async function executePipelineMessage(message: PipelineMessage) {
       outputContentHash: runs.outputContentHash,
       contributorId: runs.contributorId,
       rankEligible: runs.rankEligible,
+      showcaseId: runs.showcaseId,
       status: runs.status,
     })
     .from(runs)
@@ -272,11 +282,18 @@ async function executePipelineMessage(message: PipelineMessage) {
     return;
   }
   if (run.rankEligible) {
-    await rebuildBenchmarkSnapshot({
-      benchmarkVersionId: run.benchmarkVersionId,
-      evaluationVersionId: run.evaluationVersionId,
-    });
-    await rebuildAggregateSnapshots(run.evaluationVersionId);
+    if (run.showcaseId) {
+      await rebuildResultLeaderboard({
+        benchmarkVersionId: run.benchmarkVersionId,
+        evaluationVersionId: run.evaluationVersionId,
+      });
+    } else {
+      await rebuildBenchmarkSnapshot({
+        benchmarkVersionId: run.benchmarkVersionId,
+        evaluationVersionId: run.evaluationVersionId,
+      });
+      await rebuildAggregateSnapshots(run.evaluationVersionId);
+    }
   }
   await appendAuditEvent({
     actorUserId: null,
@@ -360,6 +377,17 @@ async function failRunAtCurrentStage(
     failed = true;
   }
   if (!failed) return;
+  const [failedRun] = await getDb()
+    .select({ showcaseId: runs.showcaseId })
+    .from(runs)
+    .where(eq(runs.id, runId))
+    .limit(1);
+  if (failedRun?.showcaseId) {
+    await getDb()
+      .update(showcases)
+      .set({ judgeStatus: "failed", updatedAt: new Date() })
+      .where(eq(showcases.id, failedRun.showcaseId));
+  }
   await appendAuditEvent({
     actorUserId: null,
     entityType: "run",

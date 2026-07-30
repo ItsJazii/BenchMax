@@ -168,7 +168,7 @@ export const benchmarks = sqliteTable(
     goal: text("goal"),
     successCriteriaJson: text("success_criteria_json").notNull().default("[]"),
     category: text("category", {
-      enum: ["frontend", "browser-game", "browser-3d"],
+      enum: ["frontend", "browser-game", "browser-3d", "other"],
     }).notNull(),
     status: text("status", { enum: ["draft", "active", "retired"] })
       .notNull()
@@ -186,7 +186,7 @@ export const benchmarks = sqliteTable(
     index("benchmarks_creator_idx").on(table.creatorId, table.createdAt),
     check(
       "benchmarks_category_allowed",
-      sql`${table.category} IN ('frontend', 'browser-game', 'browser-3d')`,
+      sql`${table.category} IN ('frontend', 'browser-game', 'browser-3d', 'other')`,
     ),
     check(
       "benchmarks_status_allowed",
@@ -1191,6 +1191,83 @@ export const leaderboardEntries = sqliteTable(
     check(
       "leaderboard_entries_run_count_positive",
       sql`${table.runCount} > 0`,
+    ),
+  ],
+);
+
+export const resultLeaderboardSnapshots = sqliteTable(
+  "result_leaderboard_snapshots",
+  {
+    id: text("id").primaryKey(),
+    benchmarkVersionId: text("benchmark_version_id")
+      .notNull()
+      .references(() => benchmarkVersions.id, { onDelete: "restrict" }),
+    evaluationVersionId: text("evaluation_version_id")
+      .notNull()
+      .references(() => evaluationVersions.id, { onDelete: "restrict" }),
+    version: integer("version").notNull(),
+    resultSetHash: text("result_set_hash").notNull(),
+    status: text("status", {
+      enum: ["building", "published", "superseded"],
+    })
+      .notNull()
+      .default("building"),
+    publishedAt: integer("published_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("result_snapshots_version_uidx").on(
+      table.benchmarkVersionId,
+      table.evaluationVersionId,
+      table.version,
+    ),
+    uniqueIndex("result_snapshots_set_uidx").on(
+      table.benchmarkVersionId,
+      table.evaluationVersionId,
+      table.resultSetHash,
+    ),
+    index("result_snapshots_public_idx").on(
+      table.benchmarkVersionId,
+      table.status,
+      table.publishedAt,
+    ),
+  ],
+);
+
+export const resultLeaderboardEntries = sqliteTable(
+  "result_leaderboard_entries",
+  {
+    id: text("id").primaryKey(),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => resultLeaderboardSnapshots.id, {
+        onDelete: "cascade",
+      }),
+    showcaseId: text("showcase_id")
+      .notNull()
+      .references(() => showcases.id, { onDelete: "restrict" }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => runs.id, { onDelete: "restrict" }),
+    rank: integer("rank").notNull(),
+    scoreBps: integer("score_bps").notNull(),
+    sampleCount: integer("sample_count").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("result_entries_snapshot_showcase_uidx").on(
+      table.snapshotId,
+      table.showcaseId,
+    ),
+    index("result_entries_rank_idx").on(table.snapshotId, table.rank),
+    check("result_entries_rank_positive", sql`${table.rank} > 0`),
+    check(
+      "result_entries_score_bounded",
+      sql`${table.scoreBps} BETWEEN 0 AND 10000`,
+    ),
+    check(
+      "result_entries_sample_count_allowed",
+      sql`${table.sampleCount} IN (1, 3)`,
     ),
   ],
 );

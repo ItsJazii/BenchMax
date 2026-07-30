@@ -9,6 +9,9 @@ import {
   findLatestFailedPipelineStage,
   manualRetryPlan,
 } from "@/lib/pipeline/recovery";
+import { getDb } from "@/db";
+import { showcases } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function POST(
   request: Request,
@@ -47,6 +50,16 @@ export async function POST(
         stage: retry.stage,
         stageVersion: "1",
       });
+      if (run.showcaseId) {
+        await getDb()
+          .update(showcases)
+          .set({
+            judgeStatus: "queued",
+            judgeDueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            updatedAt: new Date(),
+          })
+          .where(eq(showcases.id, run.showcaseId));
+      }
     } catch {
       await transitionRun({
         id: run.id,
@@ -65,7 +78,6 @@ export async function POST(
       entityId: run.id,
       action: "run.evaluation_requeued",
       metadata: {
-        generationKeyRequired: false,
         stage: retry.stage,
       },
     });

@@ -6,10 +6,10 @@ import { getBrowserBenchmarkDefinition } from "@/benchmarks";
 import { getDb } from "@/db";
 import {
   benchmarkVersions,
-  generationRecords,
   objectiveResults,
   runArtifacts,
   runs,
+  showcases,
 } from "@/db/schema";
 import { EVALUATION_ENVIRONMENT_V1 } from "@/lib/domain/ranked-catalog";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
@@ -75,6 +75,12 @@ export async function evaluateFrontendRun(runId: string) {
       from: "queued_evaluation",
       to: "evaluating",
     });
+    if (contract.showcaseId) {
+      await getDb()
+        .update(showcases)
+        .set({ judgeStatus: "evaluating", updatedAt: new Date() })
+        .where(eq(showcases.id, contract.showcaseId));
+    }
   } else if (contract.status !== "evaluating") {
     throw new EvaluationContractError("invalid_run_state");
   }
@@ -175,6 +181,7 @@ async function getEvaluationContract(runId: string) {
       benchmarkEnvironmentHash: benchmarkVersions.environmentHash,
       runEnvironmentHash: runs.environmentHash,
       sourceObjectKey: runArtifacts.objectKey,
+      showcaseId: runs.showcaseId,
       status: runs.status,
     })
     .from(runs)
@@ -182,7 +189,6 @@ async function getEvaluationContract(runId: string) {
       benchmarkVersions,
       eq(runs.benchmarkVersionId, benchmarkVersions.id),
     )
-    .innerJoin(generationRecords, eq(generationRecords.runId, runs.id))
     .innerJoin(
       runArtifacts,
       and(

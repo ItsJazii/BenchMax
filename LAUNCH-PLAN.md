@@ -25,20 +25,27 @@ Reference docs: PLAN.md (product spec), REVIEW-FIXES-3.md (open code items).
 full suite + typecheck + lint + dry-runs green. Remaining work is staging validation,
 the cap decision, and the explicitly deferred launch polish listed below.
 
-## Phase 1 — Repo safety (do immediately after Phase 0; ~30 min)
+## Phase 1 — Repo safety (complete 2026-08-01)
 
-1. **[Codex]** Private GitHub repo `ItsJazii/BenchMax` is confirmed and the pivot
-   branch is pushed. The remote `main` remains its unrelated placeholder README until
-   a PR/merge decision is made; no history was force-overwritten.
-2. **[Codex/Claude]** Confirm the CI workflow runs green on GitHub (it sets the
-   mandatory evaluator-smoke flag — the first true clean-checkout test).
-3. **[Codex]** Open a PR from the pivot branch → merge to `main` after CI passes.
+1. **[Codex]** Private GitHub repo `ItsJazii/BenchMax` contains the complete project
+   tree on both `main` and `codex/community-results-pivot`; the starter commit was
+   preserved as merge history.
+2. **[Codex/Claude]** The clean-checkout CI workflow passed on GitHub with the
+   mandatory evaluator-smoke flag (run `30710201657`).
+3. **[Codex/You]** From Phase 2 onward, all code/config changes use focused PRs.
+   GitHub rejected branch protection for this private repository's current plan, so
+   `CONTRIBUTING.md`, `SECURITY.md`, `CODEOWNERS`, CI, and human approval are the
+   active PR safety controls until repository settings support required checks.
 
 **Exit criteria:** code on GitHub, CI green on a machine that isn't yours.
 
-## Phase 2 — Accounts and services (mostly [You]; ~1–2 hours + ~$5–15/mo)
+## Phase 2 — Accounts and services (in progress 2026-08-01; mostly [You])
 
-1. **[You]** Cloudflare account, Workers Paid plan ($5/mo — required for Queues).
+1. **[Codex/You]** Cloudflare account access is confirmed. D1 `benchmax-d1` and
+   queues `benchmax-evaluate`, `benchmax-judge`, and `benchmax-pipeline-dlq` are
+   provisioned. R2 is not enabled yet; account 2FA enforcement is also still off.
+   The owner must enable 2FA after enrolling, then enable R2 and the Workers Paid
+   capability before staging data or deployments.
 2. **[You]** Domain(s): one main domain (e.g. benchmax.dev) and one SEPARATE domain
    or distinct registrable origin for user content (cookieless isolation per PLAN §3;
    a `*.workers.dev` subdomain is acceptable for the usercontent origin at launch).
@@ -49,10 +56,11 @@ the cap decision, and the explicitly deferred launch polish listed below.
    (recommendation: current Sonnet snapshot; never an alias).
 5. **[You]** E2B account; **[Codex]** build `sandbox/browser-web-v1` as a template,
    record immutable template ID + build hash.
-6. **[Codex]** Create the Cloudflare resources: D1 database, private R2 bucket,
-   queues (evaluate, judge, DLQ), both workers' routes/domains, crons. All secrets
-   via `wrangler secret put` (Clerk, judge key/origin/model, provenance key,
-   calibration hash/key, owner subjects) — never in files.
+6. **[Codex]** After R2 is enabled, create the private bucket, deploy both Workers
+   with staging/production environments, attach only the selected HTTPS origins,
+   and configure the existing queue consumers/crons. All secrets go via
+   `wrangler secret put` (Clerk, judge key/origin/model, provenance key, calibration
+   hash/key, owner subjects) — never in files.
 
 **Exit criteria:** all prerequisites in PLAN §8.2 exist; `.env.example` fully
 mappable to real secrets.

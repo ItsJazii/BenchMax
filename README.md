@@ -33,8 +33,8 @@ $env:BENCHMAX_REQUIRE_EVALUATOR_SMOKE="1"
 npm test
 npx tsc --noEmit
 npm run lint
-npx wrangler deploy --dry-run --config dist/server/wrangler.json
-npx wrangler deploy --dry-run --config wrangler.usercontent.jsonc
+npx wrangler deploy --dry-run --config dist/server/wrangler.json --name benchmax-staging
+npx wrangler deploy --dry-run --config wrangler.usercontent.jsonc --env staging
 ```
 
 ## Production setup
@@ -44,7 +44,10 @@ commit a filled environment file.
 
 1. Configure Clerk and exact authorized HTTPS origins.
 2. Create D1 and R2 resources and apply every migration in `drizzle/`.
-3. Deploy `wrangler.usercontent.jsonc` on a distinct, cookieless HTTPS site
+3. Build the main application, then deploy the generated
+   `dist/server/wrangler.json` with `--name benchmax-staging` or
+   `--name benchmax`. Deploy `wrangler.usercontent.jsonc` with `--env staging`
+   or `--env production` on a distinct, cookieless HTTPS site
    (prefer a separate registrable domain, not a subdomain that can receive the
    application's domain cookies). Bind it read-only in practice to the same
    `benchmax-d1` database and `benchmax-uploads` bucket, set

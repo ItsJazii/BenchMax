@@ -8,7 +8,7 @@
     {
       "binding": "DB",
       "database_name": "benchmax-d1",
-      "database_id": "00000000-0000-4000-8000-000000000000"
+      "database_id": "1b90635c-2906-472f-a0d1-242cbceee802"
     }
   ],
   "r2_buckets": [
@@ -16,5 +16,39 @@
       "binding": "UPLOADS",
       "bucket_name": "benchmax-uploads"
     }
-  ]
+  ],
+  "env": {
+    "staging": {
+      "name": "benchmax-usercontent-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "benchmax-d1",
+          "database_id": "1b90635c-2906-472f-a0d1-242cbceee802"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "UPLOADS",
+          "bucket_name": "benchmax-uploads"
+        }
+      ]
+    },
+    "production": {
+      "name": "benchmax-usercontent",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "benchmax-d1",
+          "database_id": "1b90635c-2906-472f-a0d1-242cbceee802"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "UPLOADS",
+          "bucket_name": "benchmax-uploads"
+        }
+      ]
+    }
+  }
 }

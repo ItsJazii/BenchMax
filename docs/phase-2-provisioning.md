@@ -8,8 +8,10 @@ does not contain credentials, tokens, private keys, or database exports.
 ## Current Cloudflare evidence
 
 - Account access is available through the Cloudflare MCP.
-- D1 `benchmax-d1` exists in APAC with ID
-  `1b90635c-2906-472f-a0d1-242cbceee802`.
+- D1 `benchmax-d1` exists with ID
+  `1b90635c-2906-472f-a0d1-242cbceee802`. The current API response reports
+  `jurisdiction: null`; do not treat the database as APAC-specific until the
+  Cloudflare account reports an explicit jurisdiction.
 - Queues `benchmax-evaluate`, `benchmax-judge`, and
   `benchmax-pipeline-dlq` exist.
 - R2 is not enabled yet, so `benchmax-uploads` cannot be created.

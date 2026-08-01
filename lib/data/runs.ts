@@ -1,26 +1,27 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   benchmarkVersions,
   benchmarks,
   configurations,
+  evaluationVersions,
   harnesses,
   models,
   modelVersions,
   providers,
   runs,
   users,
-  generationRecords,
+  legacyGenerationRecords,
   runArtifacts,
   objectiveResults,
   dimensionScores,
   rubricDimensions,
-  judgeSamples,
 } from "@/db/schema";
 import {
   isAllowedRunTransition,
   type RunStatus,
 } from "@/lib/security/run-policy";
+import { appendAuditEvent } from "@/lib/data/audit";
 
 export async function getOwnedRun(id: string, contributorId: string) {
   const [run] = await getDb()
@@ -32,6 +33,7 @@ export async function getOwnedRun(id: string, contributorId: string) {
 }
 
 export async function transitionRun(input: {
+  actorUserId?: string | null;
   from: RunStatus;
   id: string;
   patch?: Partial<typeof runs.$inferInsert>;
@@ -50,6 +52,17 @@ export async function transitionRun(input: {
     .where(and(eq(runs.id, input.id), eq(runs.status, input.from)))
     .returning();
   if (!updated) throw new RunTransitionConflictError();
+  await appendAuditEvent({
+    actorUserId: input.actorUserId ?? null,
+    entityType: "run",
+    entityId: input.id,
+    action: "run.status_transitioned",
+    metadata: {
+      from: input.from,
+      patchFields: Object.keys(input.patch ?? {}).sort(),
+      to: input.to,
+    },
+  });
   return updated;
 }
 
@@ -61,7 +74,7 @@ export async function listRunsForOwner(contributorId: string) {
       status: runs.status,
       score: runs.overallScoreBps,
       createdAt: runs.createdAt,
-      benchmark: benchmarks.title,
+      benchmark: benchmarkVersions.title,
       model: models.name,
       reasoningLevel: configurations.reasoningLevel,
     })
@@ -92,8 +105,8 @@ export async function listRecentPublicRuns(limit = 24) {
       publicSlug: runs.publicSlug,
       overallScoreBps: runs.overallScoreBps,
       publishedAt: runs.publishedAt,
-      category: benchmarks.category,
-      benchmark: benchmarks.title,
+      category: benchmarkVersions.category,
+      benchmark: benchmarkVersions.title,
       benchmarkSlug: benchmarks.slug,
       benchmarkVersion: benchmarkVersions.version,
       model: models.name,
@@ -128,6 +141,7 @@ export async function listRecentPublicRuns(limit = 24) {
     .where(
       and(
         eq(runs.status, "published"),
+        ne(runs.credentialMode, "community-submission"),
         eq(runs.rankEligible, true),
         eq(users.status, "active"),
       ),
@@ -154,7 +168,7 @@ export async function getPublicRunBySlug(slug: string) {
       evaluatedAt: runs.evaluatedAt,
       scoredAt: runs.scoredAt,
       publishedAt: runs.publishedAt,
-      benchmark: benchmarks.title,
+      benchmark: benchmarkVersions.title,
       benchmarkVersion: benchmarkVersions.version,
       benchmarkPublishedAt: benchmarkVersions.publishedAt,
       prompt: benchmarkVersions.canonicalPrompt,
@@ -164,6 +178,9 @@ export async function getPublicRunBySlug(slug: string) {
       reasoningLevel: configurations.reasoningLevel,
       endpointName: configurations.endpointName,
       settingsHash: configurations.settingsHash,
+      harness: harnesses.name,
+      harnessVersion: harnesses.version,
+      evaluationVersion: evaluationVersions.version,
       contributorHandle: users.handle,
     })
     .from(runs)
@@ -178,6 +195,11 @@ export async function getPublicRunBySlug(slug: string) {
       eq(runs.configurationId, configurations.id),
     )
     .innerJoin(providers, eq(configurations.providerId, providers.id))
+    .innerJoin(harnesses, eq(configurations.harnessId, harnesses.id))
+    .innerJoin(
+      evaluationVersions,
+      eq(runs.evaluationVersionId, evaluationVersions.id),
+    )
     .innerJoin(
       modelVersions,
       eq(configurations.modelVersionId, modelVersions.id),
@@ -187,6 +209,7 @@ export async function getPublicRunBySlug(slug: string) {
       and(
         eq(runs.publicSlug, slug),
         eq(runs.status, "published"),
+        ne(runs.credentialMode, "community-submission"),
         eq(users.status, "active"),
       ),
     )
@@ -214,7 +237,7 @@ export async function getPublicRunArtifact(
       and(
         eq(runs.publicSlug, publicSlug),
         eq(runs.status, "published"),
-        eq(runs.rankEligible, true),
+        ne(runs.credentialMode, "community-submission"),
         eq(runArtifacts.id, artifactId),
         eq(runArtifacts.public, true),
         eq(users.status, "active"),
@@ -224,22 +247,17 @@ export async function getPublicRunArtifact(
   return artifact ?? null;
 }
 
-export async function getPublicRunEvidence(runId: string) {
-  const [provenance, artifacts, objective, dimensions, samples] =
+export async function getPublicLegacyRunEvidence(runId: string) {
+  const [provenance, artifacts, objective, dimensions] =
     await Promise.all([
       getDb()
         .select({
-          requestHash: generationRecords.requestHash,
-          responseHash: generationRecords.responseHash,
-          provenanceHash: generationRecords.provenanceHash,
-          redactedTranscript: generationRecords.redactedTranscript,
-          inputTokens: generationRecords.inputTokens,
-          outputTokens: generationRecords.outputTokens,
-          durationMs: generationRecords.durationMs,
-          turnCount: generationRecords.harnessTurnCount,
+          requestHash: legacyGenerationRecords.requestHash,
+          responseHash: legacyGenerationRecords.responseHash,
+          provenanceHash: legacyGenerationRecords.provenanceHash,
         })
-        .from(generationRecords)
-        .where(eq(generationRecords.runId, runId))
+        .from(legacyGenerationRecords)
+        .where(eq(legacyGenerationRecords.runId, runId))
         .limit(1),
       getDb()
         .select({
@@ -283,23 +301,12 @@ export async function getPublicRunEvidence(runId: string) {
         )
         .where(eq(dimensionScores.runId, runId))
         .orderBy(rubricDimensions.ordinal),
-      getDb()
-        .select({
-          sampleIndex: judgeSamples.sampleIndex,
-          structuredOutputJson: judgeSamples.structuredOutputJson,
-          responseHash: judgeSamples.responseHash,
-          injectionFlag: judgeSamples.injectionFlag,
-        })
-        .from(judgeSamples)
-        .where(eq(judgeSamples.runId, runId))
-        .orderBy(judgeSamples.sampleIndex),
     ]);
   return {
     provenance: provenance[0] ?? null,
     artifacts,
     objective,
     dimensions,
-    samples,
   };
 }
 

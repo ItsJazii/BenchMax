@@ -1,13 +1,18 @@
 import { env } from "cloudflare:workers";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { evaluationVersions } from "@/db/schema";
 import { appendAuditEvent } from "@/lib/data/audit";
 import { sha256Hex } from "@/lib/security/policy";
 import { canonicalJson } from "@/lib/security/canonical";
-import { callPinnedJudge } from "./judge-run";
-import { createJudgeOutputSchema, median } from "./protocol";
+import { callPinnedJudge } from "./provider";
+import {
+  createJudgeOutputSchema,
+  evidenceSufficiencyConsensus,
+  JUDGE_EVIDENCE_SUFFICIENCY_RULE,
+  median,
+} from "./protocol";
 import { meanAbsoluteDriftBps } from "./calibration-math";
 
 const calibrationSetSchema = z
@@ -44,10 +49,11 @@ export async function runJudgeCalibration() {
   const [evaluation] = await getDb()
     .select()
     .from(evaluationVersions)
-    .where(eq(evaluationVersions.status, "active"))
+    .where(inArray(evaluationVersions.status, ["draft", "active"]))
     .orderBy(desc(evaluationVersions.version))
     .limit(1);
   if (!evaluation) return { status: "no-active-evaluation" as const };
+  try {
   const objectKey = requiredValue("JUDGE_CALIBRATION_SET_OBJECT_KEY");
   const object = await env.UPLOADS.get(objectKey);
   if (!object) throw new CalibrationConfigurationError("set_missing");
@@ -71,6 +77,13 @@ export async function runJudgeCalibration() {
     const prompt = `${evaluation.promptTemplate}\n\n${canonicalJson({
       calibration: true,
       benchmark: item.benchmark,
+      evidenceGate: {
+        rule: JUDGE_EVIDENCE_SUFFICIENCY_RULE,
+        requiredOutput: {
+          evidence_sufficient: "boolean",
+          evidence_sufficiency_reason: "concise reason",
+        },
+      },
       rubric: item.rubric.map(({ key, description }) => ({
         key,
         description,
@@ -81,11 +94,22 @@ export async function runJudgeCalibration() {
       const response = await callPinnedJudge({
         endpointOrigin: evaluation.endpointOrigin,
         maxTokens: evaluation.maxTokensPerSample,
-        model: evaluation.judgeModel,
+        model: evaluation.judgeModelVersion,
         prompt,
-        screenshot: null,
+        images: [],
       });
       outputs.push(outputSchema.parse(JSON.parse(response.content)));
+    }
+    if (
+      !evidenceSufficiencyConsensus(
+        outputs.map((output) => ({
+          evidenceSufficient: output.evidence_sufficient,
+        })),
+      )
+    ) {
+      throw new CalibrationConfigurationError(
+        "calibration_evidence_insufficient",
+      );
     }
     for (const dimension of item.rubric) {
       const actual = median(
@@ -113,18 +137,83 @@ export async function runJudgeCalibration() {
       meanAbsoluteDriftBps: driftBps,
     };
   }
+  const priorActiveIds =
+    evaluation.status === "draft"
+      ? await activateCalibratedDraft(evaluation.id)
+      : [];
   await appendAuditEvent({
     actorUserId: null,
     entityType: "evaluation-version",
     entityId: evaluation.id,
-    action: "judge.calibration_passed",
+    action:
+      evaluation.status === "draft"
+        ? "judge.calibration_activated"
+        : "judge.calibration_passed",
     metadata: {
       itemCount: set.items.length,
       meanAbsoluteDriftBps: driftBps,
+      priorActiveIds,
       thresholdBps: evaluation.driftThresholdBps,
     },
   });
-  return { status: "passed" as const, meanAbsoluteDriftBps: driftBps };
+  return {
+    status: evaluation.status === "draft" ? ("activated" as const) : ("passed" as const),
+    meanAbsoluteDriftBps: driftBps,
+  };
+  } catch (error) {
+    await freezeEvaluation(
+      evaluation.id,
+      "calibration_execution_failed",
+      { errorCode: calibrationErrorCode(error) },
+    );
+    return {
+      status: "frozen" as const,
+      reason: "calibration_execution_failed" as const,
+    };
+  }
+}
+
+async function activateCalibratedDraft(evaluationVersionId: string) {
+  const priorActive = await getDb()
+    .select({ id: evaluationVersions.id })
+    .from(evaluationVersions)
+    .where(
+      and(
+        eq(evaluationVersions.status, "active"),
+        ne(evaluationVersions.id, evaluationVersionId),
+      ),
+    );
+  const now = new Date();
+  const db = getDb();
+  await db.batch([
+    db
+      .update(evaluationVersions)
+      .set({ status: "frozen", updatedAt: now })
+      .where(
+        and(
+          eq(evaluationVersions.status, "active"),
+          ne(evaluationVersions.id, evaluationVersionId),
+        ),
+      ),
+    db
+      .update(evaluationVersions)
+      .set({ status: "active", updatedAt: now })
+      .where(
+        and(
+          eq(evaluationVersions.id, evaluationVersionId),
+          eq(evaluationVersions.status, "draft"),
+        ),
+      ),
+  ]);
+  const [activated] = await db
+    .select({ status: evaluationVersions.status })
+    .from(evaluationVersions)
+    .where(eq(evaluationVersions.id, evaluationVersionId))
+    .limit(1);
+  if (activated?.status !== "active") {
+    throw new CalibrationConfigurationError("activation_race");
+  }
+  return priorActive.map((item) => item.id);
 }
 
 async function freezeEvaluation(
@@ -177,6 +266,24 @@ function requiredValue(name: string) {
     throw new CalibrationConfigurationError("configuration_missing");
   }
   return value;
+}
+
+function calibrationErrorCode(error: unknown) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[a-z0-9_:-]{1,80}$/.test(error.code)
+  ) {
+    return error.code;
+  }
+  return error instanceof Error
+    ? error.name
+        .replace(/([a-z])([A-Z])/g, "$1_$2")
+        .toLowerCase()
+        .slice(0, 80)
+    : "unknown_error";
 }
 
 export class CalibrationConfigurationError extends Error {

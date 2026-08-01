@@ -1,7 +1,9 @@
+import { env } from "cloudflare:workers";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   judgeSamples,
+  evaluationVersions,
   resultLeaderboardEntries,
   resultLeaderboardSnapshots,
   runs,
@@ -9,6 +11,25 @@ import {
 } from "@/db/schema";
 import { canonicalSha256 } from "@/lib/security/canonical";
 import { rankResultRows } from "@/lib/ranking/result-ranking";
+import { rebuildResultAggregateSnapshot } from "@/lib/ranking/result-aggregate-snapshots";
+import { hasPendingTopTenEscalations } from "@/lib/ranking/top-ten-gate";
+import {
+  claimJudgeBudget,
+  JudgeBudgetConfigurationError,
+} from "@/lib/judging/budget";
+import { TOP_TEN_ESCALATION_STAGE_VERSION } from "@/lib/pipeline/judge-dispatch";
+import {
+  claimRepairDispatchAttempt,
+  recordRepairDispatch,
+} from "@/lib/pipeline/repair-backoff";
+
+type TopTenEscalationCandidate = {
+  evaluationVersionId: string;
+  rank: number;
+  runId: string;
+  sampleCount: number;
+  showcaseId: string;
+};
 
 export async function rebuildResultLeaderboard(input: {
   benchmarkVersionId: string;
@@ -31,12 +52,38 @@ export async function rebuildResultLeaderboard(input: {
         inArray(runs.status, ["scored", "published"]),
         eq(runs.rankEligible, true),
         eq(showcases.status, "published"),
-        eq(showcases.rankingStatus, "eligible"),
+        eq(showcases.safetyStatus, "approved"),
+        inArray(showcases.rankingStatus, ["eligible", "superseded"]),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM showcases AS newer_showcase
+          JOIN runs AS newer_run
+            ON newer_run.showcase_id = newer_showcase.id
+          WHERE newer_showcase.id <> ${showcases.id}
+            AND newer_showcase.owner_id = ${showcases.ownerId}
+            AND newer_showcase.result_configuration_id = ${showcases.resultConfigurationId}
+            AND newer_showcase.benchmark_version_id = ${showcases.benchmarkVersionId}
+            AND newer_showcase.status = 'published'
+            AND newer_showcase.safety_status = 'approved'
+            AND newer_showcase.ranking_status IN ('eligible', 'superseded')
+            AND newer_run.rank_eligible = 1
+            AND newer_run.evaluation_version_id = ${input.evaluationVersionId}
+            AND (
+              coalesce(newer_showcase.published_at, newer_showcase.created_at) >
+                coalesce(${showcases.publishedAt}, ${showcases.createdAt})
+              OR (
+                coalesce(newer_showcase.published_at, newer_showcase.created_at) =
+                  coalesce(${showcases.publishedAt}, ${showcases.createdAt})
+                AND newer_showcase.id > ${showcases.id}
+              )
+            )
+        )`,
       ),
     )
     .groupBy(runs.id, showcases.id)
     .orderBy(desc(runs.overallScoreBps), runs.id);
   const ranked = rankResultRows(rows);
+  const topTenEscalationPending = hasPendingTopTenEscalations(ranked);
   const resultSetHash = await canonicalSha256(
     ranked.map(({ runId, scoreBps, showcaseId, sampleCount }) => ({
       runId,
@@ -59,11 +106,30 @@ export async function rebuildResultLeaderboard(input: {
           input.evaluationVersionId,
         ),
         eq(resultLeaderboardSnapshots.resultSetHash, resultSetHash),
+        inArray(resultLeaderboardSnapshots.status, ["building", "published"]),
       ),
     )
     .limit(1);
-  if (existing) {
-    await enqueueTopTenEscalations(ranked);
+  if (existing?.status === "published") {
+    if (topTenEscalationPending) {
+      await env.DB.prepare(
+        `UPDATE result_leaderboard_snapshots
+         SET status = 'superseded'
+         WHERE id = ? AND status = 'published'`,
+      )
+        .bind(existing.id)
+        .run();
+      await rebuildResultAggregateSnapshot(input.evaluationVersionId);
+      await enqueueTopTenEscalations(
+        ranked.map((row) => ({
+          ...row,
+          evaluationVersionId: input.evaluationVersionId,
+        })),
+      );
+      return { ...existing, status: "superseded" as const };
+    } else {
+      await rebuildResultAggregateSnapshot(input.evaluationVersionId);
+    }
     return existing;
   }
   const [latest] = await getDb()
@@ -83,77 +149,241 @@ export async function rebuildResultLeaderboard(input: {
     )
     .orderBy(desc(resultLeaderboardSnapshots.version))
     .limit(1);
-  const now = new Date();
-  const snapshotId = crypto.randomUUID();
-  await getDb().insert(resultLeaderboardSnapshots).values({
-    id: snapshotId,
-    benchmarkVersionId: input.benchmarkVersionId,
-    evaluationVersionId: input.evaluationVersionId,
-    version: (latest?.version ?? 0) + 1,
-    resultSetHash,
-    status: "building",
-    publishedAt: null,
-    createdAt: now,
-  });
-  for (const row of ranked) {
-    await getDb().insert(resultLeaderboardEntries).values({
-      id: crypto.randomUUID(),
-      snapshotId,
-      showcaseId: row.showcaseId,
-      runId: row.runId,
-      rank: row.rank,
-      scoreBps: row.scoreBps,
-      sampleCount: row.sampleCount,
-      createdAt: now,
-    });
-  }
-  await getDb()
-    .update(resultLeaderboardSnapshots)
-    .set({ status: "superseded" })
-    .where(
-      and(
-        eq(
-          resultLeaderboardSnapshots.benchmarkVersionId,
-          input.benchmarkVersionId,
+  const now = Date.now();
+  const snapshotId = existing?.id ?? crypto.randomUUID();
+  const statements = [
+    ...(existing
+      ? [
+          env.DB.prepare(
+            `DELETE FROM result_leaderboard_entries WHERE snapshot_id = ?`,
+          ).bind(snapshotId),
+        ]
+      : [
+          env.DB.prepare(
+            `INSERT INTO result_leaderboard_snapshots
+             (id, benchmark_version_id, evaluation_version_id, version, result_set_hash, status, published_at, created_at)
+             VALUES (?, ?, ?, ?, ?, 'building', NULL, ?)`,
+          ).bind(
+            snapshotId,
+            input.benchmarkVersionId,
+            input.evaluationVersionId,
+            (latest?.version ?? 0) + 1,
+            resultSetHash,
+            now,
+          ),
+        ]),
+    ...ranked.map((row) =>
+          env.DB.prepare(
+            `INSERT INTO result_leaderboard_entries
+             (id, snapshot_id, showcase_id, run_id, rank, score_bps, sample_count, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).bind(
+            crypto.randomUUID(),
+            snapshotId,
+            row.showcaseId,
+            row.runId,
+            row.rank,
+            row.scoreBps,
+            row.sampleCount,
+            now,
+          ),
         ),
-        eq(
-          resultLeaderboardSnapshots.evaluationVersionId,
-          input.evaluationVersionId,
-        ),
-        eq(resultLeaderboardSnapshots.status, "published"),
-      ),
+    ...(topTenEscalationPending
+      ? []
+      : [
+          env.DB.prepare(
+            `UPDATE result_leaderboard_snapshots
+             SET status = 'superseded'
+             WHERE benchmark_version_id = ? AND evaluation_version_id = ? AND status = 'published'`,
+          ).bind(input.benchmarkVersionId, input.evaluationVersionId),
+          env.DB.prepare(
+             `UPDATE result_leaderboard_snapshots
+             SET status = 'published', published_at = ?
+             WHERE id = ? AND status = 'building'`,
+          ).bind(now, snapshotId),
+        ]),
+  ];
+  if (topTenEscalationPending) {
+    await enqueueTopTenEscalations(
+      ranked.map((row) => ({
+        ...row,
+        evaluationVersionId: input.evaluationVersionId,
+      })),
     );
+  }
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    const [winner] = await getDb()
+      .select()
+      .from(resultLeaderboardSnapshots)
+      .where(
+        and(
+          eq(
+            resultLeaderboardSnapshots.benchmarkVersionId,
+            input.benchmarkVersionId,
+          ),
+          eq(
+            resultLeaderboardSnapshots.evaluationVersionId,
+            input.evaluationVersionId,
+          ),
+          eq(resultLeaderboardSnapshots.resultSetHash, resultSetHash),
+          inArray(resultLeaderboardSnapshots.status, ["building", "published"]),
+        ),
+      )
+      .limit(1);
+    if (winner?.status === "published") {
+      await rebuildResultAggregateSnapshot(input.evaluationVersionId);
+      await enqueueTopTenEscalations(
+        ranked.map((row) => ({
+          ...row,
+          evaluationVersionId: input.evaluationVersionId,
+        })),
+      );
+      return winner;
+    }
+    throw error;
+  }
   const [published] = await getDb()
-    .update(resultLeaderboardSnapshots)
-    .set({ status: "published", publishedAt: now })
+    .select()
+    .from(resultLeaderboardSnapshots)
     .where(eq(resultLeaderboardSnapshots.id, snapshotId))
-    .returning();
-  await enqueueTopTenEscalations(ranked);
+    .limit(1);
+  if (!topTenEscalationPending) {
+    await rebuildResultAggregateSnapshot(input.evaluationVersionId);
+  }
   return published;
 }
 
-async function enqueueTopTenEscalations(
-  ranked: Array<{
-    rank: number;
-    runId: string;
-    sampleCount: number;
-    showcaseId: string;
-  }>,
-) {
+export async function repairBudgetPendingEscalations(limit = 50) {
+  const candidates = await getDb()
+    .select({
+      evaluationVersionId: resultLeaderboardSnapshots.evaluationVersionId,
+      rank: resultLeaderboardEntries.rank,
+      runId: resultLeaderboardEntries.runId,
+      sampleCount: sql<number>`(
+        SELECT count(*)
+        FROM judge_samples AS live_sample
+        WHERE live_sample.run_id = ${resultLeaderboardEntries.runId}
+          AND live_sample.evaluation_version_id = ${resultLeaderboardSnapshots.evaluationVersionId}
+      )`,
+      showcaseId: resultLeaderboardEntries.showcaseId,
+    })
+    .from(resultLeaderboardEntries)
+    .innerJoin(
+      resultLeaderboardSnapshots,
+      eq(resultLeaderboardSnapshots.id, resultLeaderboardEntries.snapshotId),
+    )
+    .innerJoin(
+      evaluationVersions,
+      eq(
+        evaluationVersions.id,
+        resultLeaderboardSnapshots.evaluationVersionId,
+      ),
+    )
+    .where(
+      and(
+        inArray(resultLeaderboardSnapshots.status, ["published", "building"]),
+        eq(evaluationVersions.status, "active"),
+        sql`${resultLeaderboardEntries.rank} <= 10`,
+        sql`(
+          SELECT count(*)
+          FROM judge_samples AS live_sample
+          WHERE live_sample.run_id = ${resultLeaderboardEntries.runId}
+            AND live_sample.evaluation_version_id = ${resultLeaderboardSnapshots.evaluationVersionId}
+        ) < 3`,
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM result_leaderboard_snapshots AS newer_snapshot
+          WHERE newer_snapshot.benchmark_version_id = ${resultLeaderboardSnapshots.benchmarkVersionId}
+            AND newer_snapshot.evaluation_version_id = ${resultLeaderboardSnapshots.evaluationVersionId}
+            AND newer_snapshot.status IN ('building', 'published')
+            AND newer_snapshot.version > ${resultLeaderboardSnapshots.version}
+        )`,
+      ),
+    )
+    .orderBy(resultLeaderboardEntries.rank, resultLeaderboardEntries.runId)
+    .limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
+  await enqueueTopTenEscalations(candidates);
+  return candidates.map((candidate) => candidate.runId);
+}
+
+async function enqueueTopTenEscalations(ranked: TopTenEscalationCandidate[]) {
   const candidates = ranked.filter(
     (row) => row.rank <= 10 && row.sampleCount < 3,
   );
   if (candidates.length === 0) return;
   const { env } = await import("cloudflare:workers");
   for (const candidate of candidates) {
+    const [run] = await getDb()
+      .select({ contributorId: runs.contributorId })
+      .from(runs)
+      .innerJoin(
+        evaluationVersions,
+        and(
+          eq(evaluationVersions.id, candidate.evaluationVersionId),
+          eq(evaluationVersions.status, "active"),
+        ),
+      )
+      .where(
+        and(
+          eq(runs.id, candidate.runId),
+          eq(runs.evaluationVersionId, candidate.evaluationVersionId),
+        ),
+      )
+      .limit(1);
+    if (!run) continue;
+    const repairAttempt = await claimRepairDispatchAttempt({
+      db: env.DB,
+      runId: candidate.runId,
+      stageVersion: TOP_TEN_ESCALATION_STAGE_VERSION,
+    });
+    if (repairAttempt.action === "skip") continue;
+    let reservation:
+      | Awaited<ReturnType<typeof claimJudgeBudget>>
+      | undefined;
+    try {
+      reservation = await claimJudgeBudget({
+        contributorId: run.contributorId,
+        purpose: "top-ten-escalation",
+        runId: candidate.runId,
+        sampleCount: 3 - candidate.sampleCount,
+      });
+    } catch (error) {
+      if (!(error instanceof JudgeBudgetConfigurationError)) throw error;
+    }
+    if (!reservation?.allowed) {
+      await recordRepairDispatch({
+        claimId: repairAttempt.claimId,
+        db: env.DB,
+        errorCode: "judge_budget_denied",
+        outcome: "failed",
+      });
+      continue;
+    }
     await getDb()
       .update(showcases)
       .set({ judgeStatus: "judging", updatedAt: new Date() })
       .where(eq(showcases.id, candidate.showcaseId));
-    await env.JUDGE_QUEUE.send({
-      runId: candidate.runId,
-      stage: "judge",
-      stageVersion: "escalation-k3-v1",
+    try {
+      await env.JUDGE_QUEUE.send({
+        runId: candidate.runId,
+        stage: "judge",
+        stageVersion: TOP_TEN_ESCALATION_STAGE_VERSION,
+      });
+    } catch (error) {
+      await recordRepairDispatch({
+        claimId: repairAttempt.claimId,
+        db: env.DB,
+        errorCode: "queue_unavailable",
+        outcome: "failed",
+      });
+      throw error;
+    }
+    await recordRepairDispatch({
+      claimId: repairAttempt.claimId,
+      db: env.DB,
+      outcome: "queued",
     });
   }
 }

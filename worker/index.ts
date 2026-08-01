@@ -2,7 +2,10 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { publicSecurityHeaders } from "../lib/security/http";
-import type { PipelineMessage } from "../lib/pipeline/messages";
+import {
+  isPipelineStageVersion,
+  type PipelineMessage,
+} from "../lib/pipeline/messages";
 import {
   claimStage,
   completeStage,
@@ -17,19 +20,32 @@ import { judgeRun } from "../lib/judging/judge-run";
 import { transitionRun } from "../lib/data/runs";
 import { getDb } from "../db";
 import { runs, showcases } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { rebuildBenchmarkSnapshot } from "../lib/ranking/snapshots";
 import { appendAuditEvent } from "../lib/data/audit";
 import { rebuildAggregateSnapshots } from "../lib/ranking/aggregates";
-import { rebuildResultLeaderboard } from "../lib/ranking/result-snapshots";
+import {
+  rebuildResultLeaderboard,
+  repairBudgetPendingEscalations,
+} from "../lib/ranking/result-snapshots";
 import { runJudgeCalibration } from "../lib/judging/calibration";
 import {
   recoverStalledPipelineRuns,
+  shouldDelayCommunityPipelineFailure,
   stageClaimDisposition,
 } from "../lib/pipeline/recovery";
 import { processPipelineDeadLetter } from "../lib/pipeline/dead-letter";
 import { sweepExpiredUploadSessions } from "../lib/data/upload-maintenance";
-import { markOverdueResults } from "../lib/data/results";
+import {
+  markOverdueResults,
+  queueMissingPublishedResults,
+} from "../lib/data/results";
+import { selectJudgeDispatchAction } from "../lib/pipeline/judge-dispatch";
+import {
+  reconcileResultSupersessionForRun,
+  repairStaleResultRankingRefreshes,
+} from "../lib/data/result-supersession";
+import { repairDeferredDisputeRejudgments } from "../lib/data/dispute-rejudge";
 
 interface Env {
   ASSETS: Fetcher;
@@ -103,6 +119,7 @@ const worker = {
       }
       try {
         await executePipelineMessage(body);
+        await clearCommunityPipelineDelay(body.runId);
         await completeStage(disposition.claimId);
         message.ack();
       } catch (error) {
@@ -161,6 +178,34 @@ const worker = {
     jobs.push(
       markOverdueResults().catch((error) => {
         console.error("Benchmax overdue result sweep failed", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
+      }),
+    );
+    jobs.push(
+      queueMissingPublishedResults().catch((error) => {
+        console.error("Benchmax result queue repair sweep failed", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
+      }),
+    );
+    jobs.push(
+      repairStaleResultRankingRefreshes().catch((error) => {
+        console.error("Benchmax result ranking refresh sweep failed", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
+      }),
+    );
+    jobs.push(
+      repairBudgetPendingEscalations().catch((error) => {
+        console.error("Benchmax judge escalation budget sweep failed", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
+      }),
+    );
+    jobs.push(
+      repairDeferredDisputeRejudgments().catch((error) => {
+        console.error("Benchmax dispute rejudgment sweep failed", {
           name: error instanceof Error ? error.name : "UnknownError",
         });
       }),
@@ -237,12 +282,16 @@ async function executePipelineMessage(message: PipelineMessage) {
   }
   if (message.stage === "judge") {
     const status = await getRunStatus(message.runId);
-    if (status === "scored") {
+    const action = selectJudgeDispatchAction({
+      stageVersion: message.stageVersion,
+      status,
+    });
+    if (action === "publish") {
       await enqueuePublish(message.runId);
       return;
     }
-    if (status === "published") return;
-    await judgeRun(message.runId);
+    if (action === "skip") return;
+    await judgeRun(message.runId, message.stageVersion);
     await enqueuePublish(message.runId);
     return;
   }
@@ -254,6 +303,7 @@ async function executePipelineMessage(message: PipelineMessage) {
       outputContentHash: runs.outputContentHash,
       contributorId: runs.contributorId,
       rankEligible: runs.rankEligible,
+      overallScoreBps: runs.overallScoreBps,
       showcaseId: runs.showcaseId,
       status: runs.status,
     })
@@ -261,6 +311,7 @@ async function executePipelineMessage(message: PipelineMessage) {
     .where(eq(runs.id, message.runId))
     .limit(1);
   if (!run) return;
+  let newlyPublished = false;
   if (run.status === "scored") {
     const usercontentConfigured = Boolean(
       process.env.NEXT_PUBLIC_USERCONTENT_ORIGIN &&
@@ -278,29 +329,48 @@ async function executePipelineMessage(message: PipelineMessage) {
         publishedAt: new Date(),
       },
     });
-  } else if (run.status !== "published") {
+    newlyPublished = true;
+  } else if (
+    run.status !== "published" &&
+    !(run.showcaseId && run.status === "disqualified")
+  ) {
     return;
   }
-  if (run.rankEligible) {
-    if (run.showcaseId) {
-      await rebuildResultLeaderboard({
-        benchmarkVersionId: run.benchmarkVersionId,
-        evaluationVersionId: run.evaluationVersionId,
-      });
-    } else {
-      await rebuildBenchmarkSnapshot({
-        benchmarkVersionId: run.benchmarkVersionId,
-        evaluationVersionId: run.evaluationVersionId,
-      });
-      await rebuildAggregateSnapshots(run.evaluationVersionId);
+  if (run.showcaseId) {
+    const scopes = await reconcileResultSupersessionForRun(message.runId);
+    for (const scope of scopes) {
+      await rebuildResultLeaderboard(scope);
     }
+    if (
+      run.status !== "disqualified" &&
+      (newlyPublished || run.overallScoreBps !== null)
+    ) {
+      await getDb()
+        .update(showcases)
+        .set({ judgeStatus: "scored", updatedAt: new Date() })
+        .where(
+          and(
+            eq(showcases.id, run.showcaseId),
+            eq(showcases.judgeStatus, "overdue"),
+          ),
+        );
+    }
+  } else if (run.rankEligible) {
+    await rebuildBenchmarkSnapshot({
+      benchmarkVersionId: run.benchmarkVersionId,
+      evaluationVersionId: run.evaluationVersionId,
+    });
+    await rebuildAggregateSnapshots(run.evaluationVersionId);
   }
   await appendAuditEvent({
     actorUserId: null,
     entityType: "run",
     entityId: message.runId,
-    action: "run.published",
-    metadata: { rankEligible: run.rankEligible },
+    action: newlyPublished ? "run.published" : "run.ranking_refreshed",
+    metadata: {
+      rankEligible: run.rankEligible,
+      stageVersion: message.stageVersion,
+    },
   });
 }
 
@@ -311,6 +381,26 @@ async function getRunStatus(runId: string) {
     .where(eq(runs.id, runId))
     .limit(1);
   return run?.status ?? null;
+}
+
+async function clearCommunityPipelineDelay(runId: string) {
+  await getDb()
+    .update(runs)
+    .set({
+      failureCode: null,
+      failureSummary: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(runs.id, runId),
+        eq(runs.credentialMode, "community-submission"),
+        eq(
+          runs.failureSummary,
+          "Infrastructure review is delayed and will retry automatically.",
+        ),
+      ),
+    );
 }
 
 async function handleTerminalPipelineFailure(input: {
@@ -336,12 +426,52 @@ async function failRunAtCurrentStage(
   const [row] = await getDb()
     .select({
       contributorId: runs.contributorId,
+      credentialMode: runs.credentialMode,
+      showcaseId: runs.showcaseId,
       status: runs.status,
     })
     .from(runs)
     .where(eq(runs.id, runId))
     .limit(1);
   if (!row) return;
+  if (
+    shouldDelayCommunityPipelineFailure({
+      credentialMode: row.credentialMode,
+      showcaseId: row.showcaseId,
+      stage,
+      status: row.status,
+    })
+  ) {
+    const now = new Date();
+    const [delayed] = await getDb()
+      .update(runs)
+      .set({
+        failureCode: code,
+        failureSummary:
+          "Infrastructure review is delayed and will retry automatically.",
+        updatedAt: now,
+      })
+      .where(and(eq(runs.id, runId), eq(runs.status, row.status)))
+      .returning({ id: runs.id });
+    if (!delayed) return;
+    await getDb()
+      .update(showcases)
+      .set({ judgeStatus: "overdue", updatedAt: now })
+      .where(
+        and(
+          eq(showcases.id, row.showcaseId!),
+          eq(showcases.status, "published"),
+        ),
+      );
+    await appendAuditEvent({
+      actorUserId: null,
+      entityType: "run",
+      entityId: runId,
+      action: "run.pipeline_delayed",
+      metadata: { code, retry: "scheduled", stage },
+    });
+    return;
+  }
   let failed = false;
   if (
     (stage === "evaluate" || stage === "judge") &&
@@ -405,7 +535,7 @@ function isPipelineMessage(value: unknown): value is PipelineMessage {
     ["evaluate", "judge", "publish"].includes(
       body.stage ?? "",
     ) &&
-    /^[a-z0-9._-]{1,40}$/i.test(body.stageVersion ?? "")
+    isPipelineStageVersion(body.stageVersion)
   );
 }
 

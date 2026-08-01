@@ -16,7 +16,7 @@ export async function rebuildAggregateSnapshots(evaluationVersionId: string) {
   const result = await env.DB.prepare(
     `SELECT
        b.id AS benchmark_id,
-       b.category,
+       bv.category,
        bv.version AS benchmark_version,
        le.configuration_id,
        le.median_score_bps,

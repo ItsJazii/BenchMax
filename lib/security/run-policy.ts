@@ -13,16 +13,21 @@ export type RunStatus =
   | "disqualified";
 
 const transitions: Readonly<Record<RunStatus, ReadonlySet<RunStatus>>> = {
-  draft: new Set(["queued_generation", "generating", "disqualified"]),
-  queued_generation: new Set(["generating", "generation_failed", "disqualified"]),
-  generating: new Set(["generated", "generation_failed", "disqualified"]),
-  generated: new Set(["queued_evaluation", "disqualified"]),
-  queued_evaluation: new Set(["evaluating", "evaluation_failed", "disqualified"]),
+  draft: new Set(["disqualified"]),
+  queued_generation: new Set(),
+  generating: new Set(),
+  generated: new Set(),
+  queued_evaluation: new Set([
+    "evaluating",
+    "judging",
+    "evaluation_failed",
+    "disqualified",
+  ]),
   evaluating: new Set(["judging", "scored", "evaluation_failed", "disqualified"]),
   judging: new Set(["scored", "evaluation_failed", "disqualified"]),
   scored: new Set(["published", "evaluation_failed", "disqualified"]),
   published: new Set(["disqualified"]),
-  generation_failed: new Set(["scored"]),
+  generation_failed: new Set(),
   evaluation_failed: new Set([
     "queued_evaluation",
     "judging",

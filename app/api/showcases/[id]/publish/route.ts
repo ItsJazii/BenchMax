@@ -31,14 +31,27 @@ export async function POST(
     }
     await verifyApprovedShowcaseArtifacts(id);
     const showcase = await publishShowcase(id, user.id);
-    const run = await queuePublishedResult(showcase.id);
+    let run: Awaited<ReturnType<typeof queuePublishedResult>>["run"] | null =
+      null;
+    let judgeQueueDeferred = false;
+    try {
+      const queued = await queuePublishedResult(showcase.id);
+      run = queued.run;
+      judgeQueueDeferred = queued.judgeQueueDeferred;
+    } catch {
+      judgeQueueDeferred = true;
+    }
     await appendAuditEvent({
       actorUserId: user.id,
       entityType: "showcase",
       entityId: showcase.id,
       action: "showcase.published",
+      metadata: { judgeQueueDeferred },
     });
-    return secureJson({ showcase, run });
+    return secureJson(
+      { showcase, run, judgeQueueDeferred },
+      { status: judgeQueueDeferred ? 202 : 200 },
+    );
   } catch (error) {
     return apiErrorResponse(error);
   }

@@ -1,6 +1,5 @@
 import { env } from "cloudflare:workers";
 import { and, eq } from "drizzle-orm";
-import { z } from "zod";
 import { getDb } from "@/db";
 import {
   benchmarkVersions,
@@ -9,6 +8,7 @@ import {
   evaluationVersions,
   judgeSamples,
   objectiveResults,
+  resultSpendRecords,
   resultConfigurations,
   rubricDimensions,
   runArtifacts,
@@ -16,34 +16,38 @@ import {
   showcases,
 } from "@/db/schema";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
-import { assertSafeProviderOrigin } from "@/lib/security/run-policy";
+import { matchesMagicBytes } from "@/lib/security/artifact-inspection";
+import { constantTimeEqualHex, sha256Hex } from "@/lib/security/policy";
 import { transitionRun } from "@/lib/data/runs";
+import { appendAuditEvent } from "@/lib/data/audit";
+import {
+  buildJudgeSpendRecord,
+  judgeRatesFromEnv,
+  recordResultSpend,
+} from "@/lib/data/result-spend";
+import {
+  imageDataUrl,
+  planJudgeMedia,
+  type PlannedJudgeImage,
+} from "./media-evidence";
+import { callPinnedJudge } from "./provider";
 import {
   buildJudgePromptPayload,
   createJudgeOutputSchema,
+  evidenceSufficiencyConsensus,
   median,
+  parseStoredJudgeOutputJson,
   prepareJudgeEvidence,
+  selectResultEligibility,
+  type JudgeOutput,
 } from "./protocol";
+import { requiresJudgeSource } from "./rubric-draft";
+import { extractVideoEvidence } from "./video-frames";
+import { judgeSampleTargetForStage } from "@/lib/pipeline/judge-dispatch";
 
-const providerResponseSchema = z
-  .object({
-    choices: z
-      .array(
-        z.object({
-          message: z.object({ content: z.string().min(2).max(100_000) }),
-        }),
-      )
-      .min(1),
-    usage: z
-      .object({
-        prompt_tokens: z.number().int().nonnegative().optional(),
-        completion_tokens: z.number().int().nonnegative().optional(),
-      })
-      .optional(),
-  })
-  .passthrough();
+export { callPinnedJudge } from "./provider";
 
-export async function judgeRun(runId: string) {
+export async function judgeRun(runId: string, stageVersion = "1") {
   const contract = await loadJudgeContract(runId);
   if (!contract) throw new JudgeContractError("missing_contract");
   if (contract.evaluationStatus !== "active") {
@@ -80,9 +84,12 @@ export async function judgeRun(runId: string) {
     .select()
     .from(objectiveResults)
     .where(eq(objectiveResults.runId, runId));
-  const screenshot = await loadBoundedScreenshot(runId);
+  const mediaEvidence = await loadJudgeMediaEvidence(
+    runId,
+    contract.evaluationVersionId,
+  );
   const needsSource = judgeDimensions.some(
-    (dimension) => dimension.judgeSourceRequired,
+    requiresJudgeSource,
   );
   const objectiveEvidence = inputObjectiveEvidence(objectiveRows);
   const preparedEvidence = prepareJudgeEvidence({
@@ -97,6 +104,13 @@ export async function judgeRun(runId: string) {
         value: evidence.manifest,
       },
       ...evidence.textEvidence,
+      {
+        label: "bounded-media-inspection",
+        value: {
+          ...mediaEvidence.manifest,
+          videoInspection: mediaEvidence.videoInspection,
+        },
+      },
     ],
     sourceBytes,
   });
@@ -107,14 +121,31 @@ export async function judgeRun(runId: string) {
       .set({ injectionFlag: true, rankEligible: false, updatedAt: new Date() })
       .where(eq(runs.id, runId));
     if (contract.showcaseId) {
+      const nextJudgeStatus = "judging" as const;
+      const nextRankingStatus = "moderation_hold" as const;
       await getDb()
         .update(showcases)
         .set({
-          judgeStatus: "judging",
-          rankingStatus: "moderation_hold",
+          judgeStatus: nextJudgeStatus,
+          rankingStatus: nextRankingStatus,
           updatedAt: new Date(),
         })
         .where(eq(showcases.id, contract.showcaseId));
+      if (
+        contract.showcaseJudgeStatus !== nextJudgeStatus ||
+        contract.showcaseRankingStatus !== nextRankingStatus
+      ) {
+        await appendShowcaseJudgeAxisAudit({
+          evidenceSufficient: null,
+          nextJudgeStatus,
+          nextRankingStatus,
+          previousJudgeStatus: contract.showcaseJudgeStatus,
+          previousRankingStatus: contract.showcaseRankingStatus,
+          runId,
+          sampleCount: 0,
+          showcaseId: contract.showcaseId,
+        });
+      }
     }
   }
   const prompt = buildJudgePrompt({
@@ -124,19 +155,15 @@ export async function judgeRun(runId: string) {
     rubric: judgeDimensions,
     untrustedEvidence: preparedEvidence.untrustedEvidence,
   });
-  const outputSchema = createJudgeOutputSchema(
-    judgeDimensions.map((dimension) => dimension.key),
-  );
+  const dimensionKeys = judgeDimensions.map((dimension) => dimension.key);
+  const outputSchema = createJudgeOutputSchema(dimensionKeys);
 
-  const samples: Array<z.infer<typeof outputSchema>> = [];
-  const sampleTarget =
-    contract.credentialMode === "community-submission"
-      ? contract.showcaseJudgeStatus === "judging" &&
-        (contract.runStatus === "scored" ||
-          contract.runStatus === "published")
-        ? 3
-        : 1
-      : contract.sampleCount;
+  const samples: JudgeOutput[] = [];
+  const sampleTarget = judgeSampleTargetForStage({
+    credentialMode: contract.credentialMode,
+    configuredSampleCount: contract.sampleCount,
+    stageVersion,
+  });
   for (let sampleIndex = 1; sampleIndex <= sampleTarget; sampleIndex += 1) {
     const existing = await getDb()
       .select({ structuredOutputJson: judgeSamples.structuredOutputJson })
@@ -150,20 +177,62 @@ export async function judgeRun(runId: string) {
       )
       .limit(1);
     if (existing[0]) {
-      samples.push(outputSchema.parse(JSON.parse(existing[0].structuredOutputJson)));
+      samples.push(
+        parseStoredJudgeOutputJson(
+          dimensionKeys,
+          existing[0].structuredOutputJson,
+        ),
+      );
       continue;
     }
+    const judgeRates = judgeRatesFromEnv();
     const startedAt = Date.now();
-    const response = await callPinnedJudge({
-      endpointOrigin: contract.judgeEndpointOrigin,
-      maxTokens: contract.maxTokensPerSample,
-      model: contract.judgeModel,
-      prompt: `${contract.promptTemplate}\n\n${prompt}`,
-      screenshot,
-    });
-    const structured = outputSchema.parse(JSON.parse(response.content));
+    const attemptNonce = crypto.randomUUID();
+    let response: Awaited<ReturnType<typeof callPinnedJudge>>;
+    try {
+      response = await callPinnedJudge({
+        endpointOrigin: contract.judgeEndpointOrigin,
+        maxTokens: contract.maxTokensPerSample,
+        model: contract.judgeModelVersion,
+        prompt: `${contract.promptTemplate}\n\n${prompt}`,
+        images: mediaEvidence.images,
+      });
+    } catch (error) {
+      await recordResultSpend(
+        await buildJudgeSpendRecord({
+          attemptKey: `judge:${runId}:${contract.evaluationVersionId}:${sampleIndex}:failed:${attemptNonce}`,
+          durationMs: Math.max(0, Date.now() - startedAt),
+          evaluationVersionId: contract.evaluationVersionId,
+          inputTokens: null,
+          outputTokens: null,
+          runId,
+          sampleIndex,
+          status: "failed",
+        }, judgeRates),
+      );
+      throw error;
+    }
+    let structured: JudgeOutput;
+    try {
+      structured = outputSchema.parse(JSON.parse(response.content));
+    } catch (error) {
+      await recordResultSpend(
+        await buildJudgeSpendRecord({
+          attemptKey: `judge:${runId}:${contract.evaluationVersionId}:${sampleIndex}:invalid:${attemptNonce}`,
+          durationMs: Math.max(0, Date.now() - startedAt),
+          evaluationVersionId: contract.evaluationVersionId,
+          inputTokens: response.inputTokens,
+          outputTokens: response.outputTokens,
+          runId,
+          sampleIndex,
+          status: "failed",
+        }, judgeRates),
+      );
+      throw error;
+    }
     const structuredOutputJson = canonicalJson(structured);
-    await getDb().insert(judgeSamples).values({
+    const durationMs = Math.max(0, Date.now() - startedAt);
+    const judgeSample = {
       id: crypto.randomUUID(),
       runId,
       evaluationVersionId: contract.evaluationVersionId,
@@ -173,11 +242,54 @@ export async function judgeRun(runId: string) {
       injectionFlag: injection.flagged,
       inputTokens: response.inputTokens,
       outputTokens: response.outputTokens,
-      durationMs: Math.max(0, Date.now() - startedAt),
+      durationMs,
       createdAt: new Date(),
-    });
+    } satisfies typeof judgeSamples.$inferInsert;
+    const spendRecord = await buildJudgeSpendRecord(
+      {
+        attemptKey: `judge:${runId}:${contract.evaluationVersionId}:${sampleIndex}:completed:${attemptNonce}`,
+        durationMs,
+        evaluationVersionId: contract.evaluationVersionId,
+        inputTokens: response.inputTokens,
+        outputTokens: response.outputTokens,
+        runId,
+        sampleIndex,
+        status: "completed",
+      },
+      judgeRates,
+    );
+    const db = getDb();
+    await db.batch([
+      db.insert(judgeSamples).values(judgeSample).onConflictDoNothing(),
+      db.insert(resultSpendRecords).values(spendRecord).onConflictDoNothing(),
+    ]);
     samples.push(structured);
   }
+
+  const evidenceSufficient = evidenceSufficiencyConsensus(
+    samples.map((sample) => ({
+      evidenceSufficient: sample.evidence_sufficient,
+    })),
+  );
+  const eligibility = selectResultEligibility({
+    catalogCanonical: contract.catalogStatus === "canonical",
+    evidenceSufficient,
+    injectionFlag: injection.flagged,
+    safetyApproved: true,
+  });
+  await appendAuditEvent({
+    actorUserId: null,
+    entityType: "run",
+    entityId: runId,
+    action: "judge.evidence_sufficiency_decided",
+    metadata: {
+      evidenceSufficient,
+      sampleCount: samples.length,
+      sufficientSampleCount: samples.filter(
+        (sample) => sample.evidence_sufficient,
+      ).length,
+    },
+  });
 
   const objectiveScoreBps = weightedObjectiveScore(objectiveRows);
   const judgeScores = new Map<string, number>();
@@ -280,8 +392,7 @@ export async function judgeRun(runId: string) {
       to: "scored",
       patch: {
         overallScoreBps,
-        rankEligible:
-          !injection.flagged && contract.catalogStatus === "canonical",
+        rankEligible: eligibility.rankEligible,
         scoredAt: new Date(),
       },
     });
@@ -290,28 +401,48 @@ export async function judgeRun(runId: string) {
       .update(runs)
       .set({
         overallScoreBps,
-        rankEligible:
-          !injection.flagged && contract.catalogStatus === "canonical",
+        rankEligible: eligibility.rankEligible,
         scoredAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(runs.id, runId));
   }
   if (contract.showcaseId) {
+    const previousJudgeStatus = injection.flagged
+      ? "judging"
+      : contract.showcaseJudgeStatus;
+    const previousRankingStatus = injection.flagged
+      ? "moderation_hold"
+      : contract.showcaseRankingStatus;
     await getDb()
       .update(showcases)
       .set({
         judgeStatus: "scored",
-        rankingStatus: injection.flagged
-          ? "moderation_hold"
-          : contract.catalogStatus === "canonical"
-            ? "eligible"
-            : "catalog_pending",
+        rankingStatus: eligibility.rankingStatus,
         updatedAt: new Date(),
       })
       .where(eq(showcases.id, contract.showcaseId));
+    if (
+      previousJudgeStatus !== "scored" ||
+      previousRankingStatus !== eligibility.rankingStatus
+    ) {
+      await appendShowcaseJudgeAxisAudit({
+        evidenceSufficient,
+        nextJudgeStatus: "scored",
+        nextRankingStatus: eligibility.rankingStatus,
+        previousJudgeStatus,
+        previousRankingStatus,
+        runId,
+        sampleCount: samples.length,
+        showcaseId: contract.showcaseId,
+      });
+    }
   }
-  return { injectionFlag: injection.flagged, overallScoreBps };
+  return {
+    evidenceSufficient,
+    injectionFlag: injection.flagged,
+    overallScoreBps,
+  };
 }
 
 async function loadJudgeContract(runId: string) {
@@ -324,7 +455,7 @@ async function loadJudgeContract(runId: string) {
       evaluationStatus: evaluationVersions.status,
       evaluationVersionId: evaluationVersions.id,
       judgeEndpointOrigin: evaluationVersions.endpointOrigin,
-      judgeModel: evaluationVersions.judgeModel,
+      judgeModelVersion: evaluationVersions.judgeModelVersion,
       judgeWeightBps: benchmarkVersions.judgeWeightBps,
       maxTokensPerSample: evaluationVersions.maxTokensPerSample,
       objectiveWeightBps: benchmarkVersions.objectiveWeightBps,
@@ -333,6 +464,7 @@ async function loadJudgeContract(runId: string) {
       sampleCount: evaluationVersions.sampleCount,
       showcaseId: runs.showcaseId,
       showcaseJudgeStatus: showcases.judgeStatus,
+      showcaseRankingStatus: showcases.rankingStatus,
     })
     .from(runs)
     .innerJoin(
@@ -351,6 +483,37 @@ async function loadJudgeContract(runId: string) {
     .where(eq(runs.id, runId))
     .limit(1);
   return row ?? null;
+}
+
+async function appendShowcaseJudgeAxisAudit(input: {
+  evidenceSufficient: boolean | null;
+  nextJudgeStatus: string;
+  nextRankingStatus: string;
+  previousJudgeStatus: string | null;
+  previousRankingStatus: string | null;
+  runId: string;
+  sampleCount: number;
+  showcaseId: string;
+}) {
+  await appendAuditEvent({
+    actorUserId: null,
+    entityType: "showcase",
+    entityId: input.showcaseId,
+    action: "showcase.judge_axes_changed",
+    metadata: {
+      evidenceSufficient: input.evidenceSufficient,
+      judgeStatus: {
+        from: input.previousJudgeStatus,
+        to: input.nextJudgeStatus,
+      },
+      rankingStatus: {
+        from: input.previousRankingStatus,
+        to: input.nextRankingStatus,
+      },
+      runId: input.runId,
+      sampleCount: input.sampleCount,
+    },
+  });
 }
 
 async function loadCommunityEvidence(
@@ -386,6 +549,8 @@ async function loadCommunityEvidence(
     .select({
       byteSize: artifacts.byteSize,
       contentType: artifacts.contentType,
+      createdAt: artifacts.createdAt,
+      id: artifacts.id,
       kind: artifacts.kind,
       objectKey: artifacts.objectKey,
     })
@@ -395,7 +560,8 @@ async function loadCommunityEvidence(
         eq(artifacts.showcaseId, showcaseId),
         eq(artifacts.quarantineStatus, "approved"),
       ),
-    );
+    )
+    .orderBy(artifacts.createdAt, artifacts.id);
   let sourceBytes: Uint8Array | null = null;
   const textEvidence: Array<{ label: string; value: unknown }> = [];
   for (const [index, row] of rows.entries()) {
@@ -407,7 +573,9 @@ async function loadCommunityEvidence(
       )
     ) {
       const object = await env.UPLOADS.get(row.objectKey);
-      if (object) sourceBytes = new Uint8Array(await object.arrayBuffer());
+      if (object && sourceBytes === null) {
+        sourceBytes = new Uint8Array(await object.arrayBuffer());
+      }
     } else if (
       (row.kind === "source" || row.kind === "log") &&
       (row.contentType.startsWith("text/") ||
@@ -434,26 +602,60 @@ async function loadCommunityEvidence(
   };
 }
 
-async function loadBoundedScreenshot(runId: string) {
-  const [artifact] = await getDb()
-    .select({ objectKey: runArtifacts.objectKey, byteSize: runArtifacts.byteSize })
+async function loadJudgeMediaEvidence(
+  runId: string,
+  evaluationVersionId: string,
+) {
+  const rows = await getDb()
+    .select({
+      byteSize: runArtifacts.byteSize,
+      contentType: runArtifacts.contentType,
+      createdAt: runArtifacts.createdAt,
+      id: runArtifacts.id,
+      kind: runArtifacts.kind,
+      objectKey: runArtifacts.objectKey,
+      sha256: runArtifacts.sha256,
+    })
     .from(runArtifacts)
-    .where(
-      and(
-        eq(runArtifacts.runId, runId),
-        eq(runArtifacts.kind, "screenshot"),
-      ),
-    )
-    .limit(1);
-  if (!artifact || artifact.byteSize > 5 * 1024 * 1024) return null;
-  const object = await env.UPLOADS.get(artifact.objectKey);
-  if (!object) return null;
-  const bytes = new Uint8Array(await object.arrayBuffer());
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    .where(eq(runArtifacts.runId, runId))
+    .orderBy(runArtifacts.createdAt, runArtifacts.id);
+  const plan = planJudgeMedia(rows);
+  const images: string[] = [];
+  for (const image of plan.images) {
+    images.push(await loadImageEvidence(image));
   }
-  return `data:image/png;base64,${btoa(binary)}`;
+  const video = await extractVideoEvidence({
+    evaluationVersionId,
+    getObject: (objectKey) => env.UPLOADS.get(objectKey),
+    runId,
+    videos: plan.videos,
+  });
+  return {
+    images: [...images, ...video.images],
+    manifest: plan.manifest,
+    videoInspection: video.inspection,
+  };
+}
+
+async function loadImageEvidence(image: PlannedJudgeImage) {
+  const object = await env.UPLOADS.get(image.objectKey);
+  if (
+    !object ||
+    object.size !== image.byteSize ||
+    object.httpMetadata?.contentType !== image.contentType
+  ) {
+    throw new JudgeContractError("image_evidence_integrity_mismatch");
+  }
+  const bytes = new Uint8Array(await object.arrayBuffer());
+  const sha256 = await sha256Hex(bytes.slice().buffer);
+  if (
+    bytes.byteLength !== image.byteSize ||
+    !matchesMagicBytes(image.contentType, bytes.subarray(0, 64)) ||
+    !constantTimeEqualHex(sha256, image.sha256)
+  ) {
+    throw new JudgeContractError("image_evidence_integrity_mismatch");
+  }
+  return imageDataUrl(bytes, image.contentType);
 }
 
 function buildJudgePrompt(input: {
@@ -486,52 +688,6 @@ function inputObjectiveEvidence(
   }));
 }
 
-export async function callPinnedJudge(input: {
-  endpointOrigin: string;
-  maxTokens: number;
-  model: string;
-  prompt: string;
-  screenshot: string | null;
-}) {
-  let origin: URL;
-  try {
-    origin = assertSafeProviderOrigin(input.endpointOrigin);
-  } catch {
-    throw new JudgeConfigurationError("judgeEndpointOrigin");
-  }
-  const endpoint = new URL("/v1/chat/completions", origin);
-  const content: Array<Record<string, unknown>> = [
-    { type: "text", text: input.prompt },
-  ];
-  if (input.screenshot) {
-    content.push({
-      type: "image_url",
-      image_url: { url: input.screenshot, detail: "high" },
-    });
-  }
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${requiredSecret("JUDGE_API_KEY")}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: input.model,
-      messages: [{ role: "user", content }],
-      max_completion_tokens: input.maxTokens,
-      temperature: 0,
-      response_format: { type: "json_object" },
-    }),
-  });
-  if (!response.ok) throw new JudgeProviderError(response.status);
-  const raw = providerResponseSchema.parse(await response.json());
-  return {
-    content: raw.choices[0].message.content,
-    inputTokens: raw.usage?.prompt_tokens ?? null,
-    outputTokens: raw.usage?.completion_tokens ?? null,
-  };
-}
-
 function weightedObjectiveScore(
   rows: Array<typeof objectiveResults.$inferSelect>,
   fallback = 0,
@@ -554,29 +710,9 @@ function weightedObjectiveScore(
   );
 }
 
-function requiredSecret(name: string) {
-  const value = process.env[name]?.trim();
-  if (!value || value.length > 4096) throw new JudgeConfigurationError(name);
-  return value;
-}
-
 export class JudgeContractError extends Error {
   constructor(readonly code: string) {
     super("The pinned judge contract is unavailable.");
     this.name = "JudgeContractError";
-  }
-}
-
-export class JudgeConfigurationError extends Error {
-  constructor(readonly key: string) {
-    super("The pinned judge is not configured.");
-    this.name = "JudgeConfigurationError";
-  }
-}
-
-export class JudgeProviderError extends Error {
-  constructor(readonly status: number) {
-    super("The pinned judge provider did not complete the request.");
-    this.name = "JudgeProviderError";
   }
 }

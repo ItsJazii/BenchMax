@@ -20,6 +20,32 @@ export type ManualRetryPlan = {
   targetStatus: "queued_evaluation" | "judging" | "scored";
 };
 
+export function shouldDelayCommunityPipelineFailure(input: {
+  credentialMode: string;
+  showcaseId: string | null;
+  stage: PipelineStage;
+  status: RunStatus;
+}) {
+  if (
+    input.credentialMode !== "community-submission" ||
+    !input.showcaseId
+  ) {
+    return false;
+  }
+  if (input.stage === "publish") return input.status === "scored";
+  if (input.stage === "evaluate") {
+    return (
+      input.status === "queued_evaluation" || input.status === "evaluating"
+    );
+  }
+  return (
+    input.status === "evaluating" ||
+    input.status === "judging" ||
+    input.status === "scored" ||
+    input.status === "published"
+  );
+}
+
 export function manualRetryPlan(
   failedStage: PipelineStage | null,
   options: { alreadyScored?: boolean } = {},
@@ -67,7 +93,6 @@ export function recoveryStageForRun(input: {
   completedPublish?: boolean;
   status: RunStatus;
 }): PipelineStage | null {
-  if (input.status === "generated") return "evaluate";
   if (
     input.status === "queued_evaluation" ||
     input.status === "evaluating"
@@ -114,6 +139,11 @@ export async function recoverStalledPipelineRuns(input: {
          r.id AS run_id,
          r.status,
          EXISTS(
+           SELECT 1 FROM judge_budget_reservations budget
+           WHERE budget.run_id = r.id
+             AND budget.purpose = 'initial'
+         ) AS initial_budget_reserved,
+         EXISTS(
            SELECT 1 FROM run_stage_claims c
            WHERE c.run_id = r.id
              AND c.stage = 'evaluate'
@@ -128,8 +158,8 @@ export async function recoverStalledPipelineRuns(input: {
              AND c.status = 'completed'
          ) AS completed_publish
        FROM runs r
-       WHERE r.status IN (
-         'generated',
+       WHERE r.credential_mode = 'community-submission'
+       AND r.status IN (
          'queued_evaluation',
          'evaluating',
          'judging',
@@ -151,6 +181,7 @@ export async function recoverStalledPipelineRuns(input: {
     .all<{
       completed_evaluate: number;
       completed_publish: number;
+      initial_budget_reserved: number;
       run_id: string;
       status: RunStatus;
     }>();
@@ -166,22 +197,11 @@ export async function recoverStalledPipelineRuns(input: {
       status: candidate.status,
     });
     if (!stage) continue;
+    if (stage !== "publish" && !Boolean(candidate.initial_budget_reserved)) {
+      continue;
+    }
 
-    if (candidate.status === "generated") {
-      const transitioned = await input.db
-        .prepare(
-          `UPDATE runs
-           SET status = 'queued_evaluation', updated_at = ?
-           WHERE id = ? AND status = 'generated'`,
-        )
-        .bind(now, candidate.run_id)
-        .run();
-      if (transitioned.meta.changes !== 1) continue;
-      statusTransition = {
-        from: "generated",
-        to: "queued_evaluation",
-      };
-    } else if (
+    if (
       candidate.status === "queued_evaluation" &&
       stage === "judge"
     ) {
@@ -208,10 +228,7 @@ export async function recoverStalledPipelineRuns(input: {
     try {
       await queueForStage(input.queues, stage).send(message);
     } catch (error) {
-      if (
-        candidate.status === "generated" ||
-        candidate.status === "queued_evaluation"
-      ) {
+      if (candidate.status === "queued_evaluation") {
         await input.db
           .prepare(
             `UPDATE runs

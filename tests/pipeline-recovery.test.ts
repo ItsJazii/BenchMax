@@ -10,12 +10,43 @@ import {
   manualRetryPlan,
   recoverStalledPipelineRuns,
   recoveryStageForRun,
+  shouldDelayCommunityPipelineFailure,
   stageClaimDisposition,
 } from "../lib/pipeline/recovery";
 import { processPipelineDeadLetter } from "../lib/pipeline/dead-letter";
 import { isAllowedRunTransition } from "../lib/security/run-policy";
-import type { PipelineMessage, PipelineStage } from "../lib/pipeline/messages";
+import {
+  isPipelineStageVersion,
+  type PipelineMessage,
+  type PipelineStage,
+} from "../lib/pipeline/messages";
+import {
+  MODERATOR_REJUDGE_STAGE_VERSION,
+  TOP_TEN_ESCALATION_STAGE_VERSION,
+} from "../lib/pipeline/judge-dispatch";
 import type { RunStatus } from "../lib/security/run-policy";
+import {
+  communityJudgeDeadline,
+  formatDeterministicRunId,
+  initialCommunityRunStatus,
+  REPAIRABLE_COMMUNITY_RUN_STATUSES,
+  selectResultDispatchAction,
+} from "../lib/pipeline/result-dispatch";
+
+test("pipeline stage versions accept bounded refresh idempotency tokens", () => {
+  assert.equal(
+    isPipelineStageVersion(`catalog-approved-${crypto.randomUUID()}`),
+    true,
+  );
+  assert.equal(
+    isPipelineStageVersion(
+      `ranking-catalog-approved-${crypto.randomUUID()}`,
+    ),
+    true,
+  );
+  assert.equal(isPipelineStageVersion("x".repeat(129)), false);
+  assert.equal(isPipelineStageVersion("invalid stage"), false);
+});
 
 class MemoryStageClaimRepository implements StageClaimRepository {
   private readonly rows = new Map<string, StoredStageClaim>();
@@ -152,6 +183,33 @@ test("busy stage claims retry, completed duplicates ack, and reclaims rotate ide
   assert.deepEqual(stageClaimDisposition(duplicate, now), { action: "ack" });
 });
 
+test("failed three-sample judge stage versions can be re-enqueued", async () => {
+  let now = 1_000;
+  let sequence = 0;
+  const service = createStageClaimService(new MemoryStageClaimRepository(), {
+    now: () => now,
+    randomUUID: () => `claim-${++sequence}`,
+  });
+  for (const [index, stageVersion] of [
+    TOP_TEN_ESCALATION_STAGE_VERSION,
+    MODERATOR_REJUDGE_STAGE_VERSION,
+  ].entries()) {
+    const input = {
+      runId: `11111111-1111-4111-8111-11111111111${index}`,
+      stage: "judge" as const,
+      stageVersion,
+    };
+    const claimed = await service.claim(input);
+    if (claimed.status !== "claimed") assert.fail("stage should be claimed");
+    await service.fail(claimed.id, "judge_unavailable");
+    now += 1;
+    const requeued = await service.claim(input);
+    assert.equal(requeued.status, "claimed");
+    if (requeued.status !== "claimed") assert.fail("stage should re-open");
+    assert.equal(requeued.attemptCount, 2);
+  }
+});
+
 test("manual recovery resumes the failed evaluate, judge, or publish stage", () => {
   assert.deepEqual(manualRetryPlan("evaluate"), {
     queue: "evaluate",
@@ -179,9 +237,90 @@ test("manual recovery resumes the failed evaluate, judge, or publish stage", () 
   );
   assert.equal(isAllowedRunTransition("evaluation_failed", "judging"), true);
   assert.equal(isAllowedRunTransition("evaluation_failed", "scored"), true);
+  assert.equal(isAllowedRunTransition("queued_evaluation", "judging"), true);
   assert.equal(isAllowedRunTransition("scored", "evaluation_failed"), true);
   assert.equal(isAllowedRunTransition("published", "scored"), false);
   assert.equal(isAllowedRunTransition("published", "evaluation_failed"), false);
+});
+
+test("community result dispatch is repairable without regressing progressed runs", () => {
+  assert.deepEqual(REPAIRABLE_COMMUNITY_RUN_STATUSES, [
+    "queued_evaluation",
+    "evaluating",
+    "judging",
+  ]);
+  assert.equal(initialCommunityRunStatus(true), "queued_evaluation");
+  assert.equal(initialCommunityRunStatus(false), "judging");
+  assert.equal(
+    selectResultDispatchAction({
+      requiresEvaluation: true,
+      status: "queued_evaluation",
+    }),
+    "evaluate",
+  );
+  assert.equal(
+    selectResultDispatchAction({
+      requiresEvaluation: true,
+      status: "evaluating",
+    }),
+    "evaluate",
+  );
+  for (const status of ["queued_evaluation", "evaluating"]) {
+    assert.equal(
+      selectResultDispatchAction({
+        requiresEvaluation: false,
+        status,
+      }),
+      "move-to-judge",
+    );
+  }
+  assert.equal(
+    selectResultDispatchAction({
+      requiresEvaluation: false,
+      status: "judging",
+    }),
+    "judge",
+  );
+  for (const status of [
+    "scored",
+    "published",
+    "evaluation_failed",
+    "disqualified",
+  ]) {
+    assert.equal(
+      selectResultDispatchAction({
+        requiresEvaluation: false,
+        status,
+      }),
+      "none",
+    );
+  }
+});
+
+test("deterministic community run IDs remain valid pipeline message IDs", () => {
+  const digest = "0123456789abcdef".repeat(4);
+  const runId = formatDeterministicRunId(digest);
+  assert.equal(runId, "01234567-89ab-cdef-0123-456789abcdef");
+  assert.match(runId, /^[0-9a-f-]{36}$/u);
+  assert.equal(formatDeterministicRunId(digest), runId);
+  assert.throws(() => formatDeterministicRunId("not-a-sha256"));
+});
+
+test("community judge deadline remains anchored to publication during repair", () => {
+  const publishedAt = new Date("2026-07-31T00:00:00.000Z");
+  const repairedAt = new Date("2026-08-02T12:00:00.000Z");
+  assert.equal(
+    communityJudgeDeadline(publishedAt, repairedAt).toISOString(),
+    "2026-08-01T00:00:00.000Z",
+  );
+  assert.equal(
+    communityJudgeDeadline(null, repairedAt).toISOString(),
+    "2026-08-03T12:00:00.000Z",
+  );
+  assert.equal(
+    communityJudgeDeadline(new Date(Number.NaN), repairedAt).toISOString(),
+    "2026-08-03T12:00:00.000Z",
+  );
 });
 
 test("stalled-run stage selection advances past a completed evaluation", () => {
@@ -200,12 +339,71 @@ test("stalled-run stage selection advances past a completed evaluation", () => {
     null,
   );
   assert.equal(recoveryStageForRun({ status: "published" }), null);
+  assert.equal(recoveryStageForRun({ status: "generated" }), null);
+});
+
+test("community infrastructure failures remain active for scheduled recovery", () => {
+  assert.equal(
+    shouldDelayCommunityPipelineFailure({
+      credentialMode: "community-submission",
+      showcaseId: "showcase-1",
+      stage: "evaluate",
+      status: "evaluating",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldDelayCommunityPipelineFailure({
+      credentialMode: "community-submission",
+      showcaseId: "showcase-1",
+      stage: "judge",
+      status: "judging",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldDelayCommunityPipelineFailure({
+      credentialMode: "community-submission",
+      showcaseId: "showcase-1",
+      stage: "publish",
+      status: "scored",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldDelayCommunityPipelineFailure({
+      credentialMode: "community-submission",
+      showcaseId: "showcase-1",
+      stage: "judge",
+      status: "published",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldDelayCommunityPipelineFailure({
+      credentialMode: "legacy-provider",
+      showcaseId: null,
+      stage: "judge",
+      status: "judging",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldDelayCommunityPipelineFailure({
+      credentialMode: "community-submission",
+      showcaseId: "showcase-1",
+      stage: "evaluate",
+      status: "published",
+    }),
+    false,
+  );
 });
 
 test("sweeper re-enqueues each stalled run on the correct queue", async () => {
   const candidates: Array<{
     completed_evaluate: number;
     completed_publish: number;
+    initial_budget_reserved: number;
     run_id: string;
     status: RunStatus;
   }> = [
@@ -216,11 +414,14 @@ test("sweeper re-enqueues each stalled run on the correct queue", async () => {
     candidate("run-judge", "evaluating", { completedEvaluate: true }),
     candidate("run-publish", "scored"),
     candidate("run-published", "scored", { completedPublish: true }),
+    candidate("run-budget-deferred", "judging", { budgetReserved: false }),
     candidate("run-generated", "generated"),
   ];
   const updates: Array<{ args: unknown[]; query: string }> = [];
+  const preparedQueries: string[] = [];
   const db = {
     prepare(query: string) {
+      preparedQueries.push(query);
       return {
         bind(...args: unknown[]) {
           return {
@@ -264,21 +465,28 @@ test("sweeper re-enqueues each stalled run on the correct queue", async () => {
     },
   });
 
-  assert.deepEqual(sent.evaluate.map(summary), [
-    "run-evaluate:evaluate",
-    "run-generated:evaluate",
-  ]);
+  assert.deepEqual(sent.evaluate.map(summary), ["run-evaluate:evaluate"]);
+  assert.ok(
+    preparedQueries.some((query) =>
+      query.includes("r.credential_mode = 'community-submission'"),
+    ),
+  );
+  assert.ok(
+    preparedQueries.some((query) =>
+      query.includes("budget.purpose = 'initial'"),
+    ),
+  );
   assert.deepEqual(sent.judge.map(summary), [
     "run-evaluate-complete:judge",
     "run-judge:judge",
     "run-publish:publish",
   ]);
-  assert.equal(recovered.length, 5);
+  assert.equal(recovered.length, 4);
   assert.ok(
-    updates.some(
-      ({ args, query }) =>
-        query.includes("status = 'queued_evaluation'") &&
-        args.includes("run-generated"),
+    updates.every(
+      ({ args }) =>
+        !args.includes("run-generated") &&
+        !args.includes("run-budget-deferred"),
     ),
   );
   assert.ok(
@@ -292,10 +500,7 @@ test("sweeper re-enqueues each stalled run on the correct queue", async () => {
     updates
       .filter(({ query }) => query === "AUDIT TRANSITION")
       .map(({ args }) => args.join(":")),
-    [
-      "run-evaluate-complete:queued_evaluation:evaluating:judge",
-      "run-generated:generated:queued_evaluation:evaluate",
-    ],
+    ["run-evaluate-complete:queued_evaluation:evaluating:judge"],
   );
 });
 
@@ -354,6 +559,7 @@ function candidate(
   runId: string,
   status: RunStatus,
   options: {
+    budgetReserved?: boolean;
     completedEvaluate?: boolean;
     completedPublish?: boolean;
   } = {},
@@ -361,6 +567,7 @@ function candidate(
   return {
     completed_evaluate: Number(options.completedEvaluate ?? false),
     completed_publish: Number(options.completedPublish ?? false),
+    initial_budget_reserved: Number(options.budgetReserved ?? true),
     run_id: runId,
     status,
   };

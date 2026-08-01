@@ -26,7 +26,11 @@ export async function POST(
     });
     const { id } = await context.params;
     const run = await getOwnedRun(id, user.id);
-    if (!run || run.status !== "evaluation_failed") {
+    if (
+      !run ||
+      run.credentialMode !== "community-submission" ||
+      run.status !== "evaluation_failed"
+    ) {
       return secureJson(
         { error: "A retryable evaluation was not found." },
         { status: 404 },
@@ -55,7 +59,6 @@ export async function POST(
           .update(showcases)
           .set({
             judgeStatus: "queued",
-            judgeDueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
             updatedAt: new Date(),
           })
           .where(eq(showcases.id, run.showcaseId));

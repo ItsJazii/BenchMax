@@ -79,6 +79,8 @@ try {
     ({ fixedClock, seed }) => {
       const fixed = new Date(fixedClock).getTime();
       const RealDate = Date;
+      const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
+      const monotonicNow = globalThis.performance.now.bind(globalThis.performance);
       class FixedDate extends RealDate {
         constructor(...args) {
           super(...(args.length ? args : [fixed]));
@@ -93,6 +95,38 @@ try {
         state = (state * 1664525 + 1013904223) >>> 0;
         return state / 4294967296;
       };
+      Object.defineProperty(globalThis, "__benchmaxSampleFrameRate", {
+        configurable: false,
+        writable: false,
+        value: () =>
+          new Promise((resolve) => {
+            let settled = false;
+            let frames = 0;
+            const started = monotonicNow();
+            const finish = (result) => {
+              if (settled) return;
+              settled = true;
+              resolve(result);
+            };
+            nativeSetTimeout(
+              () => finish({ fps: 0, timedOut: true }),
+              4_000,
+            );
+            const scheduleFrame = globalThis.requestAnimationFrame.bind(globalThis);
+            const sample = (now) => {
+              frames += 1;
+              if (now - started >= 2_000) {
+                finish({
+                  fps: Math.round((frames * 1_000) / (now - started)),
+                  timedOut: false,
+                });
+              } else {
+                scheduleFrame(sample);
+              }
+            };
+            scheduleFrame(sample);
+          }),
+      });
     },
     { fixedClock: spec.fixedClock, seed: spec.seed },
   );
@@ -195,26 +229,17 @@ try {
     consoleErrors.push(operationErrorCode("page_text", error));
   }
   try {
-    sampledFps = await withTimeout(
-      page.evaluate(
-        () =>
-          new Promise((resolve) => {
-            let frames = 0;
-            const started = performance.now();
-            const sample = (now) => {
-              frames += 1;
-              if (now - started >= 2000) {
-                resolve(Math.round((frames * 1000) / (now - started)));
-              } else {
-                requestAnimationFrame(sample);
-              }
-            };
-            requestAnimationFrame(sample);
-          }),
-      ),
+    const frameSample = await withTimeout(
+      page.evaluate(() => globalThis.__benchmaxSampleFrameRate()),
       IN_PAGE_OPERATION_TIMEOUT_MS,
       "frame_rate_timeout",
     );
+    if (frameSample.timedOut) {
+      const error = new Error("frame_rate_timeout");
+      error.code = "frame_rate_timeout";
+      throw error;
+    }
+    sampledFps = frameSample.fps;
   } catch (error) {
     sampledFps = 0;
     consoleErrors.push(operationErrorCode("frame_rate", error));

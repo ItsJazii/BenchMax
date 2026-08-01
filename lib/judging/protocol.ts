@@ -23,6 +23,19 @@ export type RuntimeEvidenceInput = {
   value: unknown;
 };
 
+export const JUDGE_EVIDENCE_SUFFICIENCY_RULE =
+  "Evidence is sufficient only when it is adequate to score every rubric dimension without guessing. Missing, inaccessible, ambiguous, or materially incomplete evidence is insufficient.";
+
+export type JudgeOutput = {
+  dimensions: Array<{
+    key: string;
+    score_bps: number;
+    reasoning: string;
+  }>;
+  evidence_sufficient: boolean;
+  evidence_sufficiency_reason: string;
+};
+
 export function screenJudgeInjection(
   sourceBytes: Uint8Array | null,
   runtimeEvidence: readonly RuntimeEvidenceInput[] = [],
@@ -98,6 +111,13 @@ export function buildJudgePromptPayload(input: {
 }) {
   return {
     benchmark: input.benchmarkPrompt,
+    evidenceGate: {
+      rule: JUDGE_EVIDENCE_SUFFICIENCY_RULE,
+      requiredOutput: {
+        evidence_sufficient: "boolean",
+        evidence_sufficiency_reason: "concise reason",
+      },
+    },
     injectionScreenFlag: input.injectionFlag,
     objectiveResults: input.objectiveResults.map((row) => ({
       checkKey: row.checkKey,
@@ -208,6 +228,8 @@ export function createJudgeOutputSchema(dimensionKeys: readonly string[]) {
   const allowed = new Set(dimensionKeys);
   return z
     .object({
+      evidence_sufficient: z.boolean(),
+      evidence_sufficiency_reason: z.string().trim().min(8).max(500),
       dimensions: z
         .array(
           z.object({
@@ -228,6 +250,139 @@ export function createJudgeOutputSchema(dimensionKeys: readonly string[]) {
         });
       }
     });
+}
+
+export function parseStoredJudgeOutputJson(
+  dimensionKeys: readonly string[],
+  serialized: string,
+): JudgeOutput {
+  const allowed = new Set(dimensionKeys);
+  const storedSchema = z
+    .object({
+      dimensions: z
+        .array(
+          z
+            .object({
+              key: z.string().refine((value) => allowed.has(value)),
+              score_bps: z.number().int().min(0).max(10_000),
+              reasoning: z.string().trim().min(1).max(1_500),
+            })
+            .strict(),
+        )
+        .length(dimensionKeys.length),
+    })
+    .passthrough()
+    .superRefine((value, context) => {
+      const keys = value.dimensions.map((dimension) => dimension.key);
+      if (
+        new Set(keys).size !== dimensionKeys.length ||
+        dimensionKeys.some((key) => !keys.includes(key))
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Every judge dimension must appear exactly once.",
+        });
+      }
+    });
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(serialized) as unknown;
+  } catch {
+    return conservativeStoredJudgeOutput(dimensionKeys);
+  }
+  const stored = storedSchema.safeParse(parsedJson);
+  if (!stored.success) return conservativeStoredJudgeOutput(dimensionKeys);
+  const gate = parseStoredEvidenceGate(parsedJson);
+  return {
+    dimensions: stored.data.dimensions,
+    evidence_sufficient: gate.evidenceSufficient,
+    evidence_sufficiency_reason: gate.reason,
+  };
+}
+
+export function parseStoredEvidenceGateJson(serialized: string) {
+  try {
+    return parseStoredEvidenceGate(JSON.parse(serialized) as unknown);
+  } catch {
+    return legacyEvidenceGate();
+  }
+}
+
+export function evidenceSufficiencyConsensus(
+  samples: readonly { evidenceSufficient: boolean }[],
+) {
+  if (samples.length === 0) return false;
+  return (
+    samples.filter((sample) => sample.evidenceSufficient).length >
+    samples.length / 2
+  );
+}
+
+export function selectResultEligibility(input: {
+  catalogCanonical: boolean;
+  evidenceSufficient: boolean;
+  injectionFlag: boolean;
+  safetyApproved: boolean;
+}) {
+  if (input.injectionFlag || !input.safetyApproved) {
+    return {
+      rankEligible: false,
+      rankingStatus: "moderation_hold" as const,
+    };
+  }
+  if (!input.catalogCanonical) {
+    return {
+      rankEligible: false,
+      rankingStatus: "catalog_pending" as const,
+    };
+  }
+  if (!input.evidenceSufficient) {
+    return {
+      rankEligible: false,
+      rankingStatus: "insufficient_evidence" as const,
+    };
+  }
+  return { rankEligible: true, rankingStatus: "eligible" as const };
+}
+
+function parseStoredEvidenceGate(value: unknown) {
+  const parsed = z
+    .object({
+      evidence_sufficient: z.boolean(),
+      evidence_sufficiency_reason: z.string().trim().min(8).max(500),
+    })
+    .passthrough()
+    .safeParse(value);
+  return parsed.success
+    ? {
+        evidenceSufficient: parsed.data.evidence_sufficient,
+        reason: parsed.data.evidence_sufficiency_reason,
+      }
+    : legacyEvidenceGate();
+}
+
+function legacyEvidenceGate() {
+  return {
+    evidenceSufficient: false,
+    reason:
+      "This stored judge sample predates or fails the evidence-sufficiency gate and is conservatively ineligible.",
+  };
+}
+
+function conservativeStoredJudgeOutput(
+  dimensionKeys: readonly string[],
+): JudgeOutput {
+  return {
+    dimensions: dimensionKeys.map((key) => ({
+      key,
+      score_bps: 0,
+      reasoning:
+        "The immutable stored judge sample could not be safely parsed; this score is treated conservatively.",
+    })),
+    evidence_sufficient: false,
+    evidence_sufficiency_reason:
+      "The immutable stored judge sample could not be safely parsed and is conservatively ineligible.",
+  };
 }
 
 export function median(values: readonly number[]): number {

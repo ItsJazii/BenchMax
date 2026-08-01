@@ -124,7 +124,12 @@ test("the frozen browser evaluator executes a fixture project end to end", async
     assert.equal(report.videoCaptureMs, 5_000);
     assert.equal(Math.abs(report.videoDurationMs - 5_000) <= 50, true);
   } finally {
-    await rm(workspace, { force: true, recursive: true });
+    await rm(workspace, {
+      force: true,
+      maxRetries: 8,
+      recursive: true,
+      retryDelay: 125,
+    });
   }
 });
 
@@ -208,7 +213,12 @@ test("the evaluator bounds a page that stalls frame sampling", async (t) => {
       JSON.stringify(report, null, 2),
     );
   } finally {
-    await rm(workspace, { force: true, recursive: true });
+    await rm(workspace, {
+      force: true,
+      maxRetries: 8,
+      recursive: true,
+      retryDelay: 125,
+    });
   }
 });
 

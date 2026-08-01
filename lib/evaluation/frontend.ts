@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { Sandbox } from "e2b";
 import { z } from "zod";
 import { getBrowserBenchmarkDefinition } from "@/benchmarks";
+import type { FrontendBenchmarkDefinition } from "@/benchmarks/frontend/manifest";
 import { getDb } from "@/db";
 import {
   benchmarkVersions,
@@ -15,7 +16,13 @@ import { EVALUATION_ENVIRONMENT_V1 } from "@/lib/domain/ranked-catalog";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
 import { sha256Hex } from "@/lib/security/policy";
 import { transitionRun } from "@/lib/data/runs";
+import {
+  buildSandboxSpendRecord,
+  recordResultSpend,
+  sandboxRateFromEnv,
+} from "@/lib/data/result-spend";
 import { evaluatorReportContractError } from "@/lib/evaluation/report-contract";
+import { buildCommunityStaticDefinition } from "@/lib/evaluation/community-static";
 
 const evaluatorReportSchema = z
   .object({
@@ -58,13 +65,18 @@ export async function evaluateFrontendRun(runId: string) {
   ) {
     throw new EvaluationContractError("environment_hash_mismatch");
   }
-  const benchmark = getBrowserBenchmarkDefinition(
-    contract.benchmarkVersionId,
-  );
-  if (!benchmark) {
+  const definition =
+    getBrowserBenchmarkDefinition(contract.benchmarkVersionId)?.definition ??
+    buildCommunityStaticDefinition({
+      benchmarkVersionId: contract.benchmarkVersionId,
+      category: contract.benchmarkCategory,
+      prompt: contract.benchmarkPrompt,
+      rubricJson: contract.benchmarkRubricJson,
+      title: contract.benchmarkTitle,
+    });
+  if (!definition) {
     throw new EvaluationContractError("unsupported_benchmark");
   }
-  const { definition } = benchmark;
   const sourceObject = await env.UPLOADS.get(contract.sourceObjectKey);
   if (!sourceObject) throw new EvaluationContractError("source_missing");
   const sourceBytes = await sourceObject.arrayBuffer();
@@ -85,6 +97,9 @@ export async function evaluateFrontendRun(runId: string) {
     throw new EvaluationContractError("invalid_run_state");
   }
 
+  const sandboxRate = sandboxRateFromEnv();
+  const sandboxAttemptKey = `sandbox:${runId}:frontend-evaluation:${crypto.randomUUID()}`;
+  const sandboxStartedAt = Date.now();
   const sandbox = await Sandbox.create(templateId, {
     apiKey: requiredSecret("E2B_API_KEY"),
     allowInternetAccess: false,
@@ -96,6 +111,7 @@ export async function evaluateFrontendRun(runId: string) {
       environmentHash: expectedEnvironmentHash,
     },
   });
+  let sandboxStatus: "completed" | "failed" = "failed";
   try {
     const specJson = canonicalJson({
       benchmarkVersionId: definition.id,
@@ -136,11 +152,6 @@ export async function evaluateFrontendRun(runId: string) {
     if (reportContractError) {
       throw new EvaluationContractError(reportContractError);
     }
-    if (parsed.objectiveResults.some((result) => result.status === "error")) {
-      throw new EvaluationInfrastructureError(
-        "objective_checks_not_completed",
-      );
-    }
     const screenshot = await sandbox.files
       .read("/workspace/output/milestone.png", { format: "bytes" })
       .catch(() => null);
@@ -168,9 +179,23 @@ export async function evaluateFrontendRun(runId: string) {
       screenshot,
       video,
     });
+    sandboxStatus = "completed";
     return parsed;
   } finally {
     await sandbox.kill().catch(() => false);
+    await recordResultSpend(
+      await buildSandboxSpendRecord(
+        {
+          attemptKey: sandboxAttemptKey,
+          durationMs: Math.max(0, Date.now() - sandboxStartedAt),
+          evaluationVersionId: contract.evaluationVersionId,
+          operation: "frontend-evaluation",
+          runId,
+          status: sandboxStatus,
+        },
+        sandboxRate,
+      ),
+    );
   }
 }
 
@@ -178,7 +203,12 @@ async function getEvaluationContract(runId: string) {
   const [row] = await getDb()
     .select({
       benchmarkVersionId: runs.benchmarkVersionId,
+      benchmarkCategory: benchmarkVersions.category,
       benchmarkEnvironmentHash: benchmarkVersions.environmentHash,
+      benchmarkPrompt: benchmarkVersions.canonicalPrompt,
+      benchmarkRubricJson: benchmarkVersions.rubricJson,
+      benchmarkTitle: benchmarkVersions.title,
+      evaluationVersionId: runs.evaluationVersionId,
       runEnvironmentHash: runs.environmentHash,
       sourceObjectKey: runArtifacts.objectKey,
       showcaseId: runs.showcaseId,
@@ -197,15 +227,14 @@ async function getEvaluationContract(runId: string) {
       ),
     )
     .where(eq(runs.id, runId))
+    .orderBy(runArtifacts.createdAt, runArtifacts.id)
     .limit(1);
   return row ?? null;
 }
 
 async function persistEvaluation(input: {
   commandLog: string;
-  definition: NonNullable<
-    ReturnType<typeof getBrowserBenchmarkDefinition>
-  >["definition"];
+  definition: FrontendBenchmarkDefinition;
   report: z.infer<typeof evaluatorReportSchema>;
   reportText: string;
   runId: string;

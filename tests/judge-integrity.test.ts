@@ -333,6 +333,15 @@ test("evidence consensus and ranking precedence are deterministic", () => {
     }),
     { rankEligible: true, rankingStatus: "eligible" },
   );
+  assert.deepEqual(
+    selectResultEligibility({
+      catalogCanonical: true,
+      evidenceSufficient: true,
+      injectionFlag: false,
+      safetyApproved: false,
+    }),
+    { rankEligible: false, rankingStatus: "moderation_hold" },
+  );
 });
 
 test("catalog mapping cannot promote a scored result with insufficient evidence", () => {

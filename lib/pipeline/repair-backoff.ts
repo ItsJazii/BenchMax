@@ -1,6 +1,10 @@
 export const REPAIR_BACKOFF_BASE_MS = 2 * 60 * 1000;
 export const REPAIR_BACKOFF_MAX_MS = 60 * 60 * 1000;
 export const REPAIR_MAX_ATTEMPTS = 8;
+export const FROZEN_EVALUATION_REPAIR_FAILURE_CODE =
+  "evaluation_frozen_repair";
+export const FROZEN_EVALUATION_REPAIR_FAILURE_SUMMARY =
+  "Evaluation repair stopped because its frozen evaluation contract is no longer available.";
 const REPAIR_LEASE_MS = 5 * 60 * 1000;
 
 export type RepairRetryDecision = "ready" | "backoff" | "exhausted";
@@ -91,17 +95,18 @@ export async function claimRepairDispatchAttempt(input: {
   }
 
   const claimId = crypto.randomUUID();
-  // This row gates dispatch only. The queue consumer increments attempt_count
-  // when it actually claims execution, so dispatch must not spend an attempt.
-  const attemptCount = Number(existing?.attempt_count ?? 0);
+  // A dispatch reservation spends one durable attempt. The queue consumer
+  // preserves this count when it claims the queued repair, so a lost message
+  // cannot bypass the same backoff budget and cap.
+  const attemptCount = Number(existing?.attempt_count ?? 0) + 1;
   const leaseExpiresAt = now + REPAIR_LEASE_MS;
   if (!existing) {
     const inserted = await input.db
       .prepare(
         `INSERT INTO run_stage_claims
            (id, run_id, stage, stage_version, status, attempt_count,
-            lease_expires_at, completed_at, error_code, created_at, updated_at)
-         VALUES (?, ?, 'judge', ?, 'failed', 0, ?, NULL,
+             lease_expires_at, completed_at, error_code, created_at, updated_at)
+         VALUES (?, ?, 'judge', ?, 'failed', 1, ?, NULL,
                  'repair_dispatch_pending', ?, ?)
          ON CONFLICT(run_id, stage, stage_version) DO NOTHING`,
       )
@@ -122,8 +127,8 @@ export async function claimRepairDispatchAttempt(input: {
 
   const updated = await input.db
     .prepare(
-      `UPDATE run_stage_claims
-       SET id = ?, status = 'failed',
+       `UPDATE run_stage_claims
+       SET id = ?, status = 'failed', attempt_count = attempt_count + 1,
            lease_expires_at = ?, completed_at = NULL,
            error_code = 'repair_dispatch_pending', updated_at = ?
        WHERE id = ?

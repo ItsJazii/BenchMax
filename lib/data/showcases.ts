@@ -658,6 +658,33 @@ export async function getPublicShowcaseBySlug(slug: string) {
   };
 }
 
+export async function getBlockedShowcaseForOwnerBySlug(
+  slug: string,
+  authSubject: string,
+) {
+  const [row] = await getDb()
+    .select({
+      id: showcases.id,
+      slug: showcases.slug,
+      title: showcases.title,
+      summary: showcases.summary,
+      safetyStatus: showcases.safetyStatus,
+      status: showcases.status,
+      updatedAt: showcases.updatedAt,
+    })
+    .from(showcases)
+    .innerJoin(users, eq(showcases.ownerId, users.id))
+    .where(
+      and(
+        eq(showcases.slug, slug),
+        eq(users.authSubject, authSubject),
+        eq(showcases.safetyStatus, "blocked"),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 export async function getPublicShowcaseArtifact(
   slug: string,
   artifactId: string,

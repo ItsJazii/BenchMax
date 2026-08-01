@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { SiteFooter } from "@/app/components/SiteFooter";
 import { SiteHeader } from "@/app/components/SiteHeader";
+import { getPublicModelPage } from "@/lib/data/public-catalog";
 import { listPublicConfigurationSummaries } from "@/lib/data/results";
 
 export const metadata: Metadata = {
@@ -18,6 +20,15 @@ export default async function ModelPage({
     () => null,
   );
   const summaries = result?.summaries ?? [];
+  let modelExists: boolean | null = null;
+  if (result && summaries.length === 0) {
+    try {
+      modelExists = (await getPublicModelPage(slug)) !== null;
+    } catch {
+      modelExists = null;
+    }
+  }
+  if (modelExists === false) notFound();
   const modelLabel = summaries[0]?.modelLabel ?? slug;
   const snapshotDate = summaries
     .map((summary) => summary.snapshotDate?.getTime())
@@ -42,7 +53,15 @@ export default async function ModelPage({
           IQR is calculated across those test medians, so popular tests cannot
           dominate the summary.
         </div>
-        {summaries.length === 0 ? (
+        {result === null ? (
+          <div className="security-gate">
+            <strong>Model summary is temporarily unavailable.</strong>
+            <p>
+              Benchmax could not read this public catalog record and will not
+              invent a model summary.
+            </p>
+          </div>
+        ) : summaries.length === 0 ? (
           <div className="empty-state">
             <strong>No eligible configurations for this model yet.</strong>
             <p>

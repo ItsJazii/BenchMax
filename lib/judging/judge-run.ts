@@ -271,11 +271,21 @@ export async function judgeRun(runId: string, stageVersion = "1") {
       evidenceSufficient: sample.evidence_sufficient,
     })),
   );
+  const currentSafetyStatus = contract.showcaseId
+    ? (
+        await getDb()
+          .select({ safetyStatus: showcases.safetyStatus })
+          .from(showcases)
+          .where(eq(showcases.id, contract.showcaseId))
+          .limit(1)
+      )[0]?.safetyStatus ?? null
+    : "approved";
   const eligibility = selectResultEligibility({
     catalogCanonical: contract.catalogStatus === "canonical",
     evidenceSufficient,
     injectionFlag: injection.flagged,
-    safetyApproved: true,
+    safetyApproved:
+      !contract.showcaseId || currentSafetyStatus === "approved",
   });
   await appendAuditEvent({
     actorUserId: null,

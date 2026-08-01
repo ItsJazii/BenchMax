@@ -7,42 +7,31 @@ Reference docs: PLAN.md (product spec), REVIEW-FIXES-3.md (open code items).
 
 ---
 
-## Phase 0 — Finish the code (in flight now)
+## Phase 0 — Finish the code (complete 2026-08-01)
 
-1. **[Codex]** Round-3.1 residuals (REVIEW-FIXES-3.md addendum): regenerate Drizzle
-   journal/meta for 0003–0007 AND 0018; frozen-evaluation-version guard on the
-   dispute-rejudge sweep; backoff/attempt-cap on the 2-minute repair sweeps;
-   `resolveCatalogRequest` end-to-end test; invariants coverage gaps.
-2. **[Codex]** Round-3 P1 hygiene: complete the 0015 legacy seal (UPDATE/DELETE on
-   generation records + legacy artifacts/samples); add `showcases_test_status_idx` to
-   schema; `deleted_classes: ["GenerationSession"]` wrangler migration tag; dangling
-   env types; FK rule mismatch; dead `kind='model'` enum; stale `sampleCount=3` CHECK;
-   `harnessContractHash` storing raw JSON; empty route dirs.
-3. **[Codex]** Round-3 P2 fixes: blocked-result owner view at the result URL;
-   contributor-page server-side filter; status-label set normalized with PLAN §2.2;
-   explicit CI build step; `npm audit` as report-only; `safetyApproved` re-read in
-   judge eligibility; active-version check in the rebuild escalation path.
-4. **[Codex]** Its own remaining items: genuine e2e lifecycle test; remove generated
-   artifacts (`.wrangler-dry-run/` etc.); final full verification suite.
-5. **[Codex]** The three curated commits (schema/catalogs/retirement · pipeline ·
-   UI/docs/deploy) on `codex/community-results-pivot`.
-6. **[Claude]** Verification pass on the commits: residual fixes real, suite green on
-   clean state, no regressions in the sealed invariants. Gate: nothing proceeds until
-   this is green.
-7. **[You]** One product decision, needed before beta: the submission-vs-judging cap
+1. **[Codex]** Round-3.1 and Round-3.2 code residuals are implemented, including
+   migration metadata, frozen-evaluation guards, durable repair backoff, the legacy
+   seal, catalog invariants, and the public-surface/CI hygiene pass.
+2. **[Codex]** The three curated commits (schema/catalogs/retirement · pipeline ·
+   UI/docs/deploy) and the bounded residual follow-up are on
+   `codex/community-results-pivot`.
+3. **[Claude]** Verification is green on the committed code: typecheck, lint, full
+   tests, D1 invariants, rendered HTML, and deployment dry-runs.
+4. **[You]** One product decision, needed before beta: the submission-vs-judging cap
    ratio (today: 20 publishes/day but 5 judged/day per account — either lower the
    publish cap or accept a visible "pending review" queue by design).
 
-**Exit criteria:** clean worktree, curated commits, full suite + typecheck + lint +
-dry-runs green, REVIEW-FIXES-3 fully closed.
+**Exit criteria:** clean worktree, curated commits plus the residual follow-up, and
+full suite + typecheck + lint + dry-runs green. Remaining work is staging validation,
+the cap decision, and the explicitly deferred launch polish listed below.
 
 ## Phase 1 — Repo safety (do immediately after Phase 0; ~30 min)
 
-1. **[You]** Create a private GitHub repo (or tell Claude/Codex to via `gh` once
-   logged in). The whole project currently exists only on this disk.
-2. **[Codex/Claude]** Push `main` + `codex/community-results-pivot`; confirm the CI
-   workflow runs green on GitHub (it sets the mandatory evaluator-smoke flag — first
-   true clean-checkout test).
+1. **[Codex]** Private GitHub repo `ItsJazii/BenchMax` is confirmed and the pivot
+   branch is pushed. The remote `main` remains its unrelated placeholder README until
+   a PR/merge decision is made; no history was force-overwritten.
+2. **[Codex/Claude]** Confirm the CI workflow runs green on GitHub (it sets the
+   mandatory evaluator-smoke flag — the first true clean-checkout test).
 3. **[Codex]** Open a PR from the pivot branch → merge to `main` after CI passes.
 
 **Exit criteria:** code on GitHub, CI green on a machine that isn't yours.

@@ -42,6 +42,9 @@ changes). Full suite green.
 **Cleared to commit.** Remaining items, none commit-blocking — finish before the
 production rollout (LAUNCH-PLAN Phase 3 gate):
 
+The list below is the verification snapshot. The bounded follow-up resolution is
+recorded immediately after it.
+
 1. Dispatch-failure paths (budget-denied / queue-unavailable / lost message) bypass
    the 8-attempt cap — attempt_count only increments on consumer claims, so those
    modes retry every 2 min unbounded (cheap, no judge spend, but unbounded).
@@ -60,6 +63,27 @@ production rollout (LAUNCH-PLAN Phase 3 gate):
    harnessContractHash stores raw JSON; empty route dirs (incl. app/_sites-preview).
 7. e2e gaps acceptable-but-noted: upload/scan step bypassed (direct approved-artifact
    insert); "rankable" asserted as flags, not a snapshot rebuild.
+
+## Round 3.2 follow-up implementation — completed (2026-08-01)
+
+The commit-blocking release residuals were implemented and rechecked in the follow-up
+commit:
+
+- Dispatch failures, queue-unavailable outcomes, and lost messages now consume a
+  durable repair-dispatch attempt with bounded backoff and an eight-attempt cap;
+  exhausted repairs surface as terminal judge failures instead of retrying forever.
+- The catalog-request foreign key is aligned to the declared restrictive policy in
+  migration 0019. Legacy run updates and deletes are sealed at SQL level, and the D1
+  invariant probe covers the trigger behavior and foreign-key check.
+- Frozen evaluation versions stop dispute and top-ten repair paths with an explicit
+  terminal state. Judge eligibility re-reads the current safety decision.
+- Public blocked-result ownership, contributor pagination, honest unavailable/empty
+  states, normalized result labels, the explicit CI build, report-only dependency
+  audit, and the frozen-evaluation rebuild guard are in place.
+
+Still deferred to staging/launch work: the upload/scan-to-rankable browser journey,
+the final submission-vs-judging cap decision, and the cosmetic cleanup/evidence-shape
+items that do not block the committed release gate.
 
 Original round-3 report follows.
 

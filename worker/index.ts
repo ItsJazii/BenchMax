@@ -16,7 +16,7 @@ import {
   EvaluationContractError,
   evaluateFrontendRun,
 } from "../lib/evaluation/frontend";
-import { judgeRun } from "../lib/judging/judge-run";
+import { JudgeContractError, judgeRun } from "../lib/judging/judge-run";
 import { transitionRun } from "../lib/data/runs";
 import { getDb } from "../db";
 import { runs, showcases } from "../db/schema";
@@ -252,7 +252,7 @@ async function consumePipelineDeadLetters(
     await processPipelineDeadLetter(message.body, {
       getRunStatus,
       markFailed: ({ code, runId, stage }) =>
-        failRunAtCurrentStage(runId, stage, code),
+        failRunAtCurrentStage(runId, stage, code, true),
       audit: ({ action, entityId, metadata }) =>
         appendAuditEvent({
           actorUserId: null,
@@ -409,12 +409,25 @@ async function handleTerminalPipelineFailure(input: {
   code: string;
   error: unknown;
 }) {
-  if (input.error instanceof EvaluationContractError) {
-    await failRunAtCurrentStage(input.body.runId, input.body.stage, input.code);
+  if (
+    input.error instanceof EvaluationContractError ||
+    input.error instanceof JudgeContractError
+  ) {
+    await failRunAtCurrentStage(
+      input.body.runId,
+      input.body.stage,
+      input.code,
+      true,
+    );
     return true;
   }
   if (input.attempts < 4) return false;
-  await failRunAtCurrentStage(input.body.runId, input.body.stage, input.code);
+  await failRunAtCurrentStage(
+    input.body.runId,
+    input.body.stage,
+    input.code,
+    true,
+  );
   return true;
 }
 
@@ -422,6 +435,7 @@ async function failRunAtCurrentStage(
   runId: string,
   stage: PipelineMessage["stage"],
   code: string,
+  forceTerminal = false,
 ) {
   const [row] = await getDb()
     .select({
@@ -435,6 +449,7 @@ async function failRunAtCurrentStage(
     .limit(1);
   if (!row) return;
   if (
+    !forceTerminal &&
     shouldDelayCommunityPipelineFailure({
       credentialMode: row.credentialMode,
       showcaseId: row.showcaseId,
@@ -490,10 +505,7 @@ async function failRunAtCurrentStage(
       },
     });
     failed = true;
-  } else if (
-    stage === "publish" &&
-    row.status === "scored"
-  ) {
+  } else if (stage === "publish" && row.status === "scored") {
     await transitionRun({
       id: runId,
       from: row.status,
@@ -504,6 +516,33 @@ async function failRunAtCurrentStage(
           "Publishing stopped after the bounded infrastructure retry policy.",
       },
     });
+    failed = true;
+  } else if (
+    stage === "judge" &&
+    (row.status === "scored" || row.status === "published")
+  ) {
+    if (row.status === "scored") {
+      await transitionRun({
+        id: runId,
+        from: row.status,
+        to: "evaluation_failed",
+        patch: {
+          failureCode: code,
+          failureSummary:
+            "Judging stopped because the frozen evaluation contract is no longer available.",
+        },
+      });
+    } else {
+      await getDb()
+        .update(runs)
+        .set({
+          failureCode: code,
+          failureSummary:
+            "Judging stopped because the frozen evaluation contract is no longer available.",
+          updatedAt: new Date(),
+        })
+        .where(and(eq(runs.id, runId), eq(runs.status, row.status)));
+    }
     failed = true;
   }
   if (!failed) return;

@@ -15,7 +15,11 @@ const repository: StageClaimRepository = {
        ON CONFLICT(run_id, stage, stage_version) DO UPDATE SET
          id = excluded.id,
          status = 'claimed',
-         attempt_count = run_stage_claims.attempt_count + 1,
+          attempt_count = CASE
+            WHEN run_stage_claims.error_code IN ('repair_dispatch_pending', 'repair_enqueued')
+              THEN run_stage_claims.attempt_count
+            ELSE run_stage_claims.attempt_count + 1
+          END,
          lease_expires_at = excluded.lease_expires_at,
          completed_at = NULL,
          error_code = NULL,

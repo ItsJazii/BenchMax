@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default async function TestsPage() {
-  const tests = await listCommunityTests().catch(() => []);
+  const tests = await listCommunityTests().catch(() => null);
   return (
     <div className="site-shell">
       <SiteHeader />
@@ -26,7 +26,15 @@ export default async function TestsPage() {
             judged against that frozen test version.
           </p>
         </header>
-        {tests.length > 0 && (
+        {tests === null ? (
+          <div className="security-gate">
+            <strong>Community tests are temporarily unavailable.</strong>
+            <p>
+              Benchmax does not show an empty catalog when the public test
+              records cannot be read.
+            </p>
+          </div>
+        ) : tests.length > 0 ? (
           <section className="benchmark-version-list">
             {tests.map((test) => (
               <article key={test.versionId}>
@@ -52,6 +60,11 @@ export default async function TestsPage() {
               </article>
             ))}
           </section>
+        ) : (
+          <div className="empty-state">
+            <strong>No published community tests yet.</strong>
+            <p>Be the first contributor to freeze a test contract.</p>
+          </div>
         )}
         <section className="latest">
           <div className="section-heading compact">

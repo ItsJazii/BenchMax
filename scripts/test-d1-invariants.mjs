@@ -61,6 +61,7 @@ try {
     "0016_result_spend_records.sql",
     "0017_result_snapshot_immutability.sql",
     "0018_catalog_configuration_canonicalization.sql",
+    "0019_catalog_request_fk_legacy_run_seal.sql",
   ]) {
     assert.match(migrationOutput, new RegExp(migration.replaceAll(".", "\\.")));
   }
@@ -398,6 +399,32 @@ try {
   );
   assert.match(blockedLegacyStatusUpdate, /generation run states are sealed/i);
 
+  wrangler([
+    "d1", "execute", "DB", "--command",
+    "DROP TRIGGER runs_legacy_credential_no_insert; DROP TRIGGER runs_legacy_credential_no_update; DROP TRIGGER runs_legacy_credential_no_delete; INSERT INTO runs (id, public_slug, contributor_id, benchmark_version_id, configuration_id, evaluation_version_id, credential_mode, status, attempt_index, environment_hash, harness_contract_hash, overall_score_bps, rank_eligible, injection_flag, post_publication_marker, playable_enabled, failure_code, failure_summary, generated_at, created_at, updated_at) VALUES ('legacy-run-seal-probe', 'legacy-run-seal-probe', 'freeze-user', 'freeze-benchmark-v1', 'freeze-config', 'freeze-evaluation', 'byok', 'evaluating', 1, 'environment-hash', 'harness-hash', 6400, 1, 0, 0, 0, 'legacy-failure', 'legacy failure', 1, 1, 1); CREATE TRIGGER runs_legacy_credential_no_insert BEFORE INSERT ON runs WHEN NEW.credential_mode <> 'community-submission' BEGIN SELECT RAISE(ABORT, 'legacy run credential modes are sealed'); END;",
+  ]);
+  for (const statement of [
+    "UPDATE runs SET overall_score_bps = 1 WHERE id = 'legacy-run-seal-probe';",
+    "UPDATE runs SET rank_eligible = 0 WHERE id = 'legacy-run-seal-probe';",
+    "UPDATE runs SET failure_code = 'tampered' WHERE id = 'legacy-run-seal-probe';",
+    "UPDATE runs SET status = 'judging' WHERE id = 'legacy-run-seal-probe';",
+  ]) {
+    const blockedLegacyUpdate = wrangler(
+      ["d1", "execute", "DB", "--command", statement], false,
+    );
+    assert.match(blockedLegacyUpdate, /legacy run fields are sealed/i);
+  }
+  const blockedLegacyDelete = wrangler(
+    ["d1", "execute", "DB", "--command", "DELETE FROM runs WHERE id = 'legacy-run-seal-probe';"],
+    false,
+  );
+  assert.match(blockedLegacyDelete, /legacy runs are preserved as a read-only archive/i);
+
+  wrangler([
+    "d1", "execute", "DB", "--command",
+    "CREATE TRIGGER runs_legacy_credential_no_update BEFORE UPDATE ON runs WHEN OLD.credential_mode <> 'community-submission' OR NEW.credential_mode <> 'community-submission' BEGIN SELECT RAISE(ABORT, 'legacy run credential modes are sealed'); END; CREATE TRIGGER runs_legacy_credential_no_delete BEFORE DELETE ON runs WHEN OLD.credential_mode <> 'community-submission' BEGIN SELECT RAISE(ABORT, 'legacy runs are preserved as a read-only archive'); END;",
+  ]);
+
   const blockedGenerationStageClaim = wrangler(
     [
       "d1",
@@ -519,6 +546,10 @@ try {
     "--command",
     "SELECT name FROM sqlite_master WHERE type IN ('table', 'trigger') ORDER BY name; SELECT name FROM d1_migrations ORDER BY id; PRAGMA foreign_key_check;",
   ]);
+  const foreignKeyCheckOutput = wrangler(
+    ["d1", "execute", "DB", "--command", "PRAGMA foreign_key_check;", "--json"],
+  );
+  assert.match(foreignKeyCheckOutput, /"results"\s*:\s*\[\]/);
   for (const trigger of [
     "audit_events_no_update",
     "audit_events_no_delete",
@@ -560,7 +591,7 @@ try {
     "upload_sessions_submission_quota",
     "upload_sessions_account_quota",
     "runs_legacy_credential_no_insert",
-    "runs_legacy_credential_no_update",
+    "runs_legacy_fields_no_update",
     "runs_legacy_credential_no_delete",
     "runs_legacy_status_no_insert",
     "runs_legacy_status_no_update",

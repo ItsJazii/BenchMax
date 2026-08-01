@@ -11,12 +11,14 @@ export const metadata: Metadata = {
 };
 
 export default async function LeaderboardsPage() {
-  const rows = await listPublicResultLeaderboard().catch(() => []);
-  const grouped = Map.groupBy(
-    rows,
-    (row) =>
-      `${row.testSlug}:${row.testVersion}:evaluation-${row.evaluationVersion}`,
-  );
+  const rows = await listPublicResultLeaderboard().catch(() => null);
+  const grouped = rows
+    ? Map.groupBy(
+        rows,
+        (row) =>
+          `${row.testSlug}:${row.testVersion}:evaluation-${row.evaluationVersion}`,
+      )
+    : null;
   return (
     <div className="site-shell">
       <SiteHeader />
@@ -33,7 +35,15 @@ export default async function LeaderboardsPage() {
             and settings are declared, unverified metadata.
           </p>
         </header>
-        {rows.length === 0 ? (
+        {rows === null ? (
+          <div className="security-gate">
+            <strong>Leaderboards are temporarily unavailable.</strong>
+            <p>
+              Benchmax does not show an empty ranking when the public catalog
+              cannot be read.
+            </p>
+          </div>
+        ) : rows.length === 0 ? (
           <div className="empty-state">
             <strong>No ranked results yet.</strong>
             <p>
@@ -45,7 +55,7 @@ export default async function LeaderboardsPage() {
             </Link>
           </div>
         ) : (
-          [...grouped.values()].map((testRows) => {
+          [...grouped!.values()].map((testRows) => {
             const first = testRows[0];
             return (
               <section

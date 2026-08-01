@@ -5,7 +5,7 @@ import { SiteFooter } from "@/app/components/SiteFooter";
 import { SiteHeader } from "@/app/components/SiteHeader";
 import {
   getPublicContributor,
-  listPublicShowcaseCards,
+  listPublicShowcaseCardsPage,
 } from "@/lib/data/showcases";
 
 export async function generateMetadata({
@@ -25,10 +25,11 @@ export default async function ContributorPage({
   const { handle } = await params;
   const contributor = await getPublicContributor(handle).catch(() => null);
   if (!contributor) notFound();
-  const publicResults = await listPublicShowcaseCards(50).catch(() => null);
-  const results = (publicResults ?? []).filter(
-    (item) => item.contributor === contributor.handle,
-  );
+  const publicResultsPage = await listPublicShowcaseCardsPage({
+    contributor: contributor.handle,
+    limit: 50,
+  }).catch(() => null);
+  const results = publicResultsPage?.items ?? [];
 
   return (
     <div className="site-shell">
@@ -65,7 +66,7 @@ export default async function ContributorPage({
               <ShowcaseCard key={result.id} showcase={result} />
             ))}
           </div>
-        ) : publicResults === null ? (
+        ) : publicResultsPage === null ? (
           <div className="empty-state">
             <strong>Public results are temporarily unavailable.</strong>
             <p>

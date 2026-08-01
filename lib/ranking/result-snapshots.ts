@@ -13,6 +13,7 @@ import { canonicalSha256 } from "@/lib/security/canonical";
 import { rankResultRows } from "@/lib/ranking/result-ranking";
 import { rebuildResultAggregateSnapshot } from "@/lib/ranking/result-aggregate-snapshots";
 import { hasPendingTopTenEscalations } from "@/lib/ranking/top-ten-gate";
+import { transitionRun } from "@/lib/data/runs";
 import {
   claimJudgeBudget,
   JudgeBudgetConfigurationError,
@@ -20,10 +21,16 @@ import {
 import { TOP_TEN_ESCALATION_STAGE_VERSION } from "@/lib/pipeline/judge-dispatch";
 import {
   claimRepairDispatchAttempt,
+  FROZEN_EVALUATION_REPAIR_FAILURE_CODE,
+  FROZEN_EVALUATION_REPAIR_FAILURE_SUMMARY,
+  isActiveEvaluationVersion,
+  REPAIR_MAX_ATTEMPTS,
   recordRepairDispatch,
 } from "@/lib/pipeline/repair-backoff";
+import { appendAuditEvent } from "@/lib/data/audit";
 
 type TopTenEscalationCandidate = {
+  evaluationStatus: string;
   evaluationVersionId: string;
   rank: number;
   runId: string;
@@ -123,6 +130,7 @@ export async function rebuildResultLeaderboard(input: {
       await enqueueTopTenEscalations(
         ranked.map((row) => ({
           ...row,
+          evaluationStatus: "active",
           evaluationVersionId: input.evaluationVersionId,
         })),
       );
@@ -207,6 +215,7 @@ export async function rebuildResultLeaderboard(input: {
     await enqueueTopTenEscalations(
       ranked.map((row) => ({
         ...row,
+        evaluationStatus: "active",
         evaluationVersionId: input.evaluationVersionId,
       })),
     );
@@ -237,6 +246,7 @@ export async function rebuildResultLeaderboard(input: {
       await enqueueTopTenEscalations(
         ranked.map((row) => ({
           ...row,
+          evaluationStatus: "active",
           evaluationVersionId: input.evaluationVersionId,
         })),
       );
@@ -258,6 +268,7 @@ export async function rebuildResultLeaderboard(input: {
 export async function repairBudgetPendingEscalations(limit = 50) {
   const candidates = await getDb()
     .select({
+      evaluationStatus: evaluationVersions.status,
       evaluationVersionId: resultLeaderboardSnapshots.evaluationVersionId,
       rank: resultLeaderboardEntries.rank,
       runId: resultLeaderboardEntries.runId,
@@ -284,7 +295,7 @@ export async function repairBudgetPendingEscalations(limit = 50) {
     .where(
       and(
         inArray(resultLeaderboardSnapshots.status, ["published", "building"]),
-        eq(evaluationVersions.status, "active"),
+        inArray(evaluationVersions.status, ["active", "frozen"]),
         sql`${resultLeaderboardEntries.rank} <= 10`,
         sql`(
           SELECT count(*)
@@ -316,14 +327,15 @@ async function enqueueTopTenEscalations(ranked: TopTenEscalationCandidate[]) {
   const { env } = await import("cloudflare:workers");
   for (const candidate of candidates) {
     const [run] = await getDb()
-      .select({ contributorId: runs.contributorId })
+      .select({
+        contributorId: runs.contributorId,
+        evaluationStatus: evaluationVersions.status,
+        status: runs.status,
+      })
       .from(runs)
       .innerJoin(
         evaluationVersions,
-        and(
-          eq(evaluationVersions.id, candidate.evaluationVersionId),
-          eq(evaluationVersions.status, "active"),
-        ),
+        eq(evaluationVersions.id, candidate.evaluationVersionId),
       )
       .where(
         and(
@@ -333,12 +345,30 @@ async function enqueueTopTenEscalations(ranked: TopTenEscalationCandidate[]) {
       )
       .limit(1);
     if (!run) continue;
+    if (run.evaluationStatus === "frozen") {
+      await markRepairFailure({
+        reason: FROZEN_EVALUATION_REPAIR_FAILURE_CODE,
+        runId: candidate.runId,
+        showcaseId: candidate.showcaseId,
+      });
+      continue;
+    }
+    if (!isActiveEvaluationVersion(run.evaluationStatus)) continue;
     const repairAttempt = await claimRepairDispatchAttempt({
       db: env.DB,
       runId: candidate.runId,
       stageVersion: TOP_TEN_ESCALATION_STAGE_VERSION,
     });
-    if (repairAttempt.action === "skip") continue;
+    if (repairAttempt.action === "skip") {
+      if (repairAttempt.reason === "exhausted") {
+        await markRepairFailure({
+          reason: "repair_attempts_exhausted",
+          runId: candidate.runId,
+          showcaseId: candidate.showcaseId,
+        });
+      }
+      continue;
+    }
     let reservation:
       | Awaited<ReturnType<typeof claimJudgeBudget>>
       | undefined;
@@ -359,6 +389,13 @@ async function enqueueTopTenEscalations(ranked: TopTenEscalationCandidate[]) {
         errorCode: "judge_budget_denied",
         outcome: "failed",
       });
+      if (repairAttempt.attemptCount >= REPAIR_MAX_ATTEMPTS) {
+        await markRepairFailure({
+          reason: "repair_attempts_exhausted",
+          runId: candidate.runId,
+          showcaseId: candidate.showcaseId,
+        });
+      }
       continue;
     }
     await getDb()
@@ -378,6 +415,13 @@ async function enqueueTopTenEscalations(ranked: TopTenEscalationCandidate[]) {
         errorCode: "queue_unavailable",
         outcome: "failed",
       });
+      if (repairAttempt.attemptCount >= REPAIR_MAX_ATTEMPTS) {
+        await markRepairFailure({
+          reason: "repair_attempts_exhausted",
+          runId: candidate.runId,
+          showcaseId: candidate.showcaseId,
+        });
+      }
       throw error;
     }
     await recordRepairDispatch({
@@ -386,4 +430,67 @@ async function enqueueTopTenEscalations(ranked: TopTenEscalationCandidate[]) {
       outcome: "queued",
     });
   }
+}
+
+async function markRepairFailure(input: {
+  reason: string;
+  runId: string;
+  showcaseId: string;
+}) {
+  const now = new Date();
+  const [run] = await getDb()
+    .select({ status: runs.status })
+    .from(runs)
+    .where(eq(runs.id, input.runId))
+    .limit(1);
+  const failureSummary =
+    input.reason === FROZEN_EVALUATION_REPAIR_FAILURE_CODE
+      ? FROZEN_EVALUATION_REPAIR_FAILURE_SUMMARY
+      : "AI review stopped after the bounded repair retry policy was exhausted.";
+  if (run?.status === "scored") {
+    await transitionRun({
+      id: input.runId,
+      from: run.status,
+      to: "evaluation_failed",
+      patch: {
+        failureCode: input.reason,
+        failureSummary,
+        rankEligible: false,
+      },
+    });
+  } else {
+    await getDb()
+      .update(runs)
+      .set({
+        failureCode: input.reason,
+        failureSummary,
+        rankEligible: false,
+        updatedAt: now,
+      })
+      .where(eq(runs.id, input.runId));
+  }
+  await getDb()
+    .update(showcases)
+    .set({
+      judgeStatus: "failed",
+      rankingStatus: "ineligible",
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(showcases.id, input.showcaseId),
+        inArray(showcases.judgeStatus, ["judging", "overdue"]),
+      ),
+    );
+  await appendAuditEvent({
+    actorUserId: null,
+    entityType: "run",
+    entityId: input.runId,
+    action: "run.pipeline_failed",
+    metadata: {
+      code: input.reason,
+      repair: true,
+      stage: "judge",
+    },
+  });
 }

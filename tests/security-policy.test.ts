@@ -225,7 +225,7 @@ test("public result status never claims a failed review was scored", () => {
       rank: null,
       rankingStatus: "ineligible",
     }),
-    "AI review failed — not ranked",
+    "Scored — not ranked (AI review failed)",
   );
   assert.equal(
     publicResultStatus({

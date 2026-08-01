@@ -9,8 +9,8 @@ import { listCommunityTests } from "@/lib/data/community-tests";
 export default async function Home() {
   const [resultsResult, leaderboardRows, tests] = await Promise.all([
     listPublicShowcaseCards(6).catch(() => null),
-    listPublicResultLeaderboard().catch(() => []),
-    listCommunityTests().catch(() => []),
+    listPublicResultLeaderboard().catch(() => null),
+    listCommunityTests().catch(() => null),
   ]);
   const results = resultsResult ?? [];
   const latest = results[0];
@@ -155,12 +155,19 @@ export default async function Home() {
             <div className="protocol-copy">
               <span className="section-index">03 / LIVE CATALOG</span>
               <h2>Tests and rankings grow with the community.</h2>
-              <p>
-                {tests.length} published test{tests.length === 1 ? "" : "s"} and{" "}
-                {leaderboardRows.length} ranked result
-                {leaderboardRows.length === 1 ? "" : "s"} are currently on the
-                record.
-              </p>
+              {tests === null || leaderboardRows === null ? (
+                <p>
+                  The live catalog is temporarily unavailable. Benchmax does
+                  not substitute sample counts for the public record.
+                </p>
+              ) : (
+                <p>
+                  {tests.length} published test{tests.length === 1 ? "" : "s"} and{" "}
+                  {leaderboardRows.length} ranked result
+                  {leaderboardRows.length === 1 ? "" : "s"} are currently on the
+                  record.
+                </p>
+              )}
             </div>
             <div className="hero-actions">
               <Link className="button button-secondary" href="/tests">

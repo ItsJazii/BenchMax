@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { SiteFooter } from "@/app/components/SiteFooter";
 import { SiteHeader } from "@/app/components/SiteHeader";
-import { getPublicShowcaseBySlug } from "@/lib/data/showcases";
+import { getRequestIdentity } from "@/lib/auth/server";
+import {
+  getBlockedShowcaseForOwnerBySlug,
+  getPublicShowcaseBySlug,
+} from "@/lib/data/showcases";
 
 export async function generateMetadata({
   params,
@@ -26,7 +31,20 @@ export default async function ResultPage({
 }) {
   const { slug } = await params;
   const result = await getPublicShowcaseBySlug(slug).catch(() => null);
-  if (!result) notFound();
+  if (!result) {
+    const identity = await getRequestIdentity(
+      new Request("https://benchmax.invalid/results", {
+        headers: await headers(),
+      }),
+    ).catch(() => null);
+    const blocked = identity
+      ? await getBlockedShowcaseForOwnerBySlug(slug, identity.subject).catch(
+          () => null,
+        )
+      : null;
+    if (!blocked) notFound();
+    return <BlockedResultPage result={blocked} />;
+  }
   const pending = ["queued", "evaluating", "judging"].includes(
     result.judgeStatus,
   );
@@ -376,6 +394,41 @@ export default async function ResultPage({
             Report this result →
           </Link>
         </div>
+      </main>
+      <SiteFooter />
+    </div>
+  );
+}
+
+function BlockedResultPage({
+  result,
+}: {
+  result: NonNullable<
+    Awaited<ReturnType<typeof getBlockedShowcaseForOwnerBySlug>>
+  >;
+}) {
+  return (
+    <div className="site-shell">
+      <SiteHeader />
+      <main className="inner-page section-wrap">
+        <div className="showcase-breadcrumbs">
+          <Link href="/explore">Results</Link>
+          <span>/</span>
+          <span>Owner view</span>
+        </div>
+        <section className="security-gate">
+          <span className="status-pill blocked">Blocked</span>
+          <h1>{result.title}</h1>
+          <strong>This result is private to you while it is blocked.</strong>
+          <p>
+            The uploaded evidence did not pass the safety scan. It is not
+            visible in the public feed or to other visitors.
+          </p>
+          <p className="mono">Updated {result.updatedAt.toISOString()} UTC</p>
+          <Link className="button button-secondary" href="/dashboard">
+            Open dashboard
+          </Link>
+        </section>
       </main>
       <SiteFooter />
     </div>

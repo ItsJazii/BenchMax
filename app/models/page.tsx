@@ -29,7 +29,15 @@ export default async function ModelsPage() {
             comparison.
           </p>
         </header>
-        {summaries.length === 0 ? (
+        {result === null ? (
+          <div className="security-gate">
+            <strong>Model summaries are temporarily unavailable.</strong>
+            <p>
+              Benchmax does not replace an unavailable catalog with fabricated
+              model or score data.
+            </p>
+          </div>
+        ) : summaries.length === 0 ? (
           <div className="empty-state">
             <strong>No eligible configuration summaries yet.</strong>
             <p>

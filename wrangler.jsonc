@@ -29,7 +29,7 @@
   "r2_buckets": [
     {
       "binding": "UPLOADS",
-      "bucket_name": "benchmax-uploads"
+      "bucket_name": "benchmax-local-uploads"
     }
   ],
   "triggers": {
@@ -39,34 +39,34 @@
     "producers": [
       {
         "binding": "EVALUATE_QUEUE",
-        "queue": "benchmax-evaluate"
+        "queue": "benchmax-local-evaluate"
       },
       {
         "binding": "JUDGE_QUEUE",
-        "queue": "benchmax-judge"
+        "queue": "benchmax-local-judge"
       },
       {
         "binding": "PIPELINE_DLQ",
-        "queue": "benchmax-pipeline-dlq"
+        "queue": "benchmax-local-pipeline-dlq"
       }
     ],
     "consumers": [
       {
-        "queue": "benchmax-evaluate",
+        "queue": "benchmax-local-evaluate",
         "max_batch_size": 1,
         "max_batch_timeout": 5,
         "max_retries": 3,
-        "dead_letter_queue": "benchmax-pipeline-dlq"
+        "dead_letter_queue": "benchmax-local-pipeline-dlq"
       },
       {
-        "queue": "benchmax-judge",
+        "queue": "benchmax-local-judge",
         "max_batch_size": 1,
         "max_batch_timeout": 5,
         "max_retries": 3,
-        "dead_letter_queue": "benchmax-pipeline-dlq"
+        "dead_letter_queue": "benchmax-local-pipeline-dlq"
       },
       {
-        "queue": "benchmax-pipeline-dlq",
+        "queue": "benchmax-local-pipeline-dlq",
         "max_batch_size": 1,
         "max_batch_timeout": 5,
         "max_retries": 3

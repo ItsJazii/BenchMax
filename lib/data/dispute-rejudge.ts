@@ -76,7 +76,11 @@ export async function requestDisputeRejudgment(input: {
     // dispute is open to any authenticated user, and terminalizing here would
     // let a stranger's dispute flip a publicly scored result to "failed";
     // user-initiated disputes on frozen versions simply record as
-    // not-applicable and await moderation.
+    // not-applicable and await moderation. Deliberate consequence: a dispute
+    // against a frozen-evaluation run whose showcase is still "scored" is
+    // never terminalized at all — the result keeps its valid score, the open
+    // dispute stays visible in the moderation queue (that is the ops signal),
+    // and the moderator resolves it there with rejudgment "not-applicable".
     if (!input.repairAttempt) {
       await auditRejudge(input, "run.dispute_rejudge_frozen_not_applicable", {
         missingSamples,

@@ -25,6 +25,17 @@ for (const key of overrideKeys) {
   }
 }
 
+// Symmetric guard: every key someone writes into an env block must be one we
+// actually copy, otherwise their explicit per-environment setting would be
+// silently dropped and the production-shaped default deployed instead.
+for (const key of Object.keys(environment)) {
+  if (!overrideKeys.includes(key)) {
+    throw new Error(
+      `main Worker ${environmentName} environment sets an unsupported key (${key}); add it to prepare-main-deploy.mjs overrideKeys so it is copied into the deploy config`,
+    );
+  }
+}
+
 // The built config inherits top-level (= production) values. Inverted
 // allowlist: every key that is neither overridden per environment nor a
 // known-safe non-binding key must be EMPTY, so any future binding type (KV,

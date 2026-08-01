@@ -15,7 +15,7 @@
   "r2_buckets": [
     {
       "binding": "UPLOADS",
-      "bucket_name": "benchmax-uploads"
+      "bucket_name": "benchmax-local-uploads"
     }
   ],
   "env": {

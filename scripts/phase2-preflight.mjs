@@ -71,7 +71,12 @@ for (const [environmentName, expected] of Object.entries(environments)) {
 
 assert.notEqual(databaseIds.staging, databaseIds.production, "staging and production must use separate D1 databases");
 assertDisjoint(queueNamesByEnvironment.staging, queueNamesByEnvironment.production, "staging and production queues");
-assertRequiredQueues(queueNames(mainConfig.queues), "benchmax-", "top-level main Worker");
+// Top-level (no --env) blocks are local-only: placeholder D1, local queue and
+// bucket names. A stray deploy without --env can then never attach consumers,
+// crons, or storage to live production resources.
+assertRequiredQueues(queueNames(mainConfig.queues), "benchmax-local-", "top-level main Worker");
+assert.equal(mainConfig.r2_buckets?.[0]?.bucket_name, "benchmax-local-uploads", "top-level main Worker bucket must be the local-only bucket");
+assert.equal(usercontentConfig.r2_buckets?.[0]?.bucket_name, "benchmax-local-uploads", "top-level user-content Worker bucket must be the local-only bucket");
 for (const cron of requiredCrons) {
   assert((mainConfig.triggers?.crons ?? []).includes(cron), `top-level main Worker is missing cron trigger: ${cron}`);
 }

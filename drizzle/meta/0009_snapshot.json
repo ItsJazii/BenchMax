@@ -4415,6 +4415,16 @@
             "updated_at"
           ],
           "isUnique": false
+        },
+        "showcases_test_status_idx": {
+          "name": "showcases_test_status_idx",
+          "columns": [
+            "benchmark_version_id",
+            "status",
+            "judge_status",
+            "ranking_status"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {

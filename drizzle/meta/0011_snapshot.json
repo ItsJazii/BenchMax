@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e2f99c78-e40d-402c-98f3-c10fff85928d",
-  "prevId": "76625547-6b7c-44c8-afa1-dac2e50ee10a",
+  "id": "f488c00f-ece1-4681-95eb-78e65b724cf6",
+  "prevId": "e2f99c78-e40d-402c-98f3-c10fff85928d",
   "tables": {
     "abuse_reports": {
       "name": "abuse_reports",
@@ -1144,6 +1144,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "result_configuration_id": {
+          "name": "result_configuration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "requester_user_id": {
           "name": "requester_user_id",
           "type": "text",
@@ -1232,9 +1239,30 @@
             "created_at"
           ],
           "isUnique": false
+        },
+        "catalog_requests_configuration_idx": {
+          "name": "catalog_requests_configuration_idx",
+          "columns": [
+            "result_configuration_id",
+            "created_at"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
+        "catalog_requests_result_configuration_id_result_configurations_id_fk": {
+          "name": "catalog_requests_result_configuration_id_result_configurations_id_fk",
+          "tableFrom": "catalog_requests",
+          "tableTo": "result_configurations",
+          "columnsFrom": [
+            "result_configuration_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
         "catalog_requests_requester_user_id_users_id_fk": {
           "name": "catalog_requests_requester_user_id_users_id_fk",
           "tableFrom": "catalog_requests",
@@ -3482,7 +3510,7 @@
         },
         "result_configurations_catalog_status_allowed": {
           "name": "result_configurations_catalog_status_allowed",
-          "value": "\"result_configurations\".\"catalog_status\" IN ('canonical', 'pending')"
+          "value": "\"result_configurations\".\"catalog_status\" IN ('canonical', 'pending', 'rejected')"
         }
       }
     },

@@ -50,6 +50,17 @@ try {
     "0005_submission_rights.sql",
     "0006_evaluation_origin_pin.sql",
     "0007_generation_contract_freeze.sql",
+    "0008_community_results_pivot.sql",
+    "0009_community_test_categories.sql",
+    "0010_result_leaderboard_snapshots.sql",
+    "0011_catalog_request_config_links.sql",
+    "0012_judge_budget_reservations.sql",
+    "0013_result_aggregate_snapshots.sql",
+    "0014_immutable_test_versions.sql",
+    "0015_legacy_pipeline_seal.sql",
+    "0016_result_spend_records.sql",
+    "0017_result_snapshot_immutability.sql",
+    "0018_catalog_configuration_canonicalization.sql",
   ]) {
     assert.match(migrationOutput, new RegExp(migration.replaceAll(".", "\\.")));
   }
@@ -81,13 +92,105 @@ try {
     "INSERT INTO model_versions (id, model_id, version_label, is_current, created_at, updated_at) VALUES ('freeze-model-version', 'freeze-model', 'v1', 1, 1, 1);",
     "INSERT INTO harnesses (id, slug, name, version, loop_version, tools_json, file_policy_json, context_budget_tokens, turn_limit, dependency_policy_json, contract_hash, status, created_at, updated_at) VALUES ('freeze-harness', 'freeze-harness', 'Freeze Harness', 1, 'v1', '[]', '{}', 1000, 1, '{}', 'freeze-harness-hash', 'active', 1, 1);",
     "INSERT INTO benchmarks (id, slug, title, category, status, created_at, updated_at) VALUES ('freeze-benchmark', 'freeze-benchmark', 'Freeze Benchmark', 'frontend', 'active', 1, 1);",
-    "INSERT INTO benchmark_versions (id, benchmark_id, version, canonical_prompt, rubric_json, harness_id, harness_contract_json, environment_hash, dependency_lock_hash, interaction_script_hash, created_at, updated_at) VALUES ('freeze-benchmark-v1', 'freeze-benchmark', 1, 'prompt', '[]', 'freeze-harness', '{}', 'environment-hash', 'dependency-hash', 'interaction-hash', 1, 1);",
+    "INSERT INTO benchmark_versions (id, benchmark_id, version, title, goal, success_criteria_json, category, canonical_prompt, rubric_json, harness_id, harness_contract_json, environment_hash, dependency_lock_hash, interaction_script_hash, created_at, updated_at) VALUES ('freeze-benchmark-v1', 'freeze-benchmark', 1, 'Freeze Benchmark', 'Exercise the freeze contract.', '[\"The result is correct.\"]', 'frontend', 'prompt', '[]', 'freeze-harness', '{}', 'environment-hash', 'dependency-hash', 'interaction-hash', 1, 1);",
     "INSERT INTO configurations (id, provider_id, model_version_id, harness_id, endpoint_name, provider_model_id, reasoning_level, sampling_settings_json, settings_hash, max_output_tokens, status, created_at, updated_at) VALUES ('freeze-config', 'freeze-provider', 'freeze-model-version', 'freeze-harness', 'endpoint', 'model', 'low', '{}', 'settings-hash', 1000, 'active', 1, 1);",
+    "INSERT INTO result_configurations (id, model_version_id, harness_id, model_label, model_version_label, harness_label, reasoning_raw, reasoning_normalized, declared_settings_json, metadata_hash, catalog_status, created_at, updated_at) VALUES ('freeze-result-config', 'freeze-model-version', 'freeze-harness', 'Freeze Model', 'v1', 'Freeze Harness v1', 'low', 'low', '{}', 'freeze-result-config-hash', 'canonical', 1, 1);",
     "INSERT INTO evaluation_versions (id, version, judge_provider, judge_model, judge_model_version, endpoint_origin, prompt_template, prompt_template_hash, rubric_protocol_version, sample_count, max_tokens_per_sample, calibration_set_hash, drift_threshold_bps, status, created_at, updated_at) VALUES ('freeze-evaluation', 99, 'provider', 'model', 'v1', 'https://judge.example', 'prompt', 'freeze-prompt-hash', 'rubric-v1', 3, 1000, 'freeze-calibration-hash', 100, 'active', 1, 1);",
     "INSERT INTO rubric_dimensions (id, benchmark_version_id, key, title, description, mechanism, weight_bps, judge_source_required, ordinal, created_at, updated_at) VALUES ('freeze-dimension', 'freeze-benchmark-v1', 'quality', 'Quality', 'Quality description', 'judge', 10000, 0, 1, 1, 1);",
-    "INSERT INTO runs (id, public_slug, contributor_id, benchmark_version_id, configuration_id, evaluation_version_id, credential_mode, status, attempt_index, environment_hash, harness_contract_hash, rank_eligible, injection_flag, post_publication_marker, playable_enabled, created_at, updated_at) VALUES ('freeze-run', 'freeze-run', 'freeze-user', 'freeze-benchmark-v1', 'freeze-config', 'freeze-evaluation', 'byok', 'draft', 1, 'environment-hash', 'harness-hash', 0, 0, 0, 0, 1, 1);",
+    "UPDATE benchmark_versions SET published_at = 2, updated_at = 2 WHERE id = 'freeze-benchmark-v1';",
+    "INSERT INTO showcases (id, slug, owner_id, title, summary, category, benchmark_version_id, result_configuration_id, model_label, harness, reasoning_level, prompt, source_visibility, rights_attested_at, status, safety_status, judge_status, ranking_status, published_at, created_at, updated_at) VALUES ('freeze-showcase', 'freeze-showcase', 'freeze-user', 'Freeze Showcase', 'Snapshot immutability fixture.', 'frontend', 'freeze-benchmark-v1', 'freeze-result-config', 'Freeze Model', 'Freeze Harness v1', 'low', 'prompt', 'private', 1, 'published', 'approved', 'scored', 'eligible', 2, 1, 2);",
+    "INSERT INTO runs (id, public_slug, contributor_id, benchmark_version_id, configuration_id, evaluation_version_id, credential_mode, status, attempt_index, environment_hash, harness_contract_hash, rank_eligible, injection_flag, post_publication_marker, playable_enabled, created_at, updated_at) VALUES ('freeze-run', 'freeze-run', 'freeze-user', 'freeze-benchmark-v1', 'freeze-config', 'freeze-evaluation', 'community-submission', 'queued_evaluation', 1, 'environment-hash', 'harness-hash', 0, 0, 0, 0, 1, 1);",
   ].join(" ");
   wrangler(["d1", "execute", "DB", "--command", contractFixture]);
+  wrangler([
+    "d1",
+    "execute",
+    "DB",
+    "--command",
+    "INSERT INTO result_configurations (id, model_version_id, harness_id, model_label, model_version_label, harness_label, reasoning_raw, reasoning_normalized, declared_settings_json, metadata_hash, catalog_status, created_at, updated_at) VALUES ('pending-result-config', 'freeze-model-version', 'freeze-harness', 'Pending Model', 'v1', 'Freeze Harness v1', 'low', 'low', '{}', 'pending-result-config-hash', 'pending', 1, 1);",
+  ]);
+  const blockedPendingHashMutation = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_configurations SET metadata_hash = 'tampered-pending-hash' WHERE id = 'pending-result-config';",
+    ],
+    false,
+  );
+  assert.match(blockedPendingHashMutation, /declared result metadata is immutable/i);
+  const blockedPendingDeclaredMutation = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_configurations SET declared_settings_json = '{\"temperature\":1}' WHERE id = 'pending-result-config';",
+    ],
+    false,
+  );
+  assert.match(blockedPendingDeclaredMutation, /declared result metadata is immutable/i);
+  wrangler([
+    "d1",
+    "execute",
+    "DB",
+    "--command",
+    "UPDATE result_configurations SET catalog_status = 'canonical', metadata_hash = 'canonical-result-config-hash', updated_at = 2 WHERE id = 'pending-result-config';",
+  ]);
+  const blockedCanonicalMetadataMutation = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_configurations SET metadata_hash = 'tampered-result-config-hash' WHERE id = 'pending-result-config';",
+    ],
+    false,
+  );
+  assert.match(
+    blockedCanonicalMetadataMutation,
+    /declared result metadata is immutable/i,
+  );
+  const blockedCanonicalDeclaredMutation = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_configurations SET model_label = 'Tampered Model' WHERE id = 'pending-result-config';",
+    ],
+    false,
+  );
+  assert.match(
+    blockedCanonicalDeclaredMutation,
+    /declared result metadata is immutable/i,
+  );
+  const blockedCanonicalIdentityMutation = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_configurations SET model_version_id = NULL WHERE id = 'pending-result-config';",
+    ],
+    false,
+  );
+  assert.match(
+    blockedCanonicalIdentityMutation,
+    /declared result metadata is immutable/i,
+  );
+  const blockedCanonicalStatusReopen = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_configurations SET catalog_status = 'rejected' WHERE id = 'pending-result-config';",
+    ],
+    false,
+  );
+  assert.match(blockedCanonicalStatusReopen, /catalog status cannot be reopened/i);
   const blockedEvaluationMutation = wrangler(
     [
       "d1",
@@ -102,6 +205,210 @@ try {
     blockedEvaluationMutation,
     /evaluation version contract is frozen/i,
   );
+  const blockedPublishedVersionMutation = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE benchmark_versions SET title = 'Tampered' WHERE id = 'freeze-benchmark-v1';",
+    ],
+    false,
+  );
+  assert.match(
+    blockedPublishedVersionMutation,
+    /published benchmark versions are immutable/i,
+  );
+
+  wrangler([
+    "d1",
+    "execute",
+    "DB",
+    "--command",
+    "INSERT INTO result_spend_records (id, run_id, evaluation_version_id, service, operation, attempt_key, sample_index, status, currency, cost_microusd, input_tokens, output_tokens, duration_ms, pricing_snapshot_json, pricing_snapshot_hash, usage_json, created_at) VALUES ('spend-probe', 'freeze-run', 'freeze-evaluation', 'judge', 'judge-sample', 'spend-probe-attempt', 1, 'completed', 'USD', 42, 100, 10, 250, '{\"version\":1}', 'pricing-hash', '{\"version\":1}', 1);",
+  ]);
+  const blockedSpendMutation = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_spend_records SET cost_microusd = 0 WHERE id = 'spend-probe';",
+    ],
+    false,
+  );
+  assert.match(blockedSpendMutation, /result spend records are append-only/i);
+  const blockedSpendDelete = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "DELETE FROM result_spend_records WHERE id = 'spend-probe';",
+    ],
+    false,
+  );
+  assert.match(blockedSpendDelete, /result spend records are append-only/i);
+
+  wrangler([
+    "d1",
+    "execute",
+    "DB",
+    "--command",
+    [
+      "INSERT INTO result_leaderboard_snapshots (id, benchmark_version_id, evaluation_version_id, version, result_set_hash, status, published_at, created_at) VALUES ('sealed-result-snapshot', 'freeze-benchmark-v1', 'freeze-evaluation', 1, 'sealed-result-set', 'building', NULL, 1);",
+      "INSERT INTO result_leaderboard_entries (id, snapshot_id, showcase_id, run_id, rank, score_bps, sample_count, created_at) VALUES ('sealed-result-entry', 'sealed-result-snapshot', 'freeze-showcase', 'freeze-run', 1, 9000, 3, 1);",
+      "UPDATE result_leaderboard_snapshots SET status = 'published', published_at = 2 WHERE id = 'sealed-result-snapshot';",
+      "INSERT INTO result_aggregate_snapshots (id, evaluation_version_id, version, source_set_hash, status, published_at, created_at) VALUES ('sealed-aggregate-snapshot', 'freeze-evaluation', 1, 'sealed-source-set', 'building', NULL, 1);",
+      "INSERT INTO result_aggregate_entries (id, snapshot_id, result_configuration_id, score_bps, q1_score_bps, q3_score_bps, test_coverage, contributor_count, provisional, source_snapshot_ids_json, created_at) VALUES ('sealed-aggregate-entry', 'sealed-aggregate-snapshot', 'freeze-result-config', 9000, 8500, 9500, 1, 1, 1, '[\"sealed-result-snapshot\"]', 1);",
+      "UPDATE result_aggregate_snapshots SET status = 'published', published_at = 2 WHERE id = 'sealed-aggregate-snapshot';",
+    ].join(" "),
+  ]);
+  const blockedResultEntryMutation = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_leaderboard_entries SET score_bps = 1 WHERE id = 'sealed-result-entry';",
+    ],
+    false,
+  );
+  assert.match(blockedResultEntryMutation, /result leaderboard entries are immutable/i);
+  const blockedResultSnapshotReopen = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_leaderboard_snapshots SET status = 'building' WHERE id = 'sealed-result-snapshot';",
+    ],
+    false,
+  );
+  assert.match(blockedResultSnapshotReopen, /cannot be reopened/i);
+  const blockedAggregateEntryDelete = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "DELETE FROM result_aggregate_entries WHERE id = 'sealed-aggregate-entry';",
+    ],
+    false,
+  );
+  assert.match(blockedAggregateEntryDelete, /result aggregate entries are immutable/i);
+  const blockedAggregateSnapshotMutation = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE result_aggregate_snapshots SET source_set_hash = 'tampered' WHERE id = 'sealed-aggregate-snapshot';",
+    ],
+    false,
+  );
+  assert.match(blockedAggregateSnapshotMutation, /result aggregate snapshots are immutable/i);
+
+  const blockedLegacyFundingInsert = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "INSERT INTO legacy_generation_funding_history (id, user_id, run_id, type, amount_milli_units, idempotency_key, metadata_json, actor_user_id, created_at) VALUES ('legacy-funding-probe', 'freeze-user', 'freeze-run', 'generation-charge', -1, 'legacy-funding-probe', '{}', NULL, 1);",
+    ],
+    false,
+  );
+  assert.match(blockedLegacyFundingInsert, /generation funding history is sealed/i);
+
+  const blockedGenerationRecordInsert = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "INSERT INTO generation_records (id, run_id, request_hash, response_hash, provenance_hash, encrypted_envelope_object_key, encrypted_envelope_sha256, redacted_transcript, duration_ms, harness_turn_count, created_at) VALUES ('generation-probe', 'freeze-run', 'request', 'response', 'provenance', 'envelope', 'sha', 'redacted', 1, 1, 1);",
+    ],
+    false,
+  );
+  assert.match(blockedGenerationRecordInsert, /generation records are sealed/i);
+  wrangler([
+    "d1",
+    "execute",
+    "DB",
+    "--command",
+    "DROP TRIGGER generation_records_no_insert; INSERT INTO generation_records (id, run_id, request_hash, response_hash, provenance_hash, encrypted_envelope_object_key, encrypted_envelope_sha256, redacted_transcript, duration_ms, harness_turn_count, created_at) VALUES ('generation-probe', 'freeze-run', 'request', 'response', 'provenance', 'envelope', 'sha', 'redacted', 1, 1, 1); CREATE TRIGGER generation_records_no_insert BEFORE INSERT ON generation_records BEGIN SELECT RAISE(ABORT, 'legacy generation records are sealed'); END;",
+  ]);
+  const blockedGenerationRecordUpdate = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE generation_records SET response_hash = 'tampered' WHERE id = 'generation-probe';",
+    ],
+    false,
+  );
+  assert.match(blockedGenerationRecordUpdate, /generation records are sealed/i);
+  const blockedGenerationRecordDelete = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "DELETE FROM generation_records WHERE id = 'generation-probe';",
+    ],
+    false,
+  );
+  assert.match(blockedGenerationRecordDelete, /generation records are sealed/i);
+
+  const blockedLegacyCredentialInsert = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "INSERT INTO runs (id, public_slug, contributor_id, benchmark_version_id, configuration_id, evaluation_version_id, credential_mode, status, attempt_index, environment_hash, harness_contract_hash, rank_eligible, injection_flag, post_publication_marker, playable_enabled, created_at, updated_at) VALUES ('legacy-run-probe', 'legacy-run-probe', 'freeze-user', 'freeze-benchmark-v1', 'freeze-config', 'freeze-evaluation', 'byok', 'queued_evaluation', 1, 'environment-hash', 'harness-hash', 0, 0, 0, 0, 1, 1);",
+    ],
+    false,
+  );
+  assert.match(blockedLegacyCredentialInsert, /credential modes are sealed/i);
+
+  const blockedLegacyCredentialUpdate = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE runs SET credential_mode = 'platform-credit' WHERE id = 'freeze-run';",
+    ],
+    false,
+  );
+  assert.match(blockedLegacyCredentialUpdate, /credential modes are sealed/i);
+
+  const blockedLegacyStatusUpdate = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE runs SET status = 'generated' WHERE id = 'freeze-run';",
+    ],
+    false,
+  );
+  assert.match(blockedLegacyStatusUpdate, /generation run states are sealed/i);
+
+  const blockedGenerationStageClaim = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "INSERT INTO run_stage_claims (id, run_id, stage, stage_version, status, attempt_count, lease_expires_at, created_at, updated_at) VALUES ('generation-claim-probe', 'freeze-run', 'generate-platform', 'v1', 'claimed', 1, 2, 1, 1);",
+    ],
+    false,
+  );
+  assert.match(blockedGenerationStageClaim, /generation stage claims are sealed/i);
   const blockedRubricMutation = wrangler(
     [
       "d1",
@@ -112,7 +419,10 @@ try {
     ],
     false,
   );
-  assert.match(blockedRubricMutation, /rubric dimensions are frozen/i);
+  assert.match(
+    blockedRubricMutation,
+    /published benchmark rubrics are immutable|rubric dimensions are frozen/i,
+  );
   const blockedProviderMutation = wrangler(
     [
       "d1",
@@ -168,7 +478,7 @@ try {
     "execute",
     "DB",
     "--command",
-    "INSERT INTO showcases (id, slug, owner_id, title, summary, category, model_label, harness, reasoning_level, prompt, source_visibility, rights_attested_at, status, safety_status, created_at, updated_at) VALUES ('quota-showcase', 'quota-showcase', 'freeze-user', 'Quota Showcase', 'Quota invariant fixture for upload session enforcement.', 'frontend', 'Kimi K3', 'Benchmax Web Agent', 'high', 'Build a test.', 'private', 1, 'draft', 'pending', 1, 1);",
+    "INSERT INTO showcases (id, slug, owner_id, title, summary, category, model_label, harness, reasoning_level, prompt, source_visibility, rights_attested_at, status, safety_status, created_at, updated_at) VALUES ('quota-showcase', 'quota-showcase', 'freeze-user', 'Quota Showcase', 'Quota invariant fixture for upload session enforcement.', 'frontend', 'Example Model', 'Example Harness', 'high', 'Build a test.', 'private', 1, 'draft', 'pending', 1, 1);",
   ]);
   const blockedKindSize = wrangler(
     [
@@ -207,21 +517,39 @@ try {
     "execute",
     "DB",
     "--command",
-    "SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name; SELECT name FROM d1_migrations ORDER BY id; PRAGMA foreign_key_check;",
+    "SELECT name FROM sqlite_master WHERE type IN ('table', 'trigger') ORDER BY name; SELECT name FROM d1_migrations ORDER BY id; PRAGMA foreign_key_check;",
   ]);
   for (const trigger of [
     "audit_events_no_update",
     "audit_events_no_delete",
-    "credit_ledger_no_update",
+    "legacy_generation_funding_no_insert",
+    "legacy_generation_funding_no_update",
+    "legacy_generation_funding_no_delete",
+    "generation_records_no_insert",
     "generation_records_no_update",
+    "generation_records_no_delete",
+    "run_artifacts_legacy_no_insert",
+    "run_artifacts_legacy_no_update",
+    "run_artifacts_legacy_no_delete",
+    "judge_samples_legacy_no_insert",
+    "judge_samples_legacy_no_update",
+    "judge_samples_legacy_no_delete",
+    "dimension_scores_legacy_no_insert",
+    "dimension_scores_legacy_no_update",
+    "dimension_scores_legacy_no_delete",
     "judge_samples_no_update",
     "objective_results_no_update",
     "moderation_actions_no_update",
     "benchmark_versions_frozen_after_run",
+    "benchmark_versions_frozen_after_publish_update",
+    "benchmark_versions_frozen_after_publish_delete",
     "evaluation_versions_frozen_after_run",
     "rubric_dimensions_frozen_after_run_update",
     "rubric_dimensions_frozen_after_run_delete",
     "rubric_dimensions_frozen_after_run_insert",
+    "rubric_dimensions_frozen_after_publish_insert",
+    "rubric_dimensions_frozen_after_publish_update",
+    "rubric_dimensions_frozen_after_publish_delete",
     "harnesses_frozen_when_referenced",
     "providers_frozen_after_run",
     "model_versions_frozen_after_run",
@@ -231,9 +559,39 @@ try {
     "upload_sessions_kind_size_policy",
     "upload_sessions_submission_quota",
     "upload_sessions_account_quota",
+    "runs_legacy_credential_no_insert",
+    "runs_legacy_credential_no_update",
+    "runs_legacy_credential_no_delete",
+    "runs_legacy_status_no_insert",
+    "runs_legacy_status_no_update",
+    "run_stage_claims_legacy_generation_no_insert",
+    "run_stage_claims_legacy_generation_no_update",
+    "run_stage_claims_legacy_generation_no_delete",
+    "result_spend_records_no_update",
+    "result_spend_records_no_delete",
+    "result_leaderboard_entries_sealed_no_insert",
+    "result_leaderboard_entries_sealed_no_update",
+    "result_leaderboard_entries_sealed_no_delete",
+    "result_leaderboard_snapshots_sealed_identity_no_update",
+    "result_leaderboard_snapshots_no_reopen",
+    "result_leaderboard_snapshots_sealed_no_delete",
+    "result_aggregate_entries_sealed_no_insert",
+    "result_aggregate_entries_sealed_no_update",
+    "result_aggregate_entries_sealed_no_delete",
+    "result_aggregate_snapshots_sealed_identity_no_update",
+    "result_aggregate_snapshots_no_reopen",
+    "result_aggregate_snapshots_sealed_no_delete",
+    "result_configurations_identity_frozen",
+    "result_configurations_catalog_ids_frozen",
+    "result_configurations_metadata_hash_frozen",
+    "result_configurations_catalog_status_transition",
+    "result_aggregate_snapshots",
+    "result_aggregate_entries",
   ]) {
     assert.match(integrityOutput, new RegExp(trigger));
   }
+  assert.match(integrityOutput, /legacy_generation_funding_history/);
+  assert.doesNotMatch(integrityOutput, /credit_ledger/);
 
   console.log("D1 migrations, foreign keys, append-only records, and frozen contracts verified.");
 } finally {

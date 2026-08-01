@@ -228,7 +228,7 @@ export async function seedRankedCatalog() {
       maxTokensPerSample: 4096,
       calibrationSetHash,
       driftThresholdBps: 750,
-      status: "active",
+      status: "draft",
       createdAt: now,
       updatedAt: now,
     })
@@ -269,6 +269,12 @@ export async function seedRankedCatalog() {
         id: definition.id,
         benchmarkId,
         version: definition.version,
+        title: definition.title,
+        goal: definition.canonicalPrompt,
+        successCriteriaJson: canonicalJson(
+          definition.rubric.map((dimension) => dimension.title),
+        ),
+        category,
         canonicalPrompt: definition.canonicalPrompt,
         rubricJson: canonicalJson(definition.rubric),
         harnessId: BENCHMAX_HARNESS_V1.id,

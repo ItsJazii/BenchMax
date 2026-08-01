@@ -15,3 +15,32 @@ export function normalizeReasoning(value: string): NormalizedReasoning {
   if (/^(?:max|maximum|xhigh|4)$/.test(normalized)) return "max";
   return "unknown";
 }
+
+function normalizeCatalogLabel(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/gu, " ");
+}
+
+export function resultConfigurationIdentityMaterial(input: {
+  declaredSettings: unknown;
+  harnessId: string | null;
+  harnessLabel: string;
+  modelLabel: string;
+  modelVersionId: string | null;
+  modelVersionLabel: string;
+  reasoningNormalized: NormalizedReasoning;
+}) {
+  return {
+    declaredSettings: input.declaredSettings,
+    harness: input.harnessId
+      ? { id: input.harnessId }
+      : { label: normalizeCatalogLabel(input.harnessLabel) },
+    modelVersion: input.modelVersionId
+      ? { id: input.modelVersionId }
+      : {
+          modelLabel: normalizeCatalogLabel(input.modelLabel),
+          versionLabel: normalizeCatalogLabel(input.modelVersionLabel),
+        },
+    reasoning: input.reasoningNormalized,
+    version: 2,
+  };
+}

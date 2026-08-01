@@ -24,7 +24,12 @@ export async function GET() {
         .from(modelVersions)
         .innerJoin(models, eq(models.id, modelVersions.modelId))
         .innerJoin(providers, eq(providers.id, models.providerId))
-        .where(eq(models.status, "active"))
+        .where(
+          and(
+            eq(models.status, "active"),
+            ne(modelVersions.versionLabel, "Unspecified"),
+          ),
+        )
         .orderBy(models.name, modelVersions.versionLabel),
       getDb()
         .select({

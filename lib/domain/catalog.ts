@@ -9,10 +9,13 @@ export type ShowcaseCard = {
   id: string;
   model: string;
   published: string;
+  rank: number | null;
   reasoning: string;
+  scoreBps: number | null;
   slug: string;
+  status: string;
   title: string;
-  trust: "Platform Generated" | "Platform Replayed" | "Community Showcase";
+  trust: "Declared, unverified";
 };
 
 export const categoryLabels: Record<Category, string> = {

@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e2f99c78-e40d-402c-98f3-c10fff85928d",
-  "prevId": "76625547-6b7c-44c8-afa1-dac2e50ee10a",
+  "id": "91e2d7a8-2bab-4d27-89dd-3f5f96230717",
+  "prevId": "96e945ed-1f06-4206-b580-24ad07961fb9",
   "tables": {
     "abuse_reports": {
       "name": "abuse_reports",
@@ -817,6 +817,34 @@
           "notNull": true,
           "autoincrement": false
         },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "goal": {
+          "name": "goal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "success_criteria_json": {
+          "name": "success_criteria_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "canonical_prompt": {
           "name": "canonical_prompt",
           "type": "text",
@@ -990,6 +1018,10 @@
         "benchmark_versions_attempt_count_bounded": {
           "name": "benchmark_versions_attempt_count_bounded",
           "value": "\"benchmark_versions\".\"attempt_count\" BETWEEN 1 AND 10"
+        },
+        "benchmark_versions_category_allowed": {
+          "name": "benchmark_versions_category_allowed",
+          "value": "\"benchmark_versions\".\"category\" IN ('frontend', 'browser-game', 'browser-3d', 'other')"
         }
       }
     },
@@ -1144,6 +1176,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "result_configuration_id": {
+          "name": "result_configuration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "requester_user_id": {
           "name": "requester_user_id",
           "type": "text",
@@ -1232,9 +1271,30 @@
             "created_at"
           ],
           "isUnique": false
+        },
+        "catalog_requests_configuration_idx": {
+          "name": "catalog_requests_configuration_idx",
+          "columns": [
+            "result_configuration_id",
+            "created_at"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
+        "catalog_requests_result_configuration_id_result_configurations_id_fk": {
+          "name": "catalog_requests_result_configuration_id_result_configurations_id_fk",
+          "tableFrom": "catalog_requests",
+          "tableTo": "result_configurations",
+          "columnsFrom": [
+            "result_configuration_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
         "catalog_requests_requester_user_id_users_id_fk": {
           "name": "catalog_requests_requester_user_id_users_id_fk",
           "tableFrom": "catalog_requests",
@@ -1448,153 +1508,6 @@
         "configurations_status_allowed": {
           "name": "configurations_status_allowed",
           "value": "\"configurations\".\"status\" IN ('active', 'disabled')"
-        }
-      }
-    },
-    "credit_ledger": {
-      "name": "credit_ledger",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "amount_milli_credits": {
-          "name": "amount_milli_credits",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "metadata_json": {
-          "name": "metadata_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "actor_user_id": {
-          "name": "actor_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "credit_ledger_idempotency_uidx": {
-          "name": "credit_ledger_idempotency_uidx",
-          "columns": [
-            "idempotency_key"
-          ],
-          "isUnique": true
-        },
-        "credit_ledger_user_idx": {
-          "name": "credit_ledger_user_idx",
-          "columns": [
-            "user_id",
-            "created_at"
-          ],
-          "isUnique": false
-        },
-        "credit_ledger_run_idx": {
-          "name": "credit_ledger_run_idx",
-          "columns": [
-            "run_id",
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "credit_ledger_user_id_users_id_fk": {
-          "name": "credit_ledger_user_id_users_id_fk",
-          "tableFrom": "credit_ledger",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "credit_ledger_run_id_runs_id_fk": {
-          "name": "credit_ledger_run_id_runs_id_fk",
-          "tableFrom": "credit_ledger",
-          "tableTo": "runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "credit_ledger_actor_user_id_users_id_fk": {
-          "name": "credit_ledger_actor_user_id_users_id_fk",
-          "tableFrom": "credit_ledger",
-          "tableTo": "users",
-          "columnsFrom": [
-            "actor_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "credit_ledger_type_allowed": {
-          "name": "credit_ledger_type_allowed",
-          "value": "\"credit_ledger\".\"type\" IN ('admin-grant', 'reserve', 'generation-charge', 'judge-charge', 'sandbox-charge', 'refund', 'adjustment')"
-        },
-        "credit_ledger_amount_nonzero": {
-          "name": "credit_ledger_amount_nonzero",
-          "value": "\"credit_ledger\".\"amount_milli_credits\" <> 0"
         }
       }
     },
@@ -2034,152 +1947,6 @@
         }
       }
     },
-    "generation_records": {
-      "name": "generation_records",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "request_hash": {
-          "name": "request_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "response_hash": {
-          "name": "response_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "provenance_hash": {
-          "name": "provenance_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "encrypted_envelope_object_key": {
-          "name": "encrypted_envelope_object_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "encrypted_envelope_sha256": {
-          "name": "encrypted_envelope_sha256",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "redacted_transcript": {
-          "name": "redacted_transcript",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "provider_request_id": {
-          "name": "provider_request_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "input_tokens": {
-          "name": "input_tokens",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "output_tokens": {
-          "name": "output_tokens",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "duration_ms": {
-          "name": "duration_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "harness_turn_count": {
-          "name": "harness_turn_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "generation_records_run_uidx": {
-          "name": "generation_records_run_uidx",
-          "columns": [
-            "run_id"
-          ],
-          "isUnique": true
-        },
-        "generation_records_provenance_uidx": {
-          "name": "generation_records_provenance_uidx",
-          "columns": [
-            "provenance_hash"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "generation_records_run_id_runs_id_fk": {
-          "name": "generation_records_run_id_runs_id_fk",
-          "tableFrom": "generation_records",
-          "tableTo": "runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "generation_records_duration_nonnegative": {
-          "name": "generation_records_duration_nonnegative",
-          "value": "\"generation_records\".\"duration_ms\" >= 0"
-        },
-        "generation_records_turns_positive": {
-          "name": "generation_records_turns_positive",
-          "value": "\"generation_records\".\"harness_turn_count\" > 0"
-        }
-      }
-    },
     "harnesses": {
       "name": "harnesses",
       "columns": {
@@ -2319,6 +2086,128 @@
         "harnesses_status_allowed": {
           "name": "harnesses_status_allowed",
           "value": "\"harnesses\".\"status\" IN ('draft', 'active', 'retired')"
+        }
+      }
+    },
+    "judge_budget_reservations": {
+      "name": "judge_budget_reservations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contributor_id": {
+          "name": "contributor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "day_started_at": {
+          "name": "day_started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sample_count": {
+          "name": "sample_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "judge_budget_reservations_run_purpose_day_uidx": {
+          "name": "judge_budget_reservations_run_purpose_day_uidx",
+          "columns": [
+            "run_id",
+            "purpose",
+            "day_started_at"
+          ],
+          "isUnique": true
+        },
+        "judge_budget_reservations_day_idx": {
+          "name": "judge_budget_reservations_day_idx",
+          "columns": [
+            "day_started_at",
+            "purpose"
+          ],
+          "isUnique": false
+        },
+        "judge_budget_reservations_contributor_day_idx": {
+          "name": "judge_budget_reservations_contributor_day_idx",
+          "columns": [
+            "contributor_id",
+            "day_started_at",
+            "purpose"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "judge_budget_reservations_run_id_runs_id_fk": {
+          "name": "judge_budget_reservations_run_id_runs_id_fk",
+          "tableFrom": "judge_budget_reservations",
+          "tableTo": "runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "judge_budget_reservations_contributor_id_users_id_fk": {
+          "name": "judge_budget_reservations_contributor_id_users_id_fk",
+          "tableFrom": "judge_budget_reservations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "contributor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "judge_budget_reservations_purpose_allowed": {
+          "name": "judge_budget_reservations_purpose_allowed",
+          "value": "\"judge_budget_reservations\".\"purpose\" IN ('initial', 'top-ten-escalation', 'moderator-rejudge')"
+        },
+        "judge_budget_reservations_samples_bounded": {
+          "name": "judge_budget_reservations_samples_bounded",
+          "value": "\"judge_budget_reservations\".\"sample_count\" BETWEEN 1 AND 3"
         }
       }
     },
@@ -2721,6 +2610,299 @@
         "leaderboard_snapshots_status_allowed": {
           "name": "leaderboard_snapshots_status_allowed",
           "value": "\"leaderboard_snapshots\".\"status\" IN ('building', 'published', 'superseded')"
+        }
+      }
+    },
+    "legacy_generation_funding_history": {
+      "name": "legacy_generation_funding_history",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_milli_units": {
+          "name": "amount_milli_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "metadata_json": {
+          "name": "metadata_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "legacy_generation_funding_idempotency_uidx": {
+          "name": "legacy_generation_funding_idempotency_uidx",
+          "columns": [
+            "idempotency_key"
+          ],
+          "isUnique": true
+        },
+        "legacy_generation_funding_user_idx": {
+          "name": "legacy_generation_funding_user_idx",
+          "columns": [
+            "user_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "legacy_generation_funding_run_idx": {
+          "name": "legacy_generation_funding_run_idx",
+          "columns": [
+            "run_id",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "legacy_generation_funding_history_user_id_users_id_fk": {
+          "name": "legacy_generation_funding_history_user_id_users_id_fk",
+          "tableFrom": "legacy_generation_funding_history",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "legacy_generation_funding_history_run_id_runs_id_fk": {
+          "name": "legacy_generation_funding_history_run_id_runs_id_fk",
+          "tableFrom": "legacy_generation_funding_history",
+          "tableTo": "runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "legacy_generation_funding_history_actor_user_id_users_id_fk": {
+          "name": "legacy_generation_funding_history_actor_user_id_users_id_fk",
+          "tableFrom": "legacy_generation_funding_history",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "legacy_generation_funding_type_allowed": {
+          "name": "legacy_generation_funding_type_allowed",
+          "value": "\"legacy_generation_funding_history\".\"type\" IN ('admin-grant', 'reserve', 'generation-charge', 'judge-charge', 'sandbox-charge', 'refund', 'adjustment')"
+        },
+        "legacy_generation_funding_amount_nonzero": {
+          "name": "legacy_generation_funding_amount_nonzero",
+          "value": "\"legacy_generation_funding_history\".\"amount_milli_units\" <> 0"
+        }
+      }
+    },
+    "generation_records": {
+      "name": "generation_records",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "response_hash": {
+          "name": "response_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provenance_hash": {
+          "name": "provenance_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "encrypted_envelope_object_key": {
+          "name": "encrypted_envelope_object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "encrypted_envelope_sha256": {
+          "name": "encrypted_envelope_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "redacted_transcript": {
+          "name": "redacted_transcript",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_request_id": {
+          "name": "provider_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "output_tokens": {
+          "name": "output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "harness_turn_count": {
+          "name": "harness_turn_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "generation_records_run_uidx": {
+          "name": "generation_records_run_uidx",
+          "columns": [
+            "run_id"
+          ],
+          "isUnique": true
+        },
+        "generation_records_provenance_uidx": {
+          "name": "generation_records_provenance_uidx",
+          "columns": [
+            "provenance_hash"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "generation_records_run_id_runs_id_fk": {
+          "name": "generation_records_run_id_runs_id_fk",
+          "tableFrom": "generation_records",
+          "tableTo": "runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "generation_records_duration_nonnegative": {
+          "name": "generation_records_duration_nonnegative",
+          "value": "\"generation_records\".\"duration_ms\" >= 0"
+        },
+        "generation_records_turns_positive": {
+          "name": "generation_records_turns_positive",
+          "value": "\"generation_records\".\"harness_turn_count\" > 0"
         }
       }
     },
@@ -3330,6 +3512,255 @@
         }
       }
     },
+    "result_aggregate_entries": {
+      "name": "result_aggregate_entries",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "result_configuration_id": {
+          "name": "result_configuration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "score_bps": {
+          "name": "score_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "q1_score_bps": {
+          "name": "q1_score_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "q3_score_bps": {
+          "name": "q3_score_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "test_coverage": {
+          "name": "test_coverage",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contributor_count": {
+          "name": "contributor_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provisional": {
+          "name": "provisional",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_snapshot_ids_json": {
+          "name": "source_snapshot_ids_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "result_aggregate_entries_snapshot_config_uidx": {
+          "name": "result_aggregate_entries_snapshot_config_uidx",
+          "columns": [
+            "snapshot_id",
+            "result_configuration_id"
+          ],
+          "isUnique": true
+        },
+        "result_aggregate_entries_score_idx": {
+          "name": "result_aggregate_entries_score_idx",
+          "columns": [
+            "snapshot_id",
+            "score_bps"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "result_aggregate_entries_snapshot_id_result_aggregate_snapshots_id_fk": {
+          "name": "result_aggregate_entries_snapshot_id_result_aggregate_snapshots_id_fk",
+          "tableFrom": "result_aggregate_entries",
+          "tableTo": "result_aggregate_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "result_aggregate_entries_result_configuration_id_result_configurations_id_fk": {
+          "name": "result_aggregate_entries_result_configuration_id_result_configurations_id_fk",
+          "tableFrom": "result_aggregate_entries",
+          "tableTo": "result_configurations",
+          "columnsFrom": [
+            "result_configuration_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "result_aggregate_entries_score_bounded": {
+          "name": "result_aggregate_entries_score_bounded",
+          "value": "\"result_aggregate_entries\".\"score_bps\" BETWEEN 0 AND 10000 AND \"result_aggregate_entries\".\"q1_score_bps\" BETWEEN 0 AND 10000 AND \"result_aggregate_entries\".\"q3_score_bps\" BETWEEN 0 AND 10000"
+        },
+        "result_aggregate_entries_quartile_order": {
+          "name": "result_aggregate_entries_quartile_order",
+          "value": "\"result_aggregate_entries\".\"q1_score_bps\" <= \"result_aggregate_entries\".\"q3_score_bps\""
+        },
+        "result_aggregate_entries_coverage_positive": {
+          "name": "result_aggregate_entries_coverage_positive",
+          "value": "\"result_aggregate_entries\".\"test_coverage\" > 0 AND \"result_aggregate_entries\".\"contributor_count\" > 0"
+        }
+      }
+    },
+    "result_aggregate_snapshots": {
+      "name": "result_aggregate_snapshots",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "evaluation_version_id": {
+          "name": "evaluation_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_set_hash": {
+          "name": "source_set_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'building'"
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "result_aggregate_snapshots_version_uidx": {
+          "name": "result_aggregate_snapshots_version_uidx",
+          "columns": [
+            "evaluation_version_id",
+            "version"
+          ],
+          "isUnique": true
+        },
+        "result_aggregate_snapshots_set_uidx": {
+          "name": "result_aggregate_snapshots_set_uidx",
+          "columns": [
+            "evaluation_version_id",
+            "source_set_hash"
+          ],
+          "isUnique": true
+        },
+        "result_aggregate_snapshots_public_idx": {
+          "name": "result_aggregate_snapshots_public_idx",
+          "columns": [
+            "evaluation_version_id",
+            "status",
+            "published_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "result_aggregate_snapshots_evaluation_version_id_evaluation_versions_id_fk": {
+          "name": "result_aggregate_snapshots_evaluation_version_id_evaluation_versions_id_fk",
+          "tableFrom": "result_aggregate_snapshots",
+          "tableTo": "evaluation_versions",
+          "columnsFrom": [
+            "evaluation_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "result_aggregate_snapshots_status_allowed": {
+          "name": "result_aggregate_snapshots_status_allowed",
+          "value": "\"result_aggregate_snapshots\".\"status\" IN ('building', 'published', 'superseded')"
+        }
+      }
+    },
     "result_configurations": {
       "name": "result_configurations",
       "columns": {
@@ -3482,7 +3913,7 @@
         },
         "result_configurations_catalog_status_allowed": {
           "name": "result_configurations_catalog_status_allowed",
-          "value": "\"result_configurations\".\"catalog_status\" IN ('canonical', 'pending')"
+          "value": "\"result_configurations\".\"catalog_status\" IN ('canonical', 'pending', 'rejected')"
         }
       }
     },
@@ -3743,6 +4174,228 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "result_spend_records": {
+      "name": "result_spend_records",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "evaluation_version_id": {
+          "name": "evaluation_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "service": {
+          "name": "service",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "operation": {
+          "name": "operation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempt_key": {
+          "name": "attempt_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sample_index": {
+          "name": "sample_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'USD'"
+        },
+        "cost_microusd": {
+          "name": "cost_microusd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "output_tokens": {
+          "name": "output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pricing_snapshot_json": {
+          "name": "pricing_snapshot_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pricing_snapshot_hash": {
+          "name": "pricing_snapshot_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "usage_json": {
+          "name": "usage_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "result_spend_records_attempt_uidx": {
+          "name": "result_spend_records_attempt_uidx",
+          "columns": [
+            "attempt_key"
+          ],
+          "isUnique": true
+        },
+        "result_spend_records_run_idx": {
+          "name": "result_spend_records_run_idx",
+          "columns": [
+            "run_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "result_spend_records_daily_idx": {
+          "name": "result_spend_records_daily_idx",
+          "columns": [
+            "service",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "result_spend_records_run_id_runs_id_fk": {
+          "name": "result_spend_records_run_id_runs_id_fk",
+          "tableFrom": "result_spend_records",
+          "tableTo": "runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "result_spend_records_evaluation_version_id_evaluation_versions_id_fk": {
+          "name": "result_spend_records_evaluation_version_id_evaluation_versions_id_fk",
+          "tableFrom": "result_spend_records",
+          "tableTo": "evaluation_versions",
+          "columnsFrom": [
+            "evaluation_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "result_spend_records_service_allowed": {
+          "name": "result_spend_records_service_allowed",
+          "value": "\"result_spend_records\".\"service\" IN ('judge', 'sandbox')"
+        },
+        "result_spend_records_operation_allowed": {
+          "name": "result_spend_records_operation_allowed",
+          "value": "\"result_spend_records\".\"operation\" IN ('judge-sample', 'frontend-evaluation', 'video-inspection')"
+        },
+        "result_spend_records_status_allowed": {
+          "name": "result_spend_records_status_allowed",
+          "value": "\"result_spend_records\".\"status\" IN ('completed', 'failed')"
+        },
+        "result_spend_records_currency_usd": {
+          "name": "result_spend_records_currency_usd",
+          "value": "\"result_spend_records\".\"currency\" = 'USD'"
+        },
+        "result_spend_records_cost_nonnegative": {
+          "name": "result_spend_records_cost_nonnegative",
+          "value": "\"result_spend_records\".\"cost_microusd\" IS NULL OR \"result_spend_records\".\"cost_microusd\" >= 0"
+        },
+        "result_spend_records_tokens_nonnegative": {
+          "name": "result_spend_records_tokens_nonnegative",
+          "value": "(\"result_spend_records\".\"input_tokens\" IS NULL OR \"result_spend_records\".\"input_tokens\" >= 0) AND (\"result_spend_records\".\"output_tokens\" IS NULL OR \"result_spend_records\".\"output_tokens\" >= 0)"
+        },
+        "result_spend_records_duration_nonnegative": {
+          "name": "result_spend_records_duration_nonnegative",
+          "value": "\"result_spend_records\".\"duration_ms\" IS NULL OR \"result_spend_records\".\"duration_ms\" >= 0"
+        },
+        "result_spend_records_sample_index_bounded": {
+          "name": "result_spend_records_sample_index_bounded",
+          "value": "\"result_spend_records\".\"sample_index\" IS NULL OR \"result_spend_records\".\"sample_index\" BETWEEN 1 AND 3"
+        },
+        "result_spend_records_judge_shape": {
+          "name": "result_spend_records_judge_shape",
+          "value": "(\"result_spend_records\".\"service\" <> 'judge') OR (\"result_spend_records\".\"operation\" = 'judge-sample' AND \"result_spend_records\".\"sample_index\" IS NOT NULL)"
+        },
+        "result_spend_records_sandbox_shape": {
+          "name": "result_spend_records_sandbox_shape",
+          "value": "(\"result_spend_records\".\"service\" <> 'sandbox') OR (\"result_spend_records\".\"operation\" IN ('frontend-evaluation', 'video-inspection') AND \"result_spend_records\".\"duration_ms\" IS NOT NULL)"
+        }
+      }
     },
     "rubric_dimensions": {
       "name": "rubric_dimensions",

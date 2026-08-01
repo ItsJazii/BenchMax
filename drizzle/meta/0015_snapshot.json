@@ -1,8 +1,8 @@
 {
+  "id": "96e945ed-1f06-4206-b580-24ad07961fb9",
+  "prevId": "d66d1d1d-342f-4dbf-9683-d47a254ee6dc",
   "version": "6",
   "dialect": "sqlite",
-  "id": "e2f99c78-e40d-402c-98f3-c10fff85928d",
-  "prevId": "76625547-6b7c-44c8-afa1-dac2e50ee10a",
   "tables": {
     "abuse_reports": {
       "name": "abuse_reports",
@@ -93,41 +93,41 @@
         "abuse_reports_reporter_user_id_users_id_fk": {
           "name": "abuse_reports_reporter_user_id_users_id_fk",
           "tableFrom": "abuse_reports",
-          "tableTo": "users",
           "columnsFrom": [
             "reporter_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
         "abuse_reports_showcase_id_showcases_id_fk": {
           "name": "abuse_reports_showcase_id_showcases_id_fk",
           "tableFrom": "abuse_reports",
-          "tableTo": "showcases",
           "columnsFrom": [
             "showcase_id"
           ],
+          "tableTo": "showcases",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "abuse_reports_run_id_runs_id_fk": {
           "name": "abuse_reports_run_id_runs_id_fk",
           "tableFrom": "abuse_reports",
-          "tableTo": "runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -247,28 +247,28 @@
         "aggregate_leaderboard_entries_snapshot_id_aggregate_leaderboard_snapshots_id_fk": {
           "name": "aggregate_leaderboard_entries_snapshot_id_aggregate_leaderboard_snapshots_id_fk",
           "tableFrom": "aggregate_leaderboard_entries",
-          "tableTo": "aggregate_leaderboard_snapshots",
           "columnsFrom": [
             "snapshot_id"
           ],
+          "tableTo": "aggregate_leaderboard_snapshots",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "aggregate_leaderboard_entries_configuration_id_configurations_id_fk": {
           "name": "aggregate_leaderboard_entries_configuration_id_configurations_id_fk",
           "tableFrom": "aggregate_leaderboard_entries",
-          "tableTo": "configurations",
           "columnsFrom": [
             "configuration_id"
           ],
+          "tableTo": "configurations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -382,15 +382,15 @@
         "aggregate_leaderboard_snapshots_evaluation_version_id_evaluation_versions_id_fk": {
           "name": "aggregate_leaderboard_snapshots_evaluation_version_id_evaluation_versions_id_fk",
           "tableFrom": "aggregate_leaderboard_snapshots",
-          "tableTo": "evaluation_versions",
           "columnsFrom": [
             "evaluation_version_id"
           ],
+          "tableTo": "evaluation_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -523,28 +523,28 @@
         "artifacts_showcase_id_showcases_id_fk": {
           "name": "artifacts_showcase_id_showcases_id_fk",
           "tableFrom": "artifacts",
-          "tableTo": "showcases",
           "columnsFrom": [
             "showcase_id"
           ],
+          "tableTo": "showcases",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "artifacts_uploader_id_users_id_fk": {
           "name": "artifacts_uploader_id_users_id_fk",
           "tableFrom": "artifacts",
-          "tableTo": "users",
           "columnsFrom": [
             "uploader_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -641,15 +641,15 @@
         "audit_events_actor_user_id_users_id_fk": {
           "name": "audit_events_actor_user_id_users_id_fk",
           "tableFrom": "audit_events",
-          "tableTo": "users",
           "columnsFrom": [
             "actor_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -752,28 +752,28 @@
         "benchmark_proposals_proposer_user_id_users_id_fk": {
           "name": "benchmark_proposals_proposer_user_id_users_id_fk",
           "tableFrom": "benchmark_proposals",
-          "tableTo": "users",
           "columnsFrom": [
             "proposer_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "benchmark_proposals_reviewed_by_user_id_users_id_fk": {
           "name": "benchmark_proposals_reviewed_by_user_id_users_id_fk",
           "tableFrom": "benchmark_proposals",
-          "tableTo": "users",
           "columnsFrom": [
             "reviewed_by_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -813,6 +813,34 @@
         "version": {
           "name": "version",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "goal": {
+          "name": "goal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "success_criteria_json": {
+          "name": "success_criteria_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -948,28 +976,28 @@
         "benchmark_versions_benchmark_id_benchmarks_id_fk": {
           "name": "benchmark_versions_benchmark_id_benchmarks_id_fk",
           "tableFrom": "benchmark_versions",
-          "tableTo": "benchmarks",
           "columnsFrom": [
             "benchmark_id"
           ],
+          "tableTo": "benchmarks",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "benchmark_versions_harness_id_harnesses_id_fk": {
           "name": "benchmark_versions_harness_id_harnesses_id_fk",
           "tableFrom": "benchmark_versions",
-          "tableTo": "harnesses",
           "columnsFrom": [
             "harness_id"
           ],
+          "tableTo": "harnesses",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -990,6 +1018,10 @@
         "benchmark_versions_attempt_count_bounded": {
           "name": "benchmark_versions_attempt_count_bounded",
           "value": "\"benchmark_versions\".\"attempt_count\" BETWEEN 1 AND 10"
+        },
+        "benchmark_versions_category_allowed": {
+          "name": "benchmark_versions_category_allowed",
+          "value": "\"benchmark_versions\".\"category\" IN ('frontend', 'browser-game', 'browser-3d', 'other')"
         }
       }
     },
@@ -1106,15 +1138,15 @@
         "benchmarks_creator_id_users_id_fk": {
           "name": "benchmarks_creator_id_users_id_fk",
           "tableFrom": "benchmarks",
-          "tableTo": "users",
           "columnsFrom": [
             "creator_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -1142,6 +1174,13 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true,
+          "autoincrement": false
+        },
+        "result_configuration_id": {
+          "name": "result_configuration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "requester_user_id": {
@@ -1232,34 +1271,55 @@
             "created_at"
           ],
           "isUnique": false
+        },
+        "catalog_requests_configuration_idx": {
+          "name": "catalog_requests_configuration_idx",
+          "columns": [
+            "result_configuration_id",
+            "created_at"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
-        "catalog_requests_requester_user_id_users_id_fk": {
-          "name": "catalog_requests_requester_user_id_users_id_fk",
+        "catalog_requests_result_configuration_id_result_configurations_id_fk": {
+          "name": "catalog_requests_result_configuration_id_result_configurations_id_fk",
           "tableFrom": "catalog_requests",
-          "tableTo": "users",
           "columnsFrom": [
-            "requester_user_id"
+            "result_configuration_id"
           ],
+          "tableTo": "result_configurations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        },
+        "catalog_requests_requester_user_id_users_id_fk": {
+          "name": "catalog_requests_requester_user_id_users_id_fk",
+          "tableFrom": "catalog_requests",
+          "columnsFrom": [
+            "requester_user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "catalog_requests_reviewed_by_user_id_users_id_fk": {
           "name": "catalog_requests_reviewed_by_user_id_users_id_fk",
           "tableFrom": "catalog_requests",
-          "tableTo": "users",
           "columnsFrom": [
             "reviewed_by_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -1397,41 +1457,41 @@
         "configurations_provider_id_providers_id_fk": {
           "name": "configurations_provider_id_providers_id_fk",
           "tableFrom": "configurations",
-          "tableTo": "providers",
           "columnsFrom": [
             "provider_id"
           ],
+          "tableTo": "providers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "configurations_model_version_id_model_versions_id_fk": {
           "name": "configurations_model_version_id_model_versions_id_fk",
           "tableFrom": "configurations",
-          "tableTo": "model_versions",
           "columnsFrom": [
             "model_version_id"
           ],
+          "tableTo": "model_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "configurations_harness_id_harnesses_id_fk": {
           "name": "configurations_harness_id_harnesses_id_fk",
           "tableFrom": "configurations",
-          "tableTo": "harnesses",
           "columnsFrom": [
             "harness_id"
           ],
+          "tableTo": "harnesses",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -1451,8 +1511,8 @@
         }
       }
     },
-    "credit_ledger": {
-      "name": "credit_ledger",
+    "legacy_generation_funding_history": {
+      "name": "legacy_generation_funding_history",
       "columns": {
         "id": {
           "name": "id",
@@ -1478,13 +1538,6 @@
         "type": {
           "name": "type",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "amount_milli_credits": {
-          "name": "amount_milli_credits",
-          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -1517,26 +1570,33 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "amount_milli_units": {
+          "name": "amount_milli_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
       },
       "indexes": {
-        "credit_ledger_idempotency_uidx": {
-          "name": "credit_ledger_idempotency_uidx",
+        "legacy_generation_funding_idempotency_uidx": {
+          "name": "legacy_generation_funding_idempotency_uidx",
           "columns": [
             "idempotency_key"
           ],
           "isUnique": true
         },
-        "credit_ledger_user_idx": {
-          "name": "credit_ledger_user_idx",
+        "legacy_generation_funding_user_idx": {
+          "name": "legacy_generation_funding_user_idx",
           "columns": [
             "user_id",
             "created_at"
           ],
           "isUnique": false
         },
-        "credit_ledger_run_idx": {
-          "name": "credit_ledger_run_idx",
+        "legacy_generation_funding_run_idx": {
+          "name": "legacy_generation_funding_run_idx",
           "columns": [
             "run_id",
             "created_at"
@@ -1545,56 +1605,56 @@
         }
       },
       "foreignKeys": {
-        "credit_ledger_user_id_users_id_fk": {
-          "name": "credit_ledger_user_id_users_id_fk",
-          "tableFrom": "credit_ledger",
-          "tableTo": "users",
+        "legacy_generation_funding_history_user_id_users_id_fk": {
+          "name": "legacy_generation_funding_history_user_id_users_id_fk",
+          "tableFrom": "legacy_generation_funding_history",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
-        "credit_ledger_run_id_runs_id_fk": {
-          "name": "credit_ledger_run_id_runs_id_fk",
-          "tableFrom": "credit_ledger",
-          "tableTo": "runs",
+        "legacy_generation_funding_history_run_id_runs_id_fk": {
+          "name": "legacy_generation_funding_history_run_id_runs_id_fk",
+          "tableFrom": "legacy_generation_funding_history",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
-        "credit_ledger_actor_user_id_users_id_fk": {
-          "name": "credit_ledger_actor_user_id_users_id_fk",
-          "tableFrom": "credit_ledger",
-          "tableTo": "users",
+        "legacy_generation_funding_history_actor_user_id_users_id_fk": {
+          "name": "legacy_generation_funding_history_actor_user_id_users_id_fk",
+          "tableFrom": "legacy_generation_funding_history",
           "columnsFrom": [
             "actor_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "credit_ledger_type_allowed": {
-          "name": "credit_ledger_type_allowed",
-          "value": "\"credit_ledger\".\"type\" IN ('admin-grant', 'reserve', 'generation-charge', 'judge-charge', 'sandbox-charge', 'refund', 'adjustment')"
+        "legacy_generation_funding_type_allowed": {
+          "name": "legacy_generation_funding_type_allowed",
+          "value": "\"legacy_generation_funding_history\".\"type\" IN ('admin-grant', 'reserve', 'generation-charge', 'judge-charge', 'sandbox-charge', 'refund', 'adjustment')"
         },
-        "credit_ledger_amount_nonzero": {
-          "name": "credit_ledger_amount_nonzero",
-          "value": "\"credit_ledger\".\"amount_milli_credits\" <> 0"
+        "legacy_generation_funding_amount_nonzero": {
+          "name": "legacy_generation_funding_amount_nonzero",
+          "value": "\"legacy_generation_funding_history\".\"amount_milli_units\" <> 0"
         }
       }
     },
@@ -1693,28 +1753,28 @@
         "dimension_scores_run_id_runs_id_fk": {
           "name": "dimension_scores_run_id_runs_id_fk",
           "tableFrom": "dimension_scores",
-          "tableTo": "runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "dimension_scores_rubric_dimension_id_rubric_dimensions_id_fk": {
           "name": "dimension_scores_rubric_dimension_id_rubric_dimensions_id_fk",
           "tableFrom": "dimension_scores",
-          "tableTo": "rubric_dimensions",
           "columnsFrom": [
             "rubric_dimension_id"
           ],
+          "tableTo": "rubric_dimensions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -1827,41 +1887,41 @@
         "disputes_run_id_runs_id_fk": {
           "name": "disputes_run_id_runs_id_fk",
           "tableFrom": "disputes",
-          "tableTo": "runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "disputes_opened_by_user_id_users_id_fk": {
           "name": "disputes_opened_by_user_id_users_id_fk",
           "tableFrom": "disputes",
-          "tableTo": "users",
           "columnsFrom": [
             "opened_by_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "disputes_resolved_by_user_id_users_id_fk": {
           "name": "disputes_resolved_by_user_id_users_id_fk",
           "tableFrom": "disputes",
-          "tableTo": "users",
           "columnsFrom": [
             "resolved_by_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -2156,15 +2216,15 @@
         "generation_records_run_id_runs_id_fk": {
           "name": "generation_records_run_id_runs_id_fk",
           "tableFrom": "generation_records",
-          "tableTo": "runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -2322,6 +2382,128 @@
         }
       }
     },
+    "judge_budget_reservations": {
+      "name": "judge_budget_reservations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contributor_id": {
+          "name": "contributor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "day_started_at": {
+          "name": "day_started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sample_count": {
+          "name": "sample_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "judge_budget_reservations_run_purpose_day_uidx": {
+          "name": "judge_budget_reservations_run_purpose_day_uidx",
+          "columns": [
+            "run_id",
+            "purpose",
+            "day_started_at"
+          ],
+          "isUnique": true
+        },
+        "judge_budget_reservations_day_idx": {
+          "name": "judge_budget_reservations_day_idx",
+          "columns": [
+            "day_started_at",
+            "purpose"
+          ],
+          "isUnique": false
+        },
+        "judge_budget_reservations_contributor_day_idx": {
+          "name": "judge_budget_reservations_contributor_day_idx",
+          "columns": [
+            "contributor_id",
+            "day_started_at",
+            "purpose"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "judge_budget_reservations_run_id_runs_id_fk": {
+          "name": "judge_budget_reservations_run_id_runs_id_fk",
+          "tableFrom": "judge_budget_reservations",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "tableTo": "runs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "judge_budget_reservations_contributor_id_users_id_fk": {
+          "name": "judge_budget_reservations_contributor_id_users_id_fk",
+          "tableFrom": "judge_budget_reservations",
+          "columnsFrom": [
+            "contributor_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "judge_budget_reservations_purpose_allowed": {
+          "name": "judge_budget_reservations_purpose_allowed",
+          "value": "\"judge_budget_reservations\".\"purpose\" IN ('initial', 'top-ten-escalation', 'moderator-rejudge')"
+        },
+        "judge_budget_reservations_samples_bounded": {
+          "name": "judge_budget_reservations_samples_bounded",
+          "value": "\"judge_budget_reservations\".\"sample_count\" BETWEEN 1 AND 3"
+        }
+      }
+    },
     "judge_samples": {
       "name": "judge_samples",
       "columns": {
@@ -2419,28 +2601,28 @@
         "judge_samples_run_id_runs_id_fk": {
           "name": "judge_samples_run_id_runs_id_fk",
           "tableFrom": "judge_samples",
-          "tableTo": "runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "judge_samples_evaluation_version_id_evaluation_versions_id_fk": {
           "name": "judge_samples_evaluation_version_id_evaluation_versions_id_fk",
           "tableFrom": "judge_samples",
-          "tableTo": "evaluation_versions",
           "columnsFrom": [
             "evaluation_version_id"
           ],
+          "tableTo": "evaluation_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -2552,28 +2734,28 @@
         "leaderboard_entries_snapshot_id_leaderboard_snapshots_id_fk": {
           "name": "leaderboard_entries_snapshot_id_leaderboard_snapshots_id_fk",
           "tableFrom": "leaderboard_entries",
-          "tableTo": "leaderboard_snapshots",
           "columnsFrom": [
             "snapshot_id"
           ],
+          "tableTo": "leaderboard_snapshots",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "leaderboard_entries_configuration_id_configurations_id_fk": {
           "name": "leaderboard_entries_configuration_id_configurations_id_fk",
           "tableFrom": "leaderboard_entries",
-          "tableTo": "configurations",
           "columnsFrom": [
             "configuration_id"
           ],
+          "tableTo": "configurations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -2691,28 +2873,28 @@
         "leaderboard_snapshots_benchmark_version_id_benchmark_versions_id_fk": {
           "name": "leaderboard_snapshots_benchmark_version_id_benchmark_versions_id_fk",
           "tableFrom": "leaderboard_snapshots",
-          "tableTo": "benchmark_versions",
           "columnsFrom": [
             "benchmark_version_id"
           ],
+          "tableTo": "benchmark_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "leaderboard_snapshots_evaluation_version_id_evaluation_versions_id_fk": {
           "name": "leaderboard_snapshots_evaluation_version_id_evaluation_versions_id_fk",
           "tableFrom": "leaderboard_snapshots",
-          "tableTo": "evaluation_versions",
           "columnsFrom": [
             "evaluation_version_id"
           ],
+          "tableTo": "evaluation_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -2806,15 +2988,15 @@
         "model_versions_model_id_models_id_fk": {
           "name": "model_versions_model_id_models_id_fk",
           "tableFrom": "model_versions",
-          "tableTo": "models",
           "columnsFrom": [
             "model_id"
           ],
+          "tableTo": "models",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -2902,15 +3084,15 @@
         "models_provider_id_providers_id_fk": {
           "name": "models_provider_id_providers_id_fk",
           "tableFrom": "models",
-          "tableTo": "providers",
           "columnsFrom": [
             "provider_id"
           ],
+          "tableTo": "providers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -3004,15 +3186,15 @@
         "moderation_actions_actor_user_id_users_id_fk": {
           "name": "moderation_actions_actor_user_id_users_id_fk",
           "tableFrom": "moderation_actions",
-          "tableTo": "users",
           "columnsFrom": [
             "actor_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -3121,28 +3303,28 @@
         "objective_results_run_id_runs_id_fk": {
           "name": "objective_results_run_id_runs_id_fk",
           "tableFrom": "objective_results",
-          "tableTo": "runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "objective_results_evidence_artifact_id_run_artifacts_id_fk": {
           "name": "objective_results_evidence_artifact_id_run_artifacts_id_fk",
           "tableFrom": "objective_results",
-          "tableTo": "run_artifacts",
           "columnsFrom": [
             "evidence_artifact_id"
           ],
+          "tableTo": "run_artifacts",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -3330,6 +3512,255 @@
         }
       }
     },
+    "result_aggregate_entries": {
+      "name": "result_aggregate_entries",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "result_configuration_id": {
+          "name": "result_configuration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "score_bps": {
+          "name": "score_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "q1_score_bps": {
+          "name": "q1_score_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "q3_score_bps": {
+          "name": "q3_score_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "test_coverage": {
+          "name": "test_coverage",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contributor_count": {
+          "name": "contributor_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provisional": {
+          "name": "provisional",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_snapshot_ids_json": {
+          "name": "source_snapshot_ids_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "result_aggregate_entries_snapshot_config_uidx": {
+          "name": "result_aggregate_entries_snapshot_config_uidx",
+          "columns": [
+            "snapshot_id",
+            "result_configuration_id"
+          ],
+          "isUnique": true
+        },
+        "result_aggregate_entries_score_idx": {
+          "name": "result_aggregate_entries_score_idx",
+          "columns": [
+            "snapshot_id",
+            "score_bps"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "result_aggregate_entries_snapshot_id_result_aggregate_snapshots_id_fk": {
+          "name": "result_aggregate_entries_snapshot_id_result_aggregate_snapshots_id_fk",
+          "tableFrom": "result_aggregate_entries",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "tableTo": "result_aggregate_snapshots",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "result_aggregate_entries_result_configuration_id_result_configurations_id_fk": {
+          "name": "result_aggregate_entries_result_configuration_id_result_configurations_id_fk",
+          "tableFrom": "result_aggregate_entries",
+          "columnsFrom": [
+            "result_configuration_id"
+          ],
+          "tableTo": "result_configurations",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "result_aggregate_entries_score_bounded": {
+          "name": "result_aggregate_entries_score_bounded",
+          "value": "\"result_aggregate_entries\".\"score_bps\" BETWEEN 0 AND 10000 AND \"result_aggregate_entries\".\"q1_score_bps\" BETWEEN 0 AND 10000 AND \"result_aggregate_entries\".\"q3_score_bps\" BETWEEN 0 AND 10000"
+        },
+        "result_aggregate_entries_quartile_order": {
+          "name": "result_aggregate_entries_quartile_order",
+          "value": "\"result_aggregate_entries\".\"q1_score_bps\" <= \"result_aggregate_entries\".\"q3_score_bps\""
+        },
+        "result_aggregate_entries_coverage_positive": {
+          "name": "result_aggregate_entries_coverage_positive",
+          "value": "\"result_aggregate_entries\".\"test_coverage\" > 0 AND \"result_aggregate_entries\".\"contributor_count\" > 0"
+        }
+      }
+    },
+    "result_aggregate_snapshots": {
+      "name": "result_aggregate_snapshots",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "evaluation_version_id": {
+          "name": "evaluation_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_set_hash": {
+          "name": "source_set_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'building'"
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "result_aggregate_snapshots_version_uidx": {
+          "name": "result_aggregate_snapshots_version_uidx",
+          "columns": [
+            "evaluation_version_id",
+            "version"
+          ],
+          "isUnique": true
+        },
+        "result_aggregate_snapshots_set_uidx": {
+          "name": "result_aggregate_snapshots_set_uidx",
+          "columns": [
+            "evaluation_version_id",
+            "source_set_hash"
+          ],
+          "isUnique": true
+        },
+        "result_aggregate_snapshots_public_idx": {
+          "name": "result_aggregate_snapshots_public_idx",
+          "columns": [
+            "evaluation_version_id",
+            "status",
+            "published_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "result_aggregate_snapshots_evaluation_version_id_evaluation_versions_id_fk": {
+          "name": "result_aggregate_snapshots_evaluation_version_id_evaluation_versions_id_fk",
+          "tableFrom": "result_aggregate_snapshots",
+          "columnsFrom": [
+            "evaluation_version_id"
+          ],
+          "tableTo": "evaluation_versions",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "result_aggregate_snapshots_status_allowed": {
+          "name": "result_aggregate_snapshots_status_allowed",
+          "value": "\"result_aggregate_snapshots\".\"status\" IN ('building', 'published', 'superseded')"
+        }
+      }
+    },
     "result_configurations": {
       "name": "result_configurations",
       "columns": {
@@ -3449,28 +3880,28 @@
         "result_configurations_model_version_id_model_versions_id_fk": {
           "name": "result_configurations_model_version_id_model_versions_id_fk",
           "tableFrom": "result_configurations",
-          "tableTo": "model_versions",
           "columnsFrom": [
             "model_version_id"
           ],
+          "tableTo": "model_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
         "result_configurations_harness_id_harnesses_id_fk": {
           "name": "result_configurations_harness_id_harnesses_id_fk",
           "tableFrom": "result_configurations",
-          "tableTo": "harnesses",
           "columnsFrom": [
             "harness_id"
           ],
+          "tableTo": "harnesses",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -3482,7 +3913,7 @@
         },
         "result_configurations_catalog_status_allowed": {
           "name": "result_configurations_catalog_status_allowed",
-          "value": "\"result_configurations\".\"catalog_status\" IN ('canonical', 'pending')"
+          "value": "\"result_configurations\".\"catalog_status\" IN ('canonical', 'pending', 'rejected')"
         }
       }
     },
@@ -3568,41 +3999,41 @@
         "result_leaderboard_entries_snapshot_id_result_leaderboard_snapshots_id_fk": {
           "name": "result_leaderboard_entries_snapshot_id_result_leaderboard_snapshots_id_fk",
           "tableFrom": "result_leaderboard_entries",
-          "tableTo": "result_leaderboard_snapshots",
           "columnsFrom": [
             "snapshot_id"
           ],
+          "tableTo": "result_leaderboard_snapshots",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "result_leaderboard_entries_showcase_id_showcases_id_fk": {
           "name": "result_leaderboard_entries_showcase_id_showcases_id_fk",
           "tableFrom": "result_leaderboard_entries",
-          "tableTo": "showcases",
           "columnsFrom": [
             "showcase_id"
           ],
+          "tableTo": "showcases",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "result_leaderboard_entries_run_id_runs_id_fk": {
           "name": "result_leaderboard_entries_run_id_runs_id_fk",
           "tableFrom": "result_leaderboard_entries",
-          "tableTo": "runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -3716,28 +4147,28 @@
         "result_leaderboard_snapshots_benchmark_version_id_benchmark_versions_id_fk": {
           "name": "result_leaderboard_snapshots_benchmark_version_id_benchmark_versions_id_fk",
           "tableFrom": "result_leaderboard_snapshots",
-          "tableTo": "benchmark_versions",
           "columnsFrom": [
             "benchmark_version_id"
           ],
+          "tableTo": "benchmark_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "result_leaderboard_snapshots_evaluation_version_id_evaluation_versions_id_fk": {
           "name": "result_leaderboard_snapshots_evaluation_version_id_evaluation_versions_id_fk",
           "tableFrom": "result_leaderboard_snapshots",
-          "tableTo": "evaluation_versions",
           "columnsFrom": [
             "evaluation_version_id"
           ],
+          "tableTo": "evaluation_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -3848,15 +4279,15 @@
         "rubric_dimensions_benchmark_version_id_benchmark_versions_id_fk": {
           "name": "rubric_dimensions_benchmark_version_id_benchmark_versions_id_fk",
           "tableFrom": "rubric_dimensions",
-          "tableTo": "benchmark_versions",
           "columnsFrom": [
             "benchmark_version_id"
           ],
+          "tableTo": "benchmark_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -3970,15 +4401,15 @@
         "run_artifacts_run_id_runs_id_fk": {
           "name": "run_artifacts_run_id_runs_id_fk",
           "tableFrom": "run_artifacts",
-          "tableTo": "runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -4100,15 +4531,15 @@
         "run_stage_claims_run_id_runs_id_fk": {
           "name": "run_stage_claims_run_id_runs_id_fk",
           "tableFrom": "run_stage_claims",
-          "tableTo": "runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -4381,67 +4812,67 @@
         "runs_contributor_id_users_id_fk": {
           "name": "runs_contributor_id_users_id_fk",
           "tableFrom": "runs",
-          "tableTo": "users",
           "columnsFrom": [
             "contributor_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "runs_benchmark_version_id_benchmark_versions_id_fk": {
           "name": "runs_benchmark_version_id_benchmark_versions_id_fk",
           "tableFrom": "runs",
-          "tableTo": "benchmark_versions",
           "columnsFrom": [
             "benchmark_version_id"
           ],
+          "tableTo": "benchmark_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "runs_configuration_id_configurations_id_fk": {
           "name": "runs_configuration_id_configurations_id_fk",
           "tableFrom": "runs",
-          "tableTo": "configurations",
           "columnsFrom": [
             "configuration_id"
           ],
+          "tableTo": "configurations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "runs_evaluation_version_id_evaluation_versions_id_fk": {
           "name": "runs_evaluation_version_id_evaluation_versions_id_fk",
           "tableFrom": "runs",
-          "tableTo": "evaluation_versions",
           "columnsFrom": [
             "evaluation_version_id"
           ],
+          "tableTo": "evaluation_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "runs_showcase_id_showcases_id_fk": {
           "name": "runs_showcase_id_showcases_id_fk",
           "tableFrom": "runs",
-          "tableTo": "showcases",
           "columnsFrom": [
             "showcase_id"
           ],
+          "tableTo": "showcases",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -4689,54 +5120,54 @@
         "showcases_owner_id_users_id_fk": {
           "name": "showcases_owner_id_users_id_fk",
           "tableFrom": "showcases",
-          "tableTo": "users",
           "columnsFrom": [
             "owner_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "showcases_benchmark_version_id_benchmark_versions_id_fk": {
           "name": "showcases_benchmark_version_id_benchmark_versions_id_fk",
           "tableFrom": "showcases",
-          "tableTo": "benchmark_versions",
           "columnsFrom": [
             "benchmark_version_id"
           ],
+          "tableTo": "benchmark_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "showcases_result_configuration_id_result_configurations_id_fk": {
           "name": "showcases_result_configuration_id_result_configurations_id_fk",
           "tableFrom": "showcases",
-          "tableTo": "result_configurations",
           "columnsFrom": [
             "result_configuration_id"
           ],
+          "tableTo": "result_configurations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "showcases_model_version_id_model_versions_id_fk": {
           "name": "showcases_model_version_id_model_versions_id_fk",
           "tableFrom": "showcases",
-          "tableTo": "model_versions",
           "columnsFrom": [
             "model_version_id"
           ],
+          "tableTo": "model_versions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -4914,28 +5345,28 @@
         "upload_sessions_user_id_users_id_fk": {
           "name": "upload_sessions_user_id_users_id_fk",
           "tableFrom": "upload_sessions",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "upload_sessions_showcase_id_showcases_id_fk": {
           "name": "upload_sessions_showcase_id_showcases_id_fk",
           "tableFrom": "upload_sessions",
-          "tableTo": "showcases",
           "columnsFrom": [
             "showcase_id"
           ],
+          "tableTo": "showcases",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -5055,9 +5486,9 @@
   "views": {},
   "enums": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
+    "tables": {}
   },
   "internal": {
     "indexes": {}

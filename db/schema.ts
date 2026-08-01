@@ -207,6 +207,12 @@ export const benchmarkVersions = sqliteTable(
       .notNull()
       .references(() => benchmarks.id, { onDelete: "restrict" }),
     version: integer("version").notNull(),
+    title: text("title").notNull(),
+    goal: text("goal").notNull(),
+    successCriteriaJson: text("success_criteria_json").notNull(),
+    category: text("category", {
+      enum: ["frontend", "browser-game", "browser-3d", "other"],
+    }).notNull(),
     canonicalPrompt: text("canonical_prompt").notNull(),
     rubricJson: text("rubric_json").notNull(),
     harnessId: text("harness_id")
@@ -252,6 +258,10 @@ export const benchmarkVersions = sqliteTable(
       "benchmark_versions_attempt_count_bounded",
       sql`${table.attemptCount} BETWEEN 1 AND 10`,
     ),
+    check(
+      "benchmark_versions_category_allowed",
+      sql`${table.category} IN ('frontend', 'browser-game', 'browser-3d', 'other')`,
+    ),
   ],
 );
 
@@ -259,6 +269,10 @@ export const catalogRequests = sqliteTable(
   "catalog_requests",
   {
     id: text("id").primaryKey(),
+    resultConfigurationId: text("result_configuration_id").references(
+      () => resultConfigurations.id,
+      { onDelete: "restrict" },
+    ),
     requesterUserId: text("requester_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -282,6 +296,10 @@ export const catalogRequests = sqliteTable(
     index("catalog_requests_status_idx").on(table.status, table.createdAt),
     index("catalog_requests_requester_idx").on(
       table.requesterUserId,
+      table.createdAt,
+    ),
+    index("catalog_requests_configuration_idx").on(
+      table.resultConfigurationId,
       table.createdAt,
     ),
     check(
@@ -316,7 +334,7 @@ export const resultConfigurations = sqliteTable(
     declaredSettingsJson: text("declared_settings_json").notNull().default("{}"),
     metadataHash: text("metadata_hash").notNull(),
     catalogStatus: text("catalog_status", {
-      enum: ["canonical", "pending"],
+      enum: ["canonical", "pending", "rejected"],
     })
       .notNull()
       .default("pending"),
@@ -335,7 +353,7 @@ export const resultConfigurations = sqliteTable(
     ),
     check(
       "result_configurations_catalog_status_allowed",
-      sql`${table.catalogStatus} IN ('canonical', 'pending')`,
+      sql`${table.catalogStatus} IN ('canonical', 'pending', 'rejected')`,
     ),
   ],
 );
@@ -425,6 +443,12 @@ export const showcases = sqliteTable(
       table.publishedAt,
     ),
     index("showcases_owner_idx").on(table.ownerId, table.updatedAt),
+    index("showcases_test_status_idx").on(
+      table.benchmarkVersionId,
+      table.status,
+      table.judgeStatus,
+      table.rankingStatus,
+    ),
     check("showcases_title_length", sql`length(${table.title}) BETWEEN 8 AND 120`),
     check(
       "showcases_summary_length",
@@ -797,12 +821,15 @@ export const runs = sqliteTable(
       .notNull()
       .references(() => evaluationVersions.id, { onDelete: "restrict" }),
     credentialMode: text("credential_mode", {
+      // Retained for decoding sealed historical rows. Migration 0015 rejects
+      // every new or mutated legacy credential mode.
       enum: ["byok", "platform-credit", "community-submission"],
     }).notNull(),
     showcaseId: text("showcase_id").references(() => showcases.id, {
       onDelete: "set null",
     }),
     status: text("status", {
+      // Generation states are archive-only after migration 0015.
       enum: [
         "draft",
         "queued_generation",
@@ -879,7 +906,7 @@ export const runs = sqliteTable(
   ],
 );
 
-export const generationRecords = sqliteTable(
+export const legacyGenerationRecords = sqliteTable(
   "generation_records",
   {
     id: text("id").primaryKey(),
@@ -962,6 +989,7 @@ export const runStageClaims = sqliteTable(
       .notNull()
       .references(() => runs.id, { onDelete: "cascade" }),
     stage: text("stage", {
+      // generate-platform is preserved only for historical claim reads.
       enum: ["generate-platform", "evaluate", "judge", "publish"],
     }).notNull(),
     stageVersion: text("stage_version").notNull(),
@@ -1072,6 +1100,126 @@ export const judgeSamples = sqliteTable(
     check(
       "judge_samples_duration_nonnegative",
       sql`${table.durationMs} >= 0`,
+    ),
+  ],
+);
+
+export const resultSpendRecords = sqliteTable(
+  "result_spend_records",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => runs.id, { onDelete: "restrict" }),
+    evaluationVersionId: text("evaluation_version_id").references(
+      () => evaluationVersions.id,
+      { onDelete: "restrict" },
+    ),
+    service: text("service", { enum: ["judge", "sandbox"] }).notNull(),
+    operation: text("operation", {
+      enum: ["judge-sample", "frontend-evaluation", "video-inspection"],
+    }).notNull(),
+    attemptKey: text("attempt_key").notNull(),
+    sampleIndex: integer("sample_index"),
+    status: text("status", { enum: ["completed", "failed"] }).notNull(),
+    currency: text("currency", { enum: ["USD"] }).notNull().default("USD"),
+    costMicrousd: integer("cost_microusd"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    durationMs: integer("duration_ms"),
+    pricingSnapshotJson: text("pricing_snapshot_json").notNull(),
+    pricingSnapshotHash: text("pricing_snapshot_hash").notNull(),
+    usageJson: text("usage_json").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("result_spend_records_attempt_uidx").on(table.attemptKey),
+    index("result_spend_records_run_idx").on(table.runId, table.createdAt),
+    index("result_spend_records_daily_idx").on(
+      table.service,
+      table.createdAt,
+    ),
+    check(
+      "result_spend_records_service_allowed",
+      sql`${table.service} IN ('judge', 'sandbox')`,
+    ),
+    check(
+      "result_spend_records_operation_allowed",
+      sql`${table.operation} IN ('judge-sample', 'frontend-evaluation', 'video-inspection')`,
+    ),
+    check(
+      "result_spend_records_status_allowed",
+      sql`${table.status} IN ('completed', 'failed')`,
+    ),
+    check("result_spend_records_currency_usd", sql`${table.currency} = 'USD'`),
+    check(
+      "result_spend_records_cost_nonnegative",
+      sql`${table.costMicrousd} IS NULL OR ${table.costMicrousd} >= 0`,
+    ),
+    check(
+      "result_spend_records_tokens_nonnegative",
+      sql`(${table.inputTokens} IS NULL OR ${table.inputTokens} >= 0) AND (${table.outputTokens} IS NULL OR ${table.outputTokens} >= 0)`,
+    ),
+    check(
+      "result_spend_records_duration_nonnegative",
+      sql`${table.durationMs} IS NULL OR ${table.durationMs} >= 0`,
+    ),
+    check(
+      "result_spend_records_sample_index_bounded",
+      sql`${table.sampleIndex} IS NULL OR ${table.sampleIndex} BETWEEN 1 AND 3`,
+    ),
+    check(
+      "result_spend_records_judge_shape",
+      sql`(${table.service} <> 'judge') OR (${table.operation} = 'judge-sample' AND ${table.sampleIndex} IS NOT NULL)`,
+    ),
+    check(
+      "result_spend_records_sandbox_shape",
+      sql`(${table.service} <> 'sandbox') OR (${table.operation} IN ('frontend-evaluation', 'video-inspection') AND ${table.durationMs} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const judgeBudgetReservations = sqliteTable(
+  "judge_budget_reservations",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => runs.id, { onDelete: "cascade" }),
+    contributorId: text("contributor_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    dayStartedAt: integer("day_started_at", {
+      mode: "timestamp_ms",
+    }).notNull(),
+    purpose: text("purpose", {
+      enum: ["initial", "top-ten-escalation", "moderator-rejudge"],
+    }).notNull(),
+    sampleCount: integer("sample_count").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("judge_budget_reservations_run_purpose_day_uidx").on(
+      table.runId,
+      table.purpose,
+      table.dayStartedAt,
+    ),
+    index("judge_budget_reservations_day_idx").on(
+      table.dayStartedAt,
+      table.purpose,
+    ),
+    index("judge_budget_reservations_contributor_day_idx").on(
+      table.contributorId,
+      table.dayStartedAt,
+      table.purpose,
+    ),
+    check(
+      "judge_budget_reservations_purpose_allowed",
+      sql`${table.purpose} IN ('initial', 'top-ten-escalation', 'moderator-rejudge')`,
+    ),
+    check(
+      "judge_budget_reservations_samples_bounded",
+      sql`${table.sampleCount} BETWEEN 1 AND 3`,
     ),
   ],
 );
@@ -1221,11 +1369,13 @@ export const resultLeaderboardSnapshots = sqliteTable(
       table.evaluationVersionId,
       table.version,
     ),
-    uniqueIndex("result_snapshots_set_uidx").on(
-      table.benchmarkVersionId,
-      table.evaluationVersionId,
-      table.resultSetHash,
-    ),
+    uniqueIndex("result_snapshots_active_set_uidx")
+      .on(
+        table.benchmarkVersionId,
+        table.evaluationVersionId,
+        table.resultSetHash,
+      )
+      .where(sql`${table.status} IN ('building', 'published')`),
     index("result_snapshots_public_idx").on(
       table.benchmarkVersionId,
       table.status,
@@ -1268,6 +1418,88 @@ export const resultLeaderboardEntries = sqliteTable(
     check(
       "result_entries_sample_count_allowed",
       sql`${table.sampleCount} IN (1, 3)`,
+    ),
+  ],
+);
+
+export const resultAggregateSnapshots = sqliteTable(
+  "result_aggregate_snapshots",
+  {
+    id: text("id").primaryKey(),
+    evaluationVersionId: text("evaluation_version_id")
+      .notNull()
+      .references(() => evaluationVersions.id, { onDelete: "restrict" }),
+    version: integer("version").notNull(),
+    sourceSetHash: text("source_set_hash").notNull(),
+    status: text("status", {
+      enum: ["building", "published", "superseded"],
+    })
+      .notNull()
+      .default("building"),
+    publishedAt: integer("published_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("result_aggregate_snapshots_version_uidx").on(
+      table.evaluationVersionId,
+      table.version,
+    ),
+    uniqueIndex("result_aggregate_snapshots_active_set_uidx")
+      .on(table.evaluationVersionId, table.sourceSetHash)
+      .where(sql`${table.status} IN ('building', 'published')`),
+    index("result_aggregate_snapshots_public_idx").on(
+      table.evaluationVersionId,
+      table.status,
+      table.publishedAt,
+    ),
+    check(
+      "result_aggregate_snapshots_status_allowed",
+      sql`${table.status} IN ('building', 'published', 'superseded')`,
+    ),
+  ],
+);
+
+export const resultAggregateEntries = sqliteTable(
+  "result_aggregate_entries",
+  {
+    id: text("id").primaryKey(),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => resultAggregateSnapshots.id, {
+        onDelete: "cascade",
+      }),
+    resultConfigurationId: text("result_configuration_id")
+      .notNull()
+      .references(() => resultConfigurations.id, { onDelete: "restrict" }),
+    scoreBps: integer("score_bps").notNull(),
+    q1ScoreBps: integer("q1_score_bps").notNull(),
+    q3ScoreBps: integer("q3_score_bps").notNull(),
+    testCoverage: integer("test_coverage").notNull(),
+    contributorCount: integer("contributor_count").notNull(),
+    provisional: integer("provisional", { mode: "boolean" }).notNull(),
+    sourceSnapshotIdsJson: text("source_snapshot_ids_json").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("result_aggregate_entries_snapshot_config_uidx").on(
+      table.snapshotId,
+      table.resultConfigurationId,
+    ),
+    index("result_aggregate_entries_score_idx").on(
+      table.snapshotId,
+      table.scoreBps,
+    ),
+    check(
+      "result_aggregate_entries_score_bounded",
+      sql`${table.scoreBps} BETWEEN 0 AND 10000 AND ${table.q1ScoreBps} BETWEEN 0 AND 10000 AND ${table.q3ScoreBps} BETWEEN 0 AND 10000`,
+    ),
+    check(
+      "result_aggregate_entries_quartile_order",
+      sql`${table.q1ScoreBps} <= ${table.q3ScoreBps}`,
+    ),
+    check(
+      "result_aggregate_entries_coverage_positive",
+      sql`${table.testCoverage} > 0 AND ${table.contributorCount} > 0`,
     ),
   ],
 );
@@ -1358,8 +1590,8 @@ export const aggregateLeaderboardEntries = sqliteTable(
   ],
 );
 
-export const creditLedger = sqliteTable(
-  "credit_ledger",
+export const legacyGenerationFundingHistory = sqliteTable(
+  "legacy_generation_funding_history",
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
@@ -1369,7 +1601,7 @@ export const creditLedger = sqliteTable(
     type: text("type", {
       enum: ["admin-grant", "reserve", "generation-charge", "judge-charge", "sandbox-charge", "refund", "adjustment"],
     }).notNull(),
-    amountMilliCredits: integer("amount_milli_credits").notNull(),
+    amountMilliUnits: integer("amount_milli_units").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     metadataJson: text("metadata_json").notNull().default("{}"),
     actorUserId: text("actor_user_id").references(() => users.id, {
@@ -1378,16 +1610,24 @@ export const creditLedger = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [
-    uniqueIndex("credit_ledger_idempotency_uidx").on(table.idempotencyKey),
-    index("credit_ledger_user_idx").on(table.userId, table.createdAt),
-    index("credit_ledger_run_idx").on(table.runId, table.createdAt),
+    uniqueIndex("legacy_generation_funding_idempotency_uidx").on(
+      table.idempotencyKey,
+    ),
+    index("legacy_generation_funding_user_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    index("legacy_generation_funding_run_idx").on(
+      table.runId,
+      table.createdAt,
+    ),
     check(
-      "credit_ledger_type_allowed",
+      "legacy_generation_funding_type_allowed",
       sql`${table.type} IN ('admin-grant', 'reserve', 'generation-charge', 'judge-charge', 'sandbox-charge', 'refund', 'adjustment')`,
     ),
     check(
-      "credit_ledger_amount_nonzero",
-      sql`${table.amountMilliCredits} <> 0`,
+      "legacy_generation_funding_amount_nonzero",
+      sql`${table.amountMilliUnits} <> 0`,
     ),
   ],
 );

@@ -17,6 +17,10 @@ export async function POST(
       entityType: "community-test",
       entityId: id,
       action: "community_test.published",
+      metadata: {
+        version: test.version,
+        versionId: test.versionId,
+      },
     });
     return secureJson({ test });
   } catch (error) {

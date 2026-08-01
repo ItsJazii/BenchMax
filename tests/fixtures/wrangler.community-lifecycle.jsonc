@@ -1,0 +1,29 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "benchmax-community-lifecycle-test",
+  "main": "community-lifecycle-worker.ts",
+  "compatibility_date": "2026-07-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "benchmax-community-lifecycle-test",
+      "database_id": "00000000-0000-4000-8000-000000000001",
+      "migrations_dir": "../../drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "benchmax-community-lifecycle-test"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "JUDGE_QUEUE",
+        "queue": "benchmax-community-lifecycle-judge"
+      }
+    ]
+  }
+}

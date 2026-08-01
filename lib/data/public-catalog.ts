@@ -44,8 +44,8 @@ export async function listPublicBenchmarkVersions() {
     `SELECT
        bv.id,
        b.slug,
-       b.title,
-       b.category,
+       bv.title,
+       bv.category,
        bv.version,
        bv.attempt_policy,
        bv.attempt_count,
@@ -57,9 +57,9 @@ export async function listPublicBenchmarkVersions() {
      JOIN benchmarks b ON b.id = bv.benchmark_id
      JOIN harnesses h ON h.id = bv.harness_id
      LEFT JOIN runs r ON r.benchmark_version_id = bv.id
-     WHERE b.status = 'active'
+     WHERE b.status = 'active' AND bv.published_at IS NOT NULL
      GROUP BY bv.id
-     ORDER BY b.category, b.title, bv.version DESC`,
+     ORDER BY bv.category, bv.title, bv.version DESC`,
   ).all<{
     id: string;
     slug: string;
@@ -109,7 +109,7 @@ export async function getPublicModelPage(slug: string) {
     env.DB.prepare(
       `SELECT
          c.id AS configuration_id,
-         b.title AS benchmark_title,
+         bv.title AS benchmark_title,
          bv.version AS benchmark_version,
          le.median_score_bps,
          le.q1_score_bps,
@@ -167,8 +167,14 @@ export async function getPublicModelPage(slug: string) {
 
 export async function getPublicBenchmarkPage(slug: string) {
   const benchmark = await env.DB.prepare(
-    `SELECT id, slug, title, category
-     FROM benchmarks WHERE slug = ? AND status = 'active' LIMIT 1`,
+    `SELECT b.id, b.slug, bv.title, bv.category
+     FROM benchmarks b
+     JOIN benchmark_versions bv ON bv.benchmark_id = b.id
+     WHERE b.slug = ?
+       AND b.status = 'active'
+       AND bv.published_at IS NOT NULL
+     ORDER BY bv.version DESC
+     LIMIT 1`,
   )
     .bind(slug)
     .first<{ id: string; slug: string; title: string; category: string }>();
@@ -176,13 +182,14 @@ export async function getPublicBenchmarkPage(slug: string) {
   const [versions, dimensions, results] = await Promise.all([
     env.DB.prepare(
       `SELECT
-         bv.id, bv.version, bv.canonical_prompt, bv.environment_hash,
+         bv.id, bv.version, bv.title, bv.goal, bv.success_criteria_json,
+         bv.category, bv.canonical_prompt, bv.environment_hash,
          bv.attempt_policy, bv.attempt_count, bv.published_at,
          h.name AS harness_name, h.version AS harness_version,
          h.contract_hash
        FROM benchmark_versions bv
        JOIN harnesses h ON h.id = bv.harness_id
-       WHERE bv.benchmark_id = ?
+       WHERE bv.benchmark_id = ? AND bv.published_at IS NOT NULL
        ORDER BY bv.version DESC`,
     )
       .bind(benchmark.id)
@@ -192,7 +199,7 @@ export async function getPublicBenchmarkPage(slug: string) {
               rd.mechanism, rd.weight_bps, rd.judge_source_required
        FROM rubric_dimensions rd
        JOIN benchmark_versions bv ON bv.id = rd.benchmark_version_id
-       WHERE bv.benchmark_id = ?
+       WHERE bv.benchmark_id = ? AND bv.published_at IS NOT NULL
        ORDER BY bv.version DESC, rd.ordinal`,
     )
       .bind(benchmark.id)

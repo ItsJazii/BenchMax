@@ -2,7 +2,7 @@
   "version": "6",
   "dialect": "sqlite",
   "id": "aa90b93a-7ccf-4b5d-9341-ba218317565f",
-  "prevId": "813f8814-b78b-4735-8171-f7edb1d27e7a",
+  "prevId": "15933cb5-c014-4a69-9ee6-76cfa4705fd3",
   "tables": {
     "abuse_reports": {
       "name": "abuse_reports",
@@ -4413,6 +4413,16 @@
           "columns": [
             "owner_id",
             "updated_at"
+          ],
+          "isUnique": false
+        },
+        "showcases_test_status_idx": {
+          "name": "showcases_test_status_idx",
+          "columns": [
+            "benchmark_version_id",
+            "status",
+            "judge_status",
+            "ranking_status"
           ],
           "isUnique": false
         }

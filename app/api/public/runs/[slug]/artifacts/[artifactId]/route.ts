@@ -1,51 +1,38 @@
-import { env } from "cloudflare:workers";
-import { getPublicRunArtifact } from "@/lib/data/runs";
 import { publicSecurityHeaders } from "@/lib/security/http";
+import { buildLegacyRunArtifactUrl } from "@/lib/security/usercontent";
+
+const ARTIFACT_PATH =
+  /^\/api\/public\/runs\/(run-[0-9a-f]{12})\/artifacts\/([0-9a-f-]{36})$/;
 
 export async function GET(request: Request) {
-  return serveArtifact(request, false);
+  return redirectArtifact(request);
 }
 
 export async function HEAD(request: Request) {
-  return serveArtifact(request, true);
+  return redirectArtifact(request);
 }
 
-async function serveArtifact(request: Request, head: boolean) {
-  const match =
-    /^\/api\/public\/runs\/(run-[0-9a-f]{12})\/artifacts\/([0-9a-f-]{36})$/i.exec(
-      new URL(request.url).pathname,
-    );
+function redirectArtifact(request: Request): Response {
+  const match = ARTIFACT_PATH.exec(new URL(request.url).pathname);
   if (!match) return safeText("Not found.", 404);
-  const [, slug, artifactId] = match;
-  const artifact = await getPublicRunArtifact(slug, artifactId);
-  if (!artifact) return safeText("Not found.", 404);
-  const object = await env.UPLOADS.get(artifact.objectKey);
-  if (!object) return safeText("Not found.", 404);
 
-  const headers = publicSecurityHeaders();
-  headers.set("Cache-Control", "public, max-age=31536000, immutable, no-transform");
-  headers.set(
-    "Content-Disposition",
-    `attachment; filename="benchmax-${artifact.kind}-${artifact.sha256.slice(0, 12)}${extensionFor(artifact.kind)}"`,
-  );
-  headers.set("Content-Length", String(artifact.byteSize));
-  headers.set("Content-Type", "application/octet-stream");
-  headers.set("Cross-Origin-Resource-Policy", "same-origin");
-  headers.set("ETag", `"${artifact.sha256}"`);
-  return new Response(head ? null : object.body, { headers });
+  try {
+    const target = buildLegacyRunArtifactUrl(match[1], match[2]);
+    if (new URL(target).origin === new URL(request.url).origin) {
+      return safeText("User-content origin unavailable.", 503);
+    }
+    const headers = publicSecurityHeaders();
+    headers.set("Cache-Control", "no-store");
+    headers.set("Location", target);
+    return new Response(null, { status: 307, headers });
+  } catch {
+    return safeText("User-content origin unavailable.", 503);
+  }
 }
 
-function safeText(message: string, status: number) {
+function safeText(message: string, status: number): Response {
   const headers = publicSecurityHeaders();
   headers.set("Cache-Control", "no-store");
   headers.set("Content-Type", "text/plain; charset=utf-8");
   return new Response(message, { headers, status });
-}
-
-function extensionFor(kind: string) {
-  if (kind === "generated-source" || kind === "bundle") return ".zip";
-  if (kind === "screenshot") return ".png";
-  if (kind === "video") return ".webm";
-  if (kind === "evaluation-report") return ".json";
-  return ".txt";
 }

@@ -40,6 +40,7 @@ yarn-error.log*
 next-env.d.ts
 /dist/
 /.wrangler/
+/.wrangler-dry-run/
 /outputs/
 /work/
 /worker/generated-env.d.ts

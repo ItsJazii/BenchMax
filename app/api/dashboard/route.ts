@@ -1,16 +1,12 @@
 import { requireAuthorizedUser } from "@/lib/auth/authorization";
-import { listRunsForOwner } from "@/lib/data/runs";
-import { listShowcasesForOwner } from "@/lib/data/showcases";
+import { getContributorSubmissions } from "@/lib/data/dashboard";
 import { apiErrorResponse } from "@/lib/http/api";
 import { secureJson } from "@/lib/security/http";
 
 export async function GET(request: Request) {
   try {
     const { user } = await requireAuthorizedUser(request);
-    const [runs, showcases] = await Promise.all([
-      listRunsForOwner(user.id),
-      listShowcasesForOwner(user.id),
-    ]);
+    const submissions = await getContributorSubmissions(user.id);
     return secureJson({
       dashboard: {
         profile: {
@@ -18,8 +14,7 @@ export async function GET(request: Request) {
           handle: user.handle,
           role: user.role,
         },
-        runs,
-        showcases,
+        submissions,
       },
     });
   } catch (error) {

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BENCHMAX_REQUIRE_EVALUATOR_SMOKE: "1"
+      BENCHMAX_APP_ORIGIN: "https://benchmax.test"
+      NEXT_PUBLIC_APP_URL: "https://benchmax.test"
+      NEXT_PUBLIC_USERCONTENT_ORIGIN: "https://evidence.benchmaxusercontent.test"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm ci
+        working-directory: sandbox/browser-web-v1
+      - run: npx playwright install --with-deps chromium ffmpeg
+        working-directory: sandbox/browser-web-v1
+      - run: npm test
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npx wrangler deploy --dry-run --config dist/server/wrangler.json --outdir .wrangler-dry-run/main
+      - run: npx wrangler deploy --dry-run --config wrangler.usercontent.jsonc --outdir .wrangler-dry-run/usercontent
+      - run: npm audit --omit=dev --audit-level=high

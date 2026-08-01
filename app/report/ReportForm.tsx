@@ -108,13 +108,13 @@ function AuthenticatedReportForm({ initialTarget }: { initialTarget: string }) {
   return (
     <form className="report-form" action={(form) => void submit(form)}>
       <label>
-        <span>Benchmax showcase or run URL</span>
+        <span>Benchmax result URL</span>
         <input
           autoComplete="url"
           defaultValue={initialTarget}
           maxLength={500}
           name="url"
-          placeholder="/showcases/... or /runs/..."
+          placeholder="/results/..."
           required
           type="text"
         />

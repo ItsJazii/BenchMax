@@ -1,94 +1,106 @@
 # Benchmax
 
-Benchmax is an evidence-first community model-testing hub. Community Test
-Reports are publicly inspectable but never ranked. Official leaderboard rows
-come only from platform-generated pass@1 runs executed and judged under frozen,
-versioned contracts.
+Benchmax is a public hub for community-run AI model tests.
 
-`PLAN.md` is the product and security source of truth.
+Contributors choose or create a test, declare the exact model version,
+reasoning level, harness, and settings, then upload the result as code, images,
+video, logs, or any supported combination. Safe submissions appear publicly
+before scoring. The pinned Benchmax AI judge may take up to 24 hours to review
+the evidence and publish an eligible per-test ranking.
+
+Benchmax never calls the model being tested and never asks contributors for a
+tested-model API key.
 
 ## Stack
 
-- Next-compatible React app via vinext on Cloudflare Workers
-- D1 for structured and append-only records
-- R2 for quarantined uploads, generated source, evaluation artifacts, encrypted
-  provenance, and backup manifests
-- Clerk for Google, GitHub, and email-code authentication
-- Cloudflare Durable Objects for memory-only BYOK generation
-- Cloudflare Queues for platform generation, evaluation, judging, publication,
-  retries, and DLQ handling
-- E2B for secure, no-internet browser execution
-
-The playable-output Worker is separate: `wrangler.usercontent.jsonc`. It must
-run on a cookieless origin distinct from the main app.
+- vinext/React on Cloudflare Workers
+- D1 for tests, submissions, judge records, and immutable leaderboard snapshots
+- R2 for quarantined evidence, evaluation artifacts, and backup manifests
+- A separate cookieless Worker/origin for every public user-controlled byte
+- Clerk for verified contributor accounts
+- Cloudflare Queues for evaluation, judging, publication, retries, and DLQ
+- E2B for optional no-network execution of compatible source bundles
 
 ## Local verification
 
 ```powershell
-npm install
-npx wrangler d1 migrations apply benchmax-d1 --local --persist-to .\.wrangler\state
+npm ci
+npm ci --prefix sandbox/browser-web-v1
+Push-Location sandbox/browser-web-v1
+npx playwright install chromium ffmpeg
+Pop-Location
+$env:BENCHMAX_REQUIRE_EVALUATOR_SMOKE="1"
 npm test
 npx tsc --noEmit
-npx wrangler deploy --dry-run
+npm run lint
+npx wrangler deploy --dry-run --config dist/server/wrangler.json
 npx wrangler deploy --dry-run --config wrangler.usercontent.jsonc
 ```
 
-`npm audit --omit=dev` must report zero production vulnerabilities before a
-release. Development-only findings are reviewed separately because Wrangler,
-the bundler, and lint tooling are not shipped as runtime dependencies.
+## Production setup
 
-## Required production setup
+Copy `.env.example` into the encrypted runtime secret/config system; never
+commit a filled environment file.
 
-Copy `.env.example` into the encrypted secret/config system; never commit a
-filled environment file.
+1. Configure Clerk and exact authorized HTTPS origins.
+2. Create D1 and R2 resources and apply every migration in `drizzle/`.
+3. Deploy `wrangler.usercontent.jsonc` on a distinct, cookieless HTTPS site
+   (prefer a separate registrable domain, not a subdomain that can receive the
+   application's domain cookies). Bind it read-only in practice to the same
+   `benchmax-d1` database and `benchmax-uploads` bucket, set
+   `BENCHMAX_APP_ORIGIN` to the exact application origin, and set
+   `NEXT_PUBLIC_USERCONTENT_ORIGIN` on the main application to the Worker
+   origin. The Worker must never share Clerk or application secrets.
+4. Build the pinned E2B evaluator template and record its measured hash.
+5. Upload the judge calibration set to private R2 and configure its SHA-256.
+6. Configure and pin the AI judge provider, model snapshot, and HTTPS origin.
+7. Set `BENCHMAX_JUDGE_DAILY_SAMPLE_BUDGET` from the measured calibration-set
+   cost. Benchmax reserves at most five initial judged submissions per account
+   per UTC day and leaves excess results public and pending.
+8. Seed the metadata catalog. Model families include GPT, Claude, Gemini, Kimi,
+   GLM, MiniMax, Qwen, and DeepSeek; this catalog is descriptive, not a launch
+   restriction.
 
-1. Create Clerk Google, GitHub, and email-code sign-in and configure the exact
-   HTTPS origins in `CLERK_AUTHORIZED_PARTIES`.
-2. Run `npm ci` in `sandbox/browser-web-v1`, then build it as an E2B template.
-   Put the returned template ID in `E2B_TEMPLATE_ID` and the image-generated
-   `/opt/benchmax/environment.sha256` value in `E2B_TEMPLATE_BUILD_HASH`. The
-   evaluator reports that build fingerprint; it never echoes a caller-supplied
-   hash. Benchmax combines the template ID, build fingerprint, and frozen
-   runtime policy into the benchmark environment hash.
-3. Upload a small calibration JSON document shaped like
-   `examples/calibration-set.example.json` to private R2, then configure its
-   exact object key and SHA-256.
-4. Set a 32-byte base64 provenance encryption key as an encrypted Worker secret.
-5. Configure the pinned judge provider, model, model version, and HTTPS endpoint
-   origin. The origin is copied into the immutable evaluation version. If
-   platform credits are enabled, configure the Moonshot platform key as an
-   encrypted Worker secret.
-6. Deploy the main Worker and user-content Worker on separate HTTPS origins.
-   Set both origins explicitly. Never use a wildcard authorized party.
-7. Call the owner-only catalog seed endpoint once after every dependency is
-   present. It fails closed if any frozen value is absent.
+The exact judge snapshot must be chosen from current calibration results before
+production leaderboards are enabled. Pricing or cost multiples are not
+hard-coded; measure current providers against the calibration set when setting
+budgets.
 
-The ranked launch catalog is intentionally limited to Kimi K3 through Moonshot,
-with exact low, high, and max reasoning configurations under Benchmax Web Agent
-v1. Community Test Reports may name any model but never enter the ranked tables.
-Adding another ranked model requires a deliberate catalog/version change.
+## Product invariants
 
-## Security invariants
-
-- BYOK keys exist only in one live Durable Object generation job and are never
-  written to D1, R2, logs, analytics, or a queue.
-- Browser uploads land in quarantine and cannot publish until MIME, magic bytes,
-  path traversal, expansion ratio, executable, and secret checks pass.
-- Generated content never executes on the main origin.
-- Queue stages use D1 compare-and-swap leases, immutable outputs, bounded
-  retries, and DLQ routing.
-- Judge outputs use a pinned prompt/model, three samples, per-dimension medians,
-  injection screening, source blinding, and scheduled drift calibration.
-- Rankings aggregate exact configurations over all platform runs; benchmark
-  medians, N, IQR, coverage, dates, and provisional state remain visible.
-- Credits are admin-granted only. There is no payment or purchase path.
+- Every safe submitted result is public whether AI review is pending, delayed,
+  ranked, or not ranked.
+- Every result points to one immutable test version.
+- Model, version, harness, reasoning, and settings are contributor-declared and
+  labeled "declared, unverified"; catalog mapping standardizes names but does
+  not prove which configuration produced the evidence.
+- Benchmax cannot observe unsubmitted attempts, so best-of-N cherry-picking is
+  possible. Rankings compare submitted evidence, not independently reproduced
+  pass@1 model performance.
+- Unknown model or harness labels create catalog-review requests; they do not
+  block publication.
+- Only canonical, safe, successfully judged results are ranking-eligible.
+- Rankings are per test version and pinned evaluation version. Equal scores
+  share rank.
+- Initial judging uses one sample. Results entering the top ten are rechecked
+  to three samples until the leaderboard reaches a fixpoint.
+- Judge work is admitted through idempotent daily reservations. When the
+  account or global daily capacity is exhausted, the result remains public and
+  pending while its original 24-hour deadline continues.
+- Submitted evidence is untrusted. Judge prompts are pinned, evidence is
+  bounded and identity-blinded, and injection signals disqualify ranking.
+- Public evidence is authorized from D1 and streamed from R2 only by the
+  separate cookieless user-content Worker. The main application emits absolute
+  user-content URLs; its compatibility artifact routes only redirect and never
+  read or stream R2 objects. Private source and quarantined, blocked, removed,
+  or unpublished evidence fail closed.
+- No tested-model credentials exist in application state, logs, storage, or
+  queue messages. The only provider credential is the operator-managed judge
+  key.
 
 ## Operations
 
-- `/operations` is owner-only and exposes pipeline, judge, spend, dispute,
-  report, and bounded R2 inventory state.
-- `/moderation` is owner/moderator-only and requires a written, append-only
-  reason for decisions.
+- `/operations` exposes owner-only queue, judge, dispute, report, and storage
+  state.
+- `/moderation` records written, append-only decisions.
 - `docs/backup-restore.md` is the restore runbook.
-- `npm run load:leaderboards` only accepts an explicit localhost target through
-  `BENCHMAX_LOAD_TARGET`; remote load generation is disabled by construction.

@@ -16,10 +16,10 @@ export default function DashboardPage() {
       <main className="inner-page section-wrap">
         <header className="page-title">
           <span className="section-index">PRIVATE WORKSPACE</span>
-          <h1>Your tests and runs.</h1>
+          <h1>Your tests and submitted results.</h1>
           <p>
-            Drafts, safety status, generation progress, run history, and
-            admin-granted credit balance.
+            Drafts, safety checks, AI review status, rankings, and result
+            history.
           </p>
         </header>
         <Dashboard authConfigured={isClerkConfigured()} />

@@ -36,7 +36,7 @@ export default function SecurityPage() {
             [
               "03",
               "No main-origin execution",
-              "Community uploads never execute. Platform-generated playable output uses a separate cookieless user-content Worker with network-blocking CSP and an iframe restricted to scripts only.",
+              "Submitted code never executes on the main origin. Compatible source bundles are evaluated only in an isolated sandbox with network access disabled.",
             ],
             [
               "04",
@@ -50,8 +50,8 @@ export default function SecurityPage() {
             ],
             [
               "06",
-              "Rate and spend limits",
-              "Write limits, submission and account storage quotas, daily run caps, per-run generation budgets, escrowed credits, and queue backpressure are enforced server-side.",
+              "Rate and queue limits",
+              "Write limits, submission and account storage quotas, judge timeouts, and queue backpressure are enforced server-side.",
             ],
           ].map(([number, title, body]) => (
             <article key={number}>

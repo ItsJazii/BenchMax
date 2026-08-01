@@ -6,22 +6,35 @@ import { useEffect, useState } from "react";
 
 type DashboardData = {
   profile: { displayName: string; handle: string; role: string };
-  creditBalance: number;
-  runs: Array<{
-    id: string;
-    publicSlug: string;
-    status: string;
-    score: number | null;
-    benchmark: string;
-    model: string;
-    reasoningLevel: string;
-  }>;
-  showcases: Array<{
+  submissions: Array<{
     id: string;
     slug: string;
     title: string;
-    status: string;
-    safetyStatus: string;
+    benchmark: string | null;
+    model: string;
+    modelVersion: string | null;
+    harness: string;
+    reasoning: string;
+    scoreBps: number | null;
+    rank: number | null;
+    judgeDueAt: string | null;
+    updatedAt: string;
+    state: {
+      code: string;
+      label: string;
+      detail: string;
+      tone: "approved" | "blocked" | "neutral" | "pending";
+      publicVisible: boolean;
+      ranked: boolean;
+      blockedReason: string | null;
+    };
+    timeline: Array<{
+      key: string;
+      label: string;
+      detail: string | null;
+      status: "completed" | "failed" | "info" | "pending";
+      occurredAt: string;
+    }>;
   }>;
 };
 
@@ -77,57 +90,112 @@ function ConfiguredDashboard() {
     );
   }
   if (!data) return <div className="security-gate">{error ?? "Loading…"}</div>;
+  const publicCount = data.submissions.filter(
+    (submission) => submission.state.publicVisible,
+  ).length;
+  const rankedCount = data.submissions.filter(
+    (submission) => submission.state.ranked,
+  ).length;
   return (
     <div className="dashboard-grid">
       <section className="dashboard-summary">
         <span className="section-index">@{data.profile.handle}</span>
         <h2>{data.profile.displayName}</h2>
         <p>{data.profile.role}</p>
-        <strong>{data.creditBalance.toLocaleString()} milli-credits</strong>
-        <small>Admin-granted balance. Credits cannot be purchased.</small>
+        <strong>{data.submissions.length} submitted results</strong>
+        <small>
+          {publicCount} public · {rankedCount} ranked. Public results stay visible
+          while AI review is pending.
+        </small>
       </section>
       <section>
         <div className="section-heading compact">
-          <h2>Benchmark runs</h2>
-          <Link href="/run">Launch run →</Link>
+          <h2>Submitted results</h2>
+          <Link href="/submit">Submit result →</Link>
         </div>
         <div className="dashboard-list">
-          {data.runs.map((run) => (
-            <article key={run.id}>
-              <div>
-                <strong>{run.model} · {run.reasoningLevel}</strong>
-                <p>{run.benchmark}</p>
+          {data.submissions.map((submission) => (
+            <article className="submission-status-card" key={submission.id}>
+              <div className="submission-status-body">
+                <strong>{submission.title}</strong>
+                <p>
+                  {submission.benchmark ?? "Test pending"} · {submission.model}
+                  {submission.modelVersion
+                    ? ` ${submission.modelVersion}`
+                    : ""} · {submission.reasoning}
+                </p>
+                <p>{submission.state.detail}</p>
+                {submission.judgeDueAt &&
+                  submission.state.code === "public_pending_review" && (
+                    <p>
+                      Review target: {formatTimestamp(submission.judgeDueAt)}
+                    </p>
+                  )}
+                {submission.state.blockedReason && (
+                  <p className="submission-blocked-reason">
+                    <strong>
+                      {submission.state.publicVisible
+                        ? "Why not ranked:"
+                        : "Blocked reason:"}
+                    </strong>{" "}
+                    {submission.state.blockedReason}
+                  </p>
+                )}
+                <details className="submission-history">
+                  <summary>
+                    Stage history ({submission.timeline.length})
+                  </summary>
+                  {submission.timeline.length > 0 ? (
+                    <ol>
+                      {submission.timeline.map((event) => (
+                        <li key={event.key}>
+                          <span
+                            className={`status-pill ${timelineTone(event.status)}`}
+                          >
+                            {event.status}
+                          </span>
+                          <div>
+                            <strong>{event.label}</strong>
+                            {event.detail && <p>{event.detail}</p>}
+                            <time dateTime={event.occurredAt}>
+                              {formatTimestamp(event.occurredAt)}
+                            </time>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p>No recorded stage events yet.</p>
+                  )}
+                </details>
               </div>
-              <span className="status-pill neutral">{run.status}</span>
-              {run.status === "published" && (
-                <Link href={`/runs/${run.publicSlug}`}>Open →</Link>
+              <span className={`status-pill ${submission.state.tone}`}>
+                {submission.state.label}
+              </span>
+              {submission.state.publicVisible && (
+                <Link href={`/results/${submission.slug}`}>Open →</Link>
               )}
             </article>
           ))}
-          {data.runs.length === 0 && <p className="muted">No runs yet.</p>}
-        </div>
-      </section>
-      <section>
-        <div className="section-heading compact">
-          <h2>Community tests</h2>
-          <Link href="/upload">Upload a test →</Link>
-        </div>
-        <div className="dashboard-list">
-          {data.showcases.map((showcase) => (
-            <article key={showcase.id}>
-              <div>
-                <strong>{showcase.title}</strong>
-                <p>{showcase.safetyStatus}</p>
-              </div>
-              <span className="status-pill neutral">{showcase.status}</span>
-              {showcase.status === "published" && (
-                <Link href={`/showcases/${showcase.slug}`}>Open →</Link>
-              )}
-            </article>
-          ))}
-          {data.showcases.length === 0 && <p className="muted">No community tests yet.</p>}
+          {data.submissions.length === 0 && (
+            <p className="muted">No submitted results yet.</p>
+          )}
         </div>
       </section>
     </div>
   );
+}
+
+function timelineTone(status: "completed" | "failed" | "info" | "pending") {
+  if (status === "completed") return "approved";
+  if (status === "failed") return "blocked";
+  if (status === "pending") return "pending";
+  return "neutral";
+}
+
+function formatTimestamp(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }

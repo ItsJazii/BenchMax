@@ -27,7 +27,7 @@ export async function listFrontendLeaderboard(): Promise<
 > {
   const result = await env.DB.prepare(
     `SELECT
-       b.title AS benchmark_title,
+       bv.title AS benchmark_title,
        bv.version AS benchmark_version,
        le.configuration_id,
        c.endpoint_name,
@@ -56,8 +56,8 @@ export async function listFrontendLeaderboard(): Promise<
      JOIN model_versions mv ON mv.id = c.model_version_id
      JOIN models m ON m.id = mv.model_id
      JOIN harnesses h ON h.id = c.harness_id
-     WHERE ls.status = 'published' AND b.category = 'frontend'
-     ORDER BY b.title ASC, le.rank ASC`,
+     WHERE ls.status = 'published' AND bv.category = 'frontend'
+     ORDER BY bv.title ASC, le.rank ASC`,
   ).all<{
     benchmark_title: string;
     benchmark_version: number;

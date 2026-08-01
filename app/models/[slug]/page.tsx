@@ -1,18 +1,12 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import Link from "next/link";
 import { SiteFooter } from "@/app/components/SiteFooter";
 import { SiteHeader } from "@/app/components/SiteHeader";
-import { getPublicModelPage } from "@/lib/data/public-catalog";
+import { listPublicConfigurationSummaries } from "@/lib/data/results";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}): Promise<Metadata> {
-  const { slug } = await params;
-  const data = await getPublicModelPage(slug).catch(() => null);
-  return { title: data?.model.name ?? "Model" };
-}
+export const metadata: Metadata = {
+  title: "Community model configuration summary",
+};
 
 export default async function ModelPage({
   params,
@@ -20,95 +14,98 @@ export default async function ModelPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const data = await getPublicModelPage(slug).catch(() => null);
-  if (!data) notFound();
-  const bestByScope = new Map<
-    string,
-    (typeof data.aggregateResults)[number]
-  >();
-  for (const result of data.aggregateResults) {
-    const scope = String(result.scope);
-    if (!bestByScope.has(scope)) bestByScope.set(scope, result);
-  }
+  const result = await listPublicConfigurationSummaries(slug).catch(
+    () => null,
+  );
+  const summaries = result?.summaries ?? [];
+  const modelLabel = summaries[0]?.modelLabel ?? slug;
+  const snapshotDate = summaries
+    .map((summary) => summary.snapshotDate?.getTime())
+    .filter((value): value is number => value !== undefined)
+    .sort((a, b) => b - a)[0];
   return (
     <div className="site-shell">
       <SiteHeader />
       <main className="inner-page section-wrap">
-        <header className="page-title">
-          <span className="section-index">{data.model.provider_name}</span>
-          <h1>{data.model.name}</h1>
+        <header className="page-title split-title">
+          <div>
+            <span className="section-index">COMMUNITY MODEL SUMMARY</span>
+            <h1>{modelLabel}</h1>
+          </div>
           <p>
-            Exact configurations stay separate. The best-known configuration
-            is a labeled maximum over tested settings, never the default
-            leaderboard identity.
+            Contributor-declared, unverified model, harness, reasoning, and
+            settings metadata. This summary is not a verified model ranking.
           </p>
         </header>
-        <section className="catalog-note">
-          <span>BEST TESTED CONFIGURATION SUMMARY</span>
-          <h2>Maximum over tested configurations</h2>
-          <p>
-            This summary is a convenience view only. Official leaderboard rows
-            remain exact configurations because models with more tested
-            settings otherwise receive a multiple-comparisons advantage.
-          </p>
-          <div className="model-best-grid">
-            {[...bestByScope.entries()].map(([scope, result]) => (
-              <article key={scope}>
-                <span>{scope}</span>
-                <strong>
-                  {(Number(result.score_bps) / 100).toFixed(2)}
-                </strong>
-                <small>
-                  {String(result.reasoning_level)} ·{" "}
-                  {String(result.total_run_count)} runs ·{" "}
-                  {result.provisional ? "provisional" : "established"}
-                </small>
-              </article>
-            ))}
-            {bestByScope.size === 0 && (
-              <p className="muted">No published aggregate snapshots yet.</p>
-            )}
+        <div className="method-note">
+          Each test version contributes one median to the equal-weight score.
+          IQR is calculated across those test medians, so popular tests cannot
+          dominate the summary.
+        </div>
+        {summaries.length === 0 ? (
+          <div className="empty-state">
+            <strong>No eligible configurations for this model yet.</strong>
+            <p>
+              Pending, delayed, and unranked submissions remain visible in
+              Explore even when they cannot enter this summary.
+            </p>
+            <Link className="button button-primary" href="/explore">
+              Browse public results
+            </Link>
           </div>
-        </section>
-        <section className="model-detail-grid">
-          {data.configurations.map((configuration) => (
-            <article key={String(configuration.id)}>
-              <span className="status-pill approved">
-                {String(configuration.reasoning_level)}
-              </span>
-              <h2>{String(configuration.version_label)}</h2>
-              <p>
-                {String(configuration.endpoint_name)} ·{" "}
-                {String(configuration.harness_name)} v
-                {String(configuration.harness_version)}
-              </p>
-              <code>{String(configuration.settings_hash)}</code>
-            </article>
-          ))}
-        </section>
-        <section className="history-table">
-          <div className="section-heading compact">
-            <h2>Score history</h2>
-          </div>
-          {data.history.map((entry, index) => (
-            <div key={`${String(entry.configuration_id)}-${String(entry.snapshot_version)}-${index}`}>
-              <strong>{String(entry.benchmark_title)}</strong>
-              <span>v{String(entry.benchmark_version)}</span>
-              <span>{(Number(entry.median_score_bps) / 100).toFixed(2)}</span>
-              <span className="mono">
-                N {String(entry.run_count)} ·{" "}
-                {(Number(entry.q1_score_bps) / 100).toFixed(1)}–
-                {(Number(entry.q3_score_bps) / 100).toFixed(1)}
-              </span>
-              <time>
-                {new Date(Number(entry.published_at)).toISOString()}
-              </time>
+        ) : (
+          <div className="ranking-board exact-board">
+            <div className="ranking-head">
+              <span>Declared configuration</span>
+              <span>Equal-test score</span>
+              <span>Coverage / N</span>
+              <span>IQR</span>
             </div>
-          ))}
-          {data.history.length === 0 && (
-            <p className="muted">No published snapshots yet.</p>
-          )}
-        </section>
+            {summaries.map((summary) => (
+              <div className="ranking-row" key={summary.configurationId}>
+                <div>
+                  <strong>{summary.modelVersionLabel}</strong>
+                  <div className="mono muted">
+                    {summary.harnessLabel} · {summary.reasoning} reasoning
+                  </div>
+                  <div className="mono muted">
+                    Settings {JSON.stringify(summary.declaredSettings)} · config{" "}
+                    {summary.metadataHash.slice(0, 12)}
+                  </div>
+                  <small>Declared, unverified</small>
+                </div>
+                <strong className="score-large">
+                  {(summary.scoreBps / 100).toFixed(2)}
+                </strong>
+                <span className="mono">
+                  {summary.testCoverage} tests · {summary.contributorCount}{" "}
+                  contributors
+                  {summary.provisional ? " · provisional" : ""}
+                </span>
+                <span className="mono">
+                  {(summary.q1ScoreBps / 100).toFixed(2)}–
+                  {(summary.q3ScoreBps / 100).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="results-line">
+          <span>
+            Snapshot date{" "}
+            {snapshotDate
+              ? new Date(snapshotDate).toISOString()
+              : "not available"}
+          </span>
+          <span className="mono">
+            {result
+              ? `Evaluation v${result.evaluationVersion ?? "unavailable"} · aggregate snapshot v${result.snapshotVersion ?? "unavailable"} · reproducibility hash ${result.snapshotHash}`
+              : "Summary unavailable"}
+          </span>
+        </div>
+        <Link className="text-link" href="/leaderboards">
+          Compare results on the primary per-test leaderboards
+        </Link>
       </main>
       <SiteFooter />
     </div>

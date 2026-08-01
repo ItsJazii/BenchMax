@@ -1,3 +1,5 @@
+import { configuredUsercontentOrigin } from "@/lib/security/usercontent";
+
 const BASE_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "Cache-Control": "no-store",
   "Content-Security-Policy":
@@ -24,9 +26,11 @@ export function secureJson(
 }
 
 export function publicSecurityHeaders(): Headers {
+  const usercontentOrigin = configuredUsercontentOrigin();
+  const usercontentSource = usercontentOrigin ? ` ${usercontentOrigin}` : "";
   return new Headers({
     "Content-Security-Policy":
-      "default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://*.clerk.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com; frame-src https://*.clerk.accounts.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.clerk.accounts.dev; object-src 'none'; upgrade-insecure-requests",
+      `default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://*.clerk.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${usercontentSource}; media-src 'self' blob:${usercontentSource}; connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com; frame-src https://*.clerk.accounts.dev${usercontentSource}; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.clerk.accounts.dev; object-src 'none'; upgrade-insecure-requests`,
     "Cross-Origin-Opener-Policy": "same-origin",
     "Permissions-Policy":
       "camera=(), microphone=(), geolocation=(), payment=(), usb=()",

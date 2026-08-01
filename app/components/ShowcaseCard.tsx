@@ -34,13 +34,19 @@ export function ShowcaseCard({ showcase }: { showcase: Showcase }) {
           <span>{showcase.reasoning} reasoning</span>
         </div>
         <h3>
-          <Link href={`/showcases/${showcase.slug}`}>{showcase.title}</Link>
+          <Link href={`/results/${showcase.slug}`}>{showcase.title}</Link>
         </h3>
         <p>{showcase.description}</p>
         <div className="evidence-list">
           {showcase.evidence.map((item) => (
             <span key={item}>{item}</span>
           ))}
+        </div>
+        <div className="card-meta">
+          <span>{showcase.status}</span>
+          {showcase.scoreBps !== null && (
+            <strong>{(showcase.scoreBps / 100).toFixed(2)}</strong>
+          )}
         </div>
         <div className="card-footer">
           <Link href={`/contributors/${showcase.contributor}`}>

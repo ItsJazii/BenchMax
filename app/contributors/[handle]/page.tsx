@@ -25,8 +25,8 @@ export default async function ContributorPage({
   const { handle } = await params;
   const contributor = await getPublicContributor(handle).catch(() => null);
   if (!contributor) notFound();
-  const publicTests = await listPublicShowcaseCards(50).catch(() => null);
-  const tests = (publicTests ?? []).filter(
+  const publicResults = await listPublicShowcaseCards(50).catch(() => null);
+  const results = (publicResults ?? []).filter(
     (item) => item.contributor === contributor.handle,
   );
 
@@ -42,47 +42,42 @@ export default async function ContributorPage({
             <span className="section-index">CONTRIBUTOR</span>
             <h1>@{contributor.handle}</h1>
             <p>
-              {contributor.displayName} shares inspectable model tests and
-              their evidence.
+              {contributor.displayName} shares inspectable model test results
+              and their evidence.
             </p>
           </div>
           <dl>
             <div>
-              <dt>Public tests</dt>
-              <dd>{tests.length}</dd>
-            </div>
-            <div>
-              <dt>Ranked runs</dt>
-              <dd>{contributor.rankedRunCount}</dd>
+              <dt>Public results</dt>
+              <dd>{results.length}</dd>
             </div>
           </dl>
         </header>
         <div className="section-heading compact">
           <div>
             <span className="section-index">PUBLIC RECORD</span>
-            <h2>Shared tests</h2>
+            <h2>Submitted results</h2>
           </div>
         </div>
-        {tests.length > 0 ? (
+        {results.length > 0 ? (
           <div className="card-grid">
-            {tests.map((test) => (
-              <ShowcaseCard key={test.id} showcase={test} />
+            {results.map((result) => (
+              <ShowcaseCard key={result.id} showcase={result} />
             ))}
           </div>
-        ) : publicTests === null ? (
+        ) : publicResults === null ? (
           <div className="empty-state">
-            <strong>Public tests are temporarily unavailable.</strong>
+            <strong>Public results are temporarily unavailable.</strong>
             <p>
-              Benchmax does not show substitute tests when this contributor’s
+              Benchmax does not show substitute data when this contributor’s
               public records cannot be read.
             </p>
           </div>
         ) : (
           <div className="empty-state">
-            <strong>No public community tests yet.</strong>
+            <strong>No public results yet.</strong>
             <p>
-              This active contributor has not published an approved community
-              test.
+              This active contributor has not published a model test result.
             </p>
           </div>
         )}

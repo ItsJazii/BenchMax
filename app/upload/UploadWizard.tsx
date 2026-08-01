@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SignInButton, useAuth, useUser } from "@clerk/clerk-react";
+import Link from "next/link";
 
 type Profile = {
   displayName: string;
@@ -10,9 +11,14 @@ type Profile = {
 };
 
 type DraftFields = {
+  benchmarkVersionId: string;
   category: "frontend" | "browser-game" | "browser-3d" | "other";
+  declaredSettings: Record<string, unknown>;
   harness: string;
+  harnessId?: string;
   modelLabel: string;
+  modelVersionId?: string;
+  modelVersionLabel: string;
   prompt: string;
   reasoningLevel: string;
   rightsConfirmed: boolean;
@@ -28,25 +34,47 @@ type UploadState = {
 };
 
 const initialDraft: DraftFields = {
+  benchmarkVersionId: "",
   title: "",
   summary: "",
   category: "frontend",
   modelLabel: "",
+  modelVersionLabel: "",
   harness: "",
   reasoningLevel: "High",
   prompt: "",
   systemPrompt: "",
   sourceVisibility: "public",
   rightsConfirmed: false,
+  declaredSettings: {},
+};
+
+type ResultCatalog = {
+  tests: Array<{
+    versionId: string;
+    title: string;
+    category: DraftFields["category"];
+    prompt: string;
+    version: number;
+  }>;
+  models: Array<{
+    id: string;
+    family: string;
+    provider: string;
+    version: string;
+  }>;
+  harnesses: Array<{ id: string; name: string; version: number }>;
 };
 
 export function UploadWizard({
   authConfigured,
+  initialTestId,
 }: {
   authConfigured: boolean;
+  initialTestId?: string;
 }) {
   if (!authConfigured) return <AuthSetupNotice />;
-  return <ConfiguredUploadWizard />;
+  return <ConfiguredUploadWizard initialTestId={initialTestId} />;
 }
 
 function AuthSetupNotice() {
@@ -67,15 +95,20 @@ function AuthSetupNotice() {
   );
 }
 
-function ConfiguredUploadWizard() {
+function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user: clerkUser } = useUser();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileChecked, setProfileChecked] = useState(false);
-  const [draft, setDraft] = useState(initialDraft);
+  const [draft, setDraft] = useState({
+    ...initialDraft,
+    benchmarkVersionId: initialTestId ?? "",
+  });
+  const [catalog, setCatalog] = useState<ResultCatalog | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [publishedSlug, setPublishedSlug] = useState<string | null>(null);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +116,38 @@ function ConfiguredUploadWizard() {
     () => files.reduce((total, file) => total + file.size, 0),
     [files],
   );
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch("/api/results/catalog");
+        const payload = (await response.json()) as {
+          catalog?: ResultCatalog;
+          error?: string;
+        };
+        if (!response.ok || !payload.catalog) {
+          throw new Error(payload.error ?? "Could not load the result catalog.");
+        }
+        setCatalog(payload.catalog);
+        setDraft((current) => {
+          const tests = payload.catalog?.tests ?? [];
+          const selected =
+            tests.find(
+              (test) => test.versionId === current.benchmarkVersionId,
+            ) ?? tests[0];
+          if (!selected) return current;
+          return {
+            ...current,
+            benchmarkVersionId: selected.versionId,
+            category: selected.category,
+            prompt: selected.prompt,
+          };
+        });
+      } catch (caught) {
+        setError(toMessage(caught));
+      }
+    })();
+  }, []);
 
   async function authorizedFetch(url: string, init: RequestInit = {}) {
     const token = await getToken();
@@ -255,6 +320,7 @@ function ConfiguredUploadWizard() {
       if (!response.ok || !payload.showcase) {
         throw new Error(payload.error ?? "Could not publish this report.");
       }
+      setPublishedSlug(payload.showcase.slug);
       setStep(4);
     } catch (caught) {
       setError(toMessage(caught));
@@ -321,7 +387,7 @@ function ConfiguredUploadWizard() {
         action={(form) => void createProfile(form)}
       >
         <span className="section-index">PUBLIC PROFILE</span>
-        <h2>Choose how your work is credited.</h2>
+        <h2>Choose how your work is attributed.</h2>
         <div className="field-grid">
           <label>
             <span>Display name</span>
@@ -353,6 +419,21 @@ function ConfiguredUploadWizard() {
         </button>
         {error && <p className="form-error">{error}</p>}
       </form>
+    );
+  }
+  if (catalog && catalog.tests.length === 0) {
+    return (
+      <section className="wizard-panel empty-state">
+        <span className="section-index">A TEST COMES FIRST</span>
+        <h2>Add the test you ran before submitting its result.</h2>
+        <p>
+          A test freezes the prompt, goal, and scoring criteria so every result
+          is reviewed against the same contract.
+        </p>
+        <Link className="button button-primary" href="/tests">
+          Add the first test
+        </Link>
+      </section>
     );
   }
 
@@ -391,6 +472,35 @@ function ConfiguredUploadWizard() {
           </div>
           <div className="field-grid">
             <label className="field-wide">
+              <span>Test</span>
+              <select
+                onChange={(event) => {
+                  const selected = catalog?.tests.find(
+                    (test) => test.versionId === event.target.value,
+                  );
+                  setDraft({
+                    ...draft,
+                    benchmarkVersionId: event.target.value,
+                    category: selected?.category ?? draft.category,
+                    prompt: selected?.prompt ?? "",
+                  });
+                }}
+                required
+                value={draft.benchmarkVersionId}
+              >
+                <option value="">Choose a published test</option>
+                {catalog?.tests.map((test) => (
+                  <option key={test.versionId} value={test.versionId}>
+                    {test.title} · v{test.version}
+                  </option>
+                ))}
+              </select>
+              <small>
+                Missing the test you ran? <Link href="/tests">Add it first.</Link>{" "}
+                Results are ranked only against this exact test version.
+              </small>
+            </label>
+            <label className="field-wide">
               <span>Test title</span>
               <input
                 maxLength={120}
@@ -398,7 +508,7 @@ function ConfiguredUploadWizard() {
                 onChange={(event) =>
                   setDraft({ ...draft, title: event.target.value })
                 }
-                placeholder="K3 built a playable voxel world from one prompt"
+                placeholder="Responsive dashboard result with working filters"
                 required
                 value={draft.title}
               />
@@ -418,39 +528,124 @@ function ConfiguredUploadWizard() {
               />
             </label>
             <label>
-              <span>Model</span>
-              <input
-                maxLength={100}
-                minLength={2}
-                onChange={(event) =>
-                  setDraft({ ...draft, modelLabel: event.target.value })
-                }
-                placeholder="K3"
-                required
-                value={draft.modelLabel}
-              />
+              <span>Known model version</span>
+              <select
+                onChange={(event) => {
+                  const selected = catalog?.models.find(
+                    (model) => model.id === event.target.value,
+                  );
+                  setDraft(
+                    selected
+                      ? {
+                          ...draft,
+                          modelLabel: selected.family,
+                          modelVersionLabel: selected.version,
+                          modelVersionId: selected.id,
+                        }
+                      : {
+                          ...draft,
+                          modelLabel: "",
+                          modelVersionLabel: "",
+                          modelVersionId: undefined,
+                        },
+                  );
+                }}
+                value={draft.modelVersionId ?? ""}
+              >
+                <option value="">Other / not listed</option>
+                {catalog?.models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.family} · {model.version} · {model.provider}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
-              <span>Harness</span>
-              <input
-                maxLength={80}
-                onChange={(event) =>
-                  setDraft({ ...draft, harness: event.target.value })
-                }
-                placeholder="Cursor, Codex, Claude Code..."
-                required
-                value={draft.harness}
-              />
+              <span>Known harness</span>
+              <select
+                onChange={(event) => {
+                  const selected = catalog?.harnesses.find(
+                    (harness) => harness.id === event.target.value,
+                  );
+                  setDraft(
+                    selected
+                      ? {
+                          ...draft,
+                          harness: `${selected.name} v${selected.version}`,
+                          harnessId: selected.id,
+                        }
+                      : { ...draft, harness: "", harnessId: undefined },
+                  );
+                }}
+                value={draft.harnessId ?? ""}
+              >
+                <option value="">Other / not listed</option>
+                {catalog?.harnesses.map((harness) => (
+                  <option key={harness.id} value={harness.id}>
+                    {harness.name} · v{harness.version}
+                  </option>
+                ))}
+              </select>
             </label>
+            {!draft.modelVersionId && (
+              <>
+                <label>
+                  <span>Model family</span>
+                  <input
+                    maxLength={100}
+                    minLength={2}
+                    onChange={(event) =>
+                      setDraft({ ...draft, modelLabel: event.target.value })
+                    }
+                    placeholder="Model family"
+                    required
+                    value={draft.modelLabel}
+                  />
+                </label>
+                <label>
+                  <span>Exact model version</span>
+                  <input
+                    maxLength={100}
+                    minLength={1}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        modelVersionLabel: event.target.value,
+                      })
+                    }
+                    placeholder="Release, snapshot, or endpoint label"
+                    required
+                    value={draft.modelVersionLabel}
+                  />
+                  <small>
+                    Use the release, dated snapshot, or endpoint label shown
+                    when you ran the test—not only the model family.
+                  </small>
+                </label>
+              </>
+            )}
+            {!draft.harnessId && (
+              <label>
+                <span>Harness name and version</span>
+                <input
+                  maxLength={80}
+                  minLength={2}
+                  onChange={(event) =>
+                    setDraft({ ...draft, harness: event.target.value })
+                  }
+                  placeholder="Harness name and version"
+                  required
+                  value={draft.harness}
+                />
+                <small>
+                  Include a version or dated build when the harness exposes one.
+                </small>
+              </label>
+            )}
             <label>
               <span>Category</span>
               <select
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    category: event.target.value as DraftFields["category"],
-                  })
-                }
+                disabled
                 value={draft.category}
               >
                 <option value="frontend">Frontend</option>
@@ -461,29 +656,49 @@ function ConfiguredUploadWizard() {
             </label>
             <label>
               <span>Reasoning level</span>
-              <input
-                maxLength={40}
+              <select
                 onChange={(event) =>
                   setDraft({ ...draft, reasoningLevel: event.target.value })
                 }
-                placeholder="Low, medium, high, max..."
                 required
                 value={draft.reasoningLevel}
+              >
+                <option value="None">None / off</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Max">Max</option>
+                <option value="Unknown">Unknown / adaptive</option>
+              </select>
+            </label>
+            <label className="field-wide">
+              <span>Other test settings (optional)</span>
+              <textarea
+                maxLength={2000}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    declaredSettings: { notes: event.target.value },
+                  })
+                }
+                placeholder="Context window, temperature, tool permissions, mode, or other settings that affected the result."
+                rows={3}
+                value={String(draft.declaredSettings.notes ?? "")}
               />
             </label>
             <label className="field-wide">
-              <span>Prompt</span>
+              <span>Prompt used for this result</span>
               <textarea
                 maxLength={40_000}
-                onChange={(event) =>
-                  setDraft({ ...draft, prompt: event.target.value })
-                }
-                placeholder="Paste the complete prompt exactly as tested."
+                readOnly
                 required
                 rows={8}
                 value={draft.prompt}
               />
-              <small>Secrets are detected before this text is stored.</small>
+              <small>
+                Frozen by the selected test version. Choose a different test if
+                this is not the exact prompt you ran.
+              </small>
             </label>
             <label className="field-wide">
               <span>System prompt (optional)</span>
@@ -527,8 +742,8 @@ function ConfiguredUploadWizard() {
               />
               <span>
                 I have the right to submit this material and grant Benchmax a
-                license to host, scan, execute where applicable, and publicly
-                display this Test Report under the Terms.
+                license to host, scan, evaluate where applicable, and publicly
+                display this result under the Terms.
               </span>
             </label>
           </div>
@@ -551,7 +766,7 @@ function ConfiguredUploadWizard() {
           <div className="panel-heading">
             <div>
               <span className="section-index">STEP 02</span>
-              <h2>Add the evidence.</h2>
+              <h2>Add what the model produced.</h2>
             </div>
             <span className="status-pill pending">Quarantine enabled</span>
           </div>
@@ -564,7 +779,7 @@ function ConfiguredUploadWizard() {
               }
               type="file"
             />
-            <strong>Choose source, video, screenshots, or logs</strong>
+            <strong>Choose code, video, screenshots, or logs</strong>
             <span>
               ZIP up to 20 MB · video up to 500 MB · image up to 20 MB
             </span>
@@ -598,9 +813,9 @@ function ConfiguredUploadWizard() {
           <div className="safety-callout">
             <strong>Security gate</strong>
             <p>
-              Files are isolated first. Type signatures, paths, expansion
-              ratios, executable content, and credential patterns are checked
-              before approval.
+              Files are isolated first. Type signatures, paths, archive
+              expansion, executable content, and credential patterns are
+              checked before this result can appear publicly.
             </p>
           </div>
           <div className="wizard-actions">
@@ -634,7 +849,7 @@ function ConfiguredUploadWizard() {
           <div className="panel-heading">
             <div>
               <span className="section-index">STEP 03</span>
-              <h2>Review the public record.</h2>
+              <h2>Review what everyone will see.</h2>
             </div>
           </div>
           <div className="review-summary">
@@ -656,10 +871,10 @@ function ConfiguredUploadWizard() {
             </div>
           </div>
           <div className="publish-rule">
-            <span>Community Showcase — not ranked</span>
+            <span>Public after the safety scan — AI review follows</span>
             <p>
-              This report can be inspected publicly, but it will never affect
-              official model rankings.
+              Your result appears on the site as soon as it publishes. Benchmax
+              may take up to 24 hours to judge it and decide ranking eligibility.
             </p>
           </div>
           <div className="wizard-actions">
@@ -703,11 +918,14 @@ function ConfiguredUploadWizard() {
           <span className="section-index">PUBLISHED</span>
           <h2>Your test is on the public record.</h2>
           <p>
-            It is labeled as a Community Showcase and excluded from official
-            rankings.
+            AI review is queued. The public page will show pending, delayed,
+            ranked, or not-ranked status as the review progresses.
           </p>
-          <a className="button button-primary" href="/explore">
-            View public tests
+          <a
+            className="button button-primary"
+            href={publishedSlug ? `/results/${publishedSlug}` : "/explore"}
+          >
+            View public result
           </a>
         </section>
       )}

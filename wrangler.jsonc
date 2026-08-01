@@ -4,6 +4,16 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-07-29",
   "compatibility_flags": ["nodejs_compat"],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["GenerationSession"]
+    },
+    {
+      "tag": "v2",
+      "deleted_classes": ["GenerationSession"]
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

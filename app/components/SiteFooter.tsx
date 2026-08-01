@@ -15,8 +15,9 @@ export function SiteFooter() {
           <div>
             <span>PRODUCT</span>
             <Link href="/explore">Explore</Link>
-            <Link href="/benchmarks">Benchmarks</Link>
-            <Link href="/models">Models</Link>
+            <Link href="/tests">Tests</Link>
+            <Link href="/leaderboards">Leaderboards</Link>
+            <Link href="/submit">Submit result</Link>
           </div>
           <div>
             <span>TRUST</span>
@@ -30,7 +31,7 @@ export function SiteFooter() {
       </div>
       <div className="footer-base section-wrap">
         <span>© 2026 Benchmax</span>
-        <span>Public methodology · v0.1</span>
+        <span>Public methodology · community results v1</span>
       </div>
     </footer>
   );

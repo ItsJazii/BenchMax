@@ -16,18 +16,17 @@ export function SiteHeader() {
         <nav className="desktop-nav" aria-label="Main navigation">
           <Link href="/explore">Explore</Link>
           <Link href="/leaderboards">Leaderboards</Link>
-          <Link href="/compare">Compare</Link>
-          <Link href="/benchmarks">Benchmarks</Link>
-          <Link href="/models">Models</Link>
+          <Link href="/models">Model summaries</Link>
+          <Link href="/tests">Tests</Link>
           <Link href="/methodology">Methodology</Link>
         </nav>
         <div className="header-actions">
           <AuthControls configured={authConfigured} />
-          <Link className="header-run" href="/run">
-            Run a benchmark
+          <Link className="header-run" href="/tests">
+            Add a test
           </Link>
-          <Link className="header-upload" href="/upload">
-            Upload a test
+          <Link className="header-upload" href="/submit">
+            Submit result
           </Link>
         </div>
         <details className="mobile-menu">
@@ -35,14 +34,13 @@ export function SiteHeader() {
           <nav aria-label="Mobile navigation">
             <Link href="/explore">Explore</Link>
             <Link href="/leaderboards">Leaderboards</Link>
-            <Link href="/compare">Compare</Link>
-            <Link href="/benchmarks">Benchmarks</Link>
-            <Link href="/models">Models</Link>
+            <Link href="/models">Model summaries</Link>
+            <Link href="/tests">Tests</Link>
             <Link href="/methodology">Methodology</Link>
             <span className="mobile-menu-divider" aria-hidden="true" />
-            <Link href="/run">Run a benchmark</Link>
-            <Link className="mobile-upload" href="/upload">
-              Upload a test
+            <Link href="/tests">Add a test</Link>
+            <Link className="mobile-upload" href="/submit">
+              Submit result
             </Link>
             <AuthControls configured={authConfigured} />
           </nav>

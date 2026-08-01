@@ -16,10 +16,10 @@ export default function OperationsPage() {
       <main className="inner-page section-wrap">
         <header className="page-title">
           <span className="section-index">OWNER OPERATIONS</span>
-          <h1>Pipeline health and spend.</h1>
+          <h1>Pipeline health and review state.</h1>
           <p>
-            Queue stages, run failures, judge state, credit entries, disputes,
-            reports, and bounded storage inventory in one role-gated view.
+            Queue stages, run failures, judge state, disputes, reports, and
+            bounded storage inventory in one role-gated view.
           </p>
         </header>
         <OperationsDashboard authConfigured={isClerkConfigured()} />

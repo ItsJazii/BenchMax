@@ -52,6 +52,7 @@ export function buildRunModerationDecision(
   record: ModeratableRunSnapshot,
   action: "dismiss" | "disqualify",
   reason: string,
+  dismissRankEligible = false,
 ) {
   if (!["scored", "published"].includes(record.status)) return null;
   if (action === "dismiss") {
@@ -59,14 +60,14 @@ export function buildRunModerationDecision(
     return {
       next: {
         status: "scored",
-        rankEligible: true,
+        rankEligible: dismissRankEligible,
         injectionFlag: false,
         playableEnabled: false,
       },
       patch: {
         injectionFlag: false as const,
         playableEnabled: false as const,
-        rankEligible: true as const,
+        rankEligible: dismissRankEligible,
         status: "scored" as const,
       },
     };

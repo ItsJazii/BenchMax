@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import {
   requireAuthorizedUser,
   requireRole,
@@ -9,6 +8,10 @@ import { apiErrorResponse, parseJson } from "@/lib/http/api";
 import { moderationActionSchema } from "@/lib/security/community";
 import { secureJson } from "@/lib/security/http";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
+import {
+  enqueueResultRankingRefresh,
+  findResultRunIdForShowcase,
+} from "@/lib/data/result-supersession";
 
 export async function POST(request: Request) {
   try {
@@ -22,16 +25,21 @@ export async function POST(request: Request) {
     const input = await parseJson(request, moderationActionSchema);
     const result = await applyModerationAction(user.id, input);
     let publishRefreshDeferred = false;
-    if (input.entityType === "run" && input.action === "dismiss") {
-      await env.JUDGE_QUEUE.send({
-        runId: input.entityId,
-        stage: "publish",
-        stageVersion: "1",
-      }).catch((error: unknown) => {
+    const refreshRunId =
+      input.entityType === "run"
+        ? input.entityId
+        : input.entityType === "showcase"
+          ? await findResultRunIdForShowcase(input.entityId)
+          : null;
+    if (refreshRunId) {
+      await enqueueResultRankingRefresh(
+        refreshRunId,
+        `moderation-${input.action}`,
+      ).catch((error: unknown) => {
         publishRefreshDeferred = true;
         console.error("Moderated run publish refresh was deferred", {
           name: error instanceof Error ? error.name : "UnknownError",
-          runId: input.entityId,
+          runId: refreshRunId,
         });
       });
     }
@@ -39,9 +47,9 @@ export async function POST(request: Request) {
       await appendAuditEvent({
         actorUserId: user.id,
         entityType: "run",
-        entityId: input.entityId,
+        entityId: refreshRunId ?? input.entityId,
         action: "run.publish_refresh_deferred",
-        metadata: { stage: "publish", stageVersion: "1" },
+        metadata: { moderationAction: input.action, stage: "publish" },
       });
     }
     await appendAuditEvent({

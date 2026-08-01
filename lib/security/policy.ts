@@ -141,7 +141,7 @@ export function parseShowcaseSlug(value: string): string | null {
   } catch {
     return null;
   }
-  const match = /^\/showcases\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/u.exec(
+  const match = /^\/(?:results|showcases)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/u.exec(
     parsed.pathname,
   );
   return match?.[1] ?? null;
@@ -157,7 +157,7 @@ export function parseReportTarget(
   } catch {
     return null;
   }
-  const showcase = /^\/showcases\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/u.exec(
+  const showcase = /^\/(?:results|showcases)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/u.exec(
     parsed.pathname,
   );
   if (showcase) return { kind: "showcase", slug: showcase[1] };

@@ -9,13 +9,13 @@ export default function NotFound() {
       <main className="inner-page section-wrap">
         <section className="empty-state">
           <span className="section-index">404 / NO RECORD</span>
-          <h1>This test is not on the record.</h1>
+          <h1>This page is not on the record.</h1>
           <p>
             The link may be wrong, unpublished, removed for safety, or no longer
             available.
           </p>
           <Link className="button button-primary" href="/explore">
-            Explore public tests
+            Explore public results
           </Link>
         </section>
       </main>

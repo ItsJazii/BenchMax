@@ -5,7 +5,9 @@ import {
   benchmarkProposals,
   disputes,
   evaluationVersions,
+  judgeSamples,
   moderationActions,
+  resultConfigurations,
   runStageClaims,
   runs,
   showcases,
@@ -21,6 +23,11 @@ import {
   proposalReviewSchema,
 } from "@/lib/security/community";
 import { canonicalJson } from "@/lib/security/canonical";
+import {
+  evidenceSufficiencyConsensus,
+  parseStoredEvidenceGateJson,
+  selectResultEligibility,
+} from "@/lib/judging/protocol";
 
 export async function createDispute(
   userId: string,
@@ -142,6 +149,7 @@ export async function applyModerationAction(
         rankEligible: runs.rankEligible,
         injectionFlag: runs.injectionFlag,
         playableEnabled: runs.playableEnabled,
+        evaluationVersionId: runs.evaluationVersionId,
         showcaseId: runs.showcaseId,
       })
       .from(runs)
@@ -154,10 +162,52 @@ export async function applyModerationAction(
     if (parsed.action !== "disqualify" && parsed.action !== "dismiss") {
       throw new InvalidModerationActionError();
     }
+    let dismissEligibility:
+      | ReturnType<typeof selectResultEligibility>
+      | undefined;
+    if (parsed.action === "dismiss" && record.showcaseId) {
+      const [[showcase], sampleRows] = await Promise.all([
+        getDb()
+          .select({
+            catalogStatus: resultConfigurations.catalogStatus,
+            safetyStatus: showcases.safetyStatus,
+          })
+          .from(showcases)
+          .leftJoin(
+            resultConfigurations,
+            eq(resultConfigurations.id, showcases.resultConfigurationId),
+          )
+          .where(eq(showcases.id, record.showcaseId))
+          .limit(1),
+        getDb()
+          .select({ structuredOutputJson: judgeSamples.structuredOutputJson })
+          .from(judgeSamples)
+          .where(
+            and(
+              eq(judgeSamples.runId, parsed.entityId),
+              eq(
+                judgeSamples.evaluationVersionId,
+                record.evaluationVersionId,
+              ),
+            ),
+          ),
+      ]);
+      dismissEligibility = selectResultEligibility({
+        catalogCanonical: showcase?.catalogStatus === "canonical",
+        evidenceSufficient: evidenceSufficiencyConsensus(
+          sampleRows.map(({ structuredOutputJson }) =>
+            parseStoredEvidenceGateJson(structuredOutputJson),
+          ),
+        ),
+        injectionFlag: false,
+        safetyApproved: showcase?.safetyStatus === "approved",
+      });
+    }
     const decision = buildRunModerationDecision(
       record,
       parsed.action,
       parsed.reason,
+      dismissEligibility?.rankEligible,
     );
     if (!decision) throw new InvalidModerationActionError();
     next = decision.next;
@@ -202,7 +252,11 @@ export async function applyModerationAction(
       if (record.showcaseId) {
         await getDb()
           .update(showcases)
-          .set({ rankingStatus: "eligible", updatedAt: now })
+          .set({
+            rankingStatus:
+              dismissEligibility?.rankingStatus ?? "insufficient_evidence",
+            updatedAt: now,
+          })
           .where(eq(showcases.id, record.showcaseId));
       }
     }

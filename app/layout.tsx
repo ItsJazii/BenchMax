@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     template: "%s · Benchmax",
   },
   description:
-    "Public, evidence-backed AI model tests with transparent verification and configuration-level rankings.",
+    "Public, evidence-backed AI model tests with declared provenance, transparent AI judging, and per-test rankings.",
   applicationName: "Benchmax",
   category: "technology",
   keywords: [
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     siteName: "Benchmax",
     title: "Benchmax — See what models actually built",
     description:
-      "Public, evidence-backed AI model tests with transparent verification and configuration-level rankings.",
+      "Public, evidence-backed AI model tests with declared provenance, transparent AI judging, and per-test rankings.",
     images: [
       {
         url: "/og.png",
@@ -63,7 +63,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Benchmax — See what models actually built",
     description:
-      "Public, evidence-backed AI model tests with transparent verification.",
+      "Public, evidence-backed AI model tests with declared provenance and transparent AI judging.",
     images: ["/og.png"],
   },
 };

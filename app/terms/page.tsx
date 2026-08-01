@@ -31,12 +31,11 @@ export default function TermsPage() {
           </p>
         </section>
         <section>
-          <h2>Generated code</h2>
+          <h2>Submitted model output</h2>
           <p>
-            Platform-generated code is produced through the contributor&apos;s
-            selected provider account or an admin-granted platform run. The
-            contributor remains responsible for complying with that
-            provider&apos;s terms and reviewing output before reuse.
+            You remain responsible for complying with the tested model and
+            harness terms, removing secrets and personal data, and confirming
+            that the evidence accurately represents the declared test.
           </p>
         </section>
         <section>

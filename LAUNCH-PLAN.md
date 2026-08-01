@@ -41,11 +41,13 @@ the cap decision, and the explicitly deferred launch polish listed below.
 
 ## Phase 2 — Accounts and services (in progress 2026-08-01; mostly [You])
 
-1. **[Codex/You]** Cloudflare account access is confirmed. D1 `benchmax-d1` and
-   queues `benchmax-evaluate`, `benchmax-judge`, and `benchmax-pipeline-dlq` are
-   provisioned. R2 is not enabled yet; account 2FA enforcement is also still off.
-   The owner must enable 2FA after enrolling, then enable R2 and the Workers Paid
-   capability before staging data or deployments.
+1. **[Codex/You]** Cloudflare account access is confirmed. Production D1
+   `benchmax-d1` and queues `benchmax-evaluate`, `benchmax-judge`, and
+   `benchmax-pipeline-dlq` are provisioned. Isolated staging D1
+   `benchmax-staging-d1` and staging queues are also provisioned. R2 is not
+   enabled yet; account 2FA enforcement is also still off. The owner must enable
+   2FA after enrolling, then enable R2 and the Workers Paid capability before
+   staging data or deployments.
 2. **[You]** Domain(s): one main domain (e.g. benchmax.dev) and one SEPARATE domain
    or distinct registrable origin for user content (cookieless isolation per PLAN §3;
    a `*.workers.dev` subdomain is acceptable for the usercontent origin at launch).
@@ -56,9 +58,10 @@ the cap decision, and the explicitly deferred launch polish listed below.
    (recommendation: current Sonnet snapshot; never an alias).
 5. **[You]** E2B account; **[Codex]** build `sandbox/browser-web-v1` as a template,
    record immutable template ID + build hash.
-6. **[Codex]** After R2 is enabled, create the private bucket, deploy both Workers
-   with staging/production environments, attach only the selected HTTPS origins,
-   and configure the existing queue consumers/crons. All secrets go via
+6. **[Codex]** After R2 is enabled, create separate private
+   `benchmax-uploads-staging` and `benchmax-uploads` buckets, deploy both Workers
+   with isolated staging/production environments, attach only the selected HTTPS
+   origins, and configure the disjoint queue consumers/crons. All secrets go via
    `wrangler secret put` (Clerk, judge key/origin/model, provenance key, calibration
    hash/key, owner subjects) — never in files.
 

@@ -12,8 +12,13 @@ does not contain credentials, tokens, private keys, or database exports.
   `1b90635c-2906-472f-a0d1-242cbceee802`. The current API response reports
   `jurisdiction: null`; do not treat the database as APAC-specific until the
   Cloudflare account reports an explicit jurisdiction.
+- Staging D1 `benchmax-staging-d1` exists with ID
+  `5d44e60d-bff8-4036-9c4d-383464230670`, with read replication disabled.
 - Queues `benchmax-evaluate`, `benchmax-judge`, and
   `benchmax-pipeline-dlq` exist.
+- Staging queues `benchmax-staging-evaluate`, `benchmax-staging-judge`, and
+  `benchmax-staging-pipeline-dlq` also exist; staging and production queues are
+  intentionally disjoint.
 - R2 is not enabled yet, so `benchmax-uploads` cannot be created.
 - No BenchMax Workers or custom domains exist yet.
 - Account-level two-factor enforcement is currently off.
@@ -35,11 +40,12 @@ does not contain credentials, tokens, private keys, or database exports.
    wildcard origin.
 6. Create the judge-provider and E2B accounts. Pin an immutable judge snapshot
    and evaluator template/build hash only after calibration.
-7. Build the main application before deployment. Vinext emits the built main
-   Worker at `dist/server/wrangler.json`; select its staging or production
-   Worker with `--name` rather than deploying the unbuilt `worker/index.ts`.
-   The standalone user-content Worker uses the named environments in
-   `wrangler.usercontent.jsonc`.
+7. Build the main application before deployment. Then run
+   `npm run phase2:prepare-main -- staging` or `npm run phase2:prepare-main -- production`.
+   This creates an environment-specific config from the built Worker, so staging
+   cannot fall back to production D1, R2, or queues. Never deploy the unbuilt
+   `worker/index.ts`; the standalone user-content Worker uses the named
+   environments in `wrangler.usercontent.jsonc`.
 8. Store server values with `wrangler secret put` (or the approved Cloudflare
    secret store). Public values may be configured as vars; secret values must
    never enter JSONC, `.env`, GitHub logs, queue payloads, or D1.
@@ -65,7 +71,8 @@ npm ci
 npm run phase2:preflight
 npx tsc --noEmit
 npm test
-npx wrangler deploy --dry-run --config dist/server/wrangler.json --name benchmax-staging --outdir .wrangler-dry-run/main
+npm run phase2:prepare-main -- staging
+npx wrangler deploy --dry-run --config dist/server/wrangler.staging.json --outdir .wrangler-dry-run/main
 npx wrangler deploy --dry-run --config wrangler.usercontent.jsonc --env staging --outdir .wrangler-dry-run/usercontent
 ```
 

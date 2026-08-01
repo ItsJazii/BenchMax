@@ -23,14 +23,14 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "benchmax-d1",
-          "database_id": "1b90635c-2906-472f-a0d1-242cbceee802"
+          "database_name": "benchmax-staging-d1",
+          "database_id": "5d44e60d-bff8-4036-9c4d-383464230670"
         }
       ],
       "r2_buckets": [
         {
           "binding": "UPLOADS",
-          "bucket_name": "benchmax-uploads"
+          "bucket_name": "benchmax-uploads-staging"
         }
       ]
     },

@@ -1,64 +1,70 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { readJsonc } from "./phase2-config.mjs";
 
-const root = new URL("../", import.meta.url);
-const read = (path) => fs.readFileSync(new URL(path, root), "utf8");
+const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const read = (relativePath) => fs.readFileSync(path.join(rootDirectory, relativePath), "utf8");
 
-const mainConfig = JSON.parse(read("wrangler.jsonc"));
-const usercontentConfig = JSON.parse(read("wrangler.usercontent.jsonc"));
-const databaseIds = [
-  mainConfig.d1_databases?.[0]?.database_id,
-  usercontentConfig.d1_databases?.[0]?.database_id,
-];
-assert.equal(databaseIds[0], databaseIds[1], "Workers must share one D1 database");
-assert.match(databaseIds[0] ?? "", /^[0-9a-f-]{36}$/i, "D1 database ID is missing or invalid");
-assert.notEqual(databaseIds[0], "00000000-0000-4000-8000-000000000000", "placeholder D1 ID remains");
+const mainConfig = readJsonc(rootDirectory, "wrangler.jsonc");
+const usercontentConfig = readJsonc(rootDirectory, "wrangler.usercontent.jsonc");
+const environments = {
+  staging: {
+    main: mainConfig.env?.staging,
+    usercontent: usercontentConfig.env?.staging,
+    mainName: "benchmax-staging",
+    usercontentName: "benchmax-usercontent-staging",
+    databaseName: "benchmax-staging-d1",
+    bucketName: "benchmax-uploads-staging",
+    queuePrefix: "benchmax-staging-",
+  },
+  production: {
+    main: mainConfig.env?.production,
+    usercontent: usercontentConfig.env?.production,
+    mainName: "benchmax",
+    usercontentName: "benchmax-usercontent",
+    databaseName: "benchmax-d1",
+    bucketName: "benchmax-uploads",
+    queuePrefix: "benchmax-",
+  },
+};
 
-const requiredQueues = new Set([
-  "benchmax-evaluate",
-  "benchmax-judge",
-  "benchmax-pipeline-dlq",
-]);
+const databaseIds = {};
+const queueNamesByEnvironment = {};
+for (const [environmentName, expected] of Object.entries(environments)) {
+  assert(expected.main, `main Worker ${environmentName} environment is missing`);
+  assert(expected.usercontent, `user-content Worker ${environmentName} environment is missing`);
+  assert.equal(expected.main.name, expected.mainName, `main Worker ${environmentName} name is wrong`);
+  assert.equal(expected.usercontent.name, expected.usercontentName, `user-content Worker ${environmentName} name is wrong`);
 
-function queueNames(config) {
-  return new Set([
-    ...(config.queues?.producers ?? []).map((queue) => queue.queue),
-    ...(config.queues?.consumers ?? []).map((queue) => queue.queue),
-  ]);
+  const mainDatabase = expected.main.d1_databases?.[0];
+  const usercontentDatabase = expected.usercontent.d1_databases?.[0];
+  assert.equal(mainDatabase?.binding, "DB", `main Worker ${environmentName} must bind DB`);
+  assert.equal(usercontentDatabase?.binding, "DB", `user-content Worker ${environmentName} must bind DB`);
+  assert.equal(mainDatabase?.database_name, expected.databaseName, `main Worker ${environmentName} D1 name is wrong`);
+  assert.equal(usercontentDatabase?.database_name, expected.databaseName, `user-content Worker ${environmentName} D1 name is wrong`);
+  assert.match(mainDatabase?.database_id ?? "", /^[0-9a-f-]{36}$/i, `main Worker ${environmentName} D1 ID is missing or invalid`);
+  assert.equal(mainDatabase?.database_id, usercontentDatabase?.database_id, `${environmentName} Workers must share one D1 database`);
+  databaseIds[environmentName] = mainDatabase.database_id;
+
+  assert.equal(expected.main.r2_buckets?.[0]?.binding, "UPLOADS", `main Worker ${environmentName} must bind UPLOADS`);
+  assert.equal(expected.usercontent.r2_buckets?.[0]?.binding, "UPLOADS", `user-content Worker ${environmentName} must bind UPLOADS`);
+  assert.equal(expected.main.r2_buckets?.[0]?.bucket_name, expected.bucketName, `main Worker ${environmentName} bucket is wrong`);
+  assert.equal(expected.usercontent.r2_buckets?.[0]?.bucket_name, expected.bucketName, `user-content Worker ${environmentName} bucket is wrong`);
+
+  const queues = queueNames(expected.main.queues);
+  assertRequiredQueues(queues, expected.queuePrefix, `main Worker ${environmentName}`);
+  queueNamesByEnvironment[environmentName] = queues;
 }
 
-function assertRequiredQueues(config, label) {
-  for (const queue of requiredQueues) {
-    assert(queueNames(config).has(queue), `${label} is missing configured queue: ${queue}`);
-  }
-}
+assert.notEqual(databaseIds.staging, databaseIds.production, "staging and production must use separate D1 databases");
+assertDisjoint(queueNamesByEnvironment.staging, queueNamesByEnvironment.production, "staging and production queues");
+assertRequiredQueues(queueNames(mainConfig.queues), "benchmax-", "top-level main Worker");
+assert.equal(mainConfig.d1_databases?.[0]?.database_id, databaseIds.production, "top-level main Worker must match production D1");
+assert.equal(usercontentConfig.d1_databases?.[0]?.database_id, databaseIds.production, "top-level user-content Worker must match production D1");
 
-function assertNamedBindings(config, label, { queues }) {
-  for (const [environmentName, environment] of Object.entries(config.env ?? {})) {
-    assert.equal(environment.d1_databases?.[0]?.binding, "DB", `${label} ${environmentName} must explicitly bind DB`);
-    assert.equal(environment.d1_databases?.[0]?.database_id, databaseIds[0], `${label} ${environmentName} must use the shared D1 database`);
-    assert.equal(environment.r2_buckets?.[0]?.binding, "UPLOADS", `${label} ${environmentName} must explicitly bind UPLOADS`);
-    assert.equal(environment.r2_buckets?.[0]?.bucket_name, "benchmax-uploads", `${label} ${environmentName} must use private uploads`);
-    if (queues) assertRequiredQueues(environment, `${label} ${environmentName}`);
-  }
-}
-
-assertRequiredQueues(mainConfig, "main Worker");
-
-for (const [label, config] of [
-  ["main Worker", mainConfig],
-  ["user-content Worker", usercontentConfig],
-]) {
-  assert.equal(config.r2_buckets?.[0]?.bucket_name, "benchmax-uploads", `${label} must bind private uploads`);
-  assert(config.env?.staging?.name, `${label} staging name is missing`);
-  assert(config.env?.production?.name, `${label} production name is missing`);
-  assert.notEqual(config.env.staging.name, config.env.production.name, `${label} environments must be distinct`);
-}
-assertNamedBindings(mainConfig, "main Worker", { queues: true });
-assertNamedBindings(usercontentConfig, "user-content Worker", { queues: false });
-
-const envLines = read(".env.example").split(/\r?\n/).filter((line) => line && !line.startsWith("#"));
-const envNames = new Set(envLines.map((line) => line.slice(0, line.indexOf("="))));
+const envNames = parseEnvNames(read(".env.example"));
 const requiredEnvNames = [
   "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
   "NEXT_PUBLIC_APP_URL",
@@ -83,8 +89,63 @@ const requiredEnvNames = [
 ];
 for (const name of requiredEnvNames) assert(envNames.has(name), `missing .env.example key: ${name}`);
 
-const workerSource = read("worker/index.ts");
-assert(!workerSource.includes("env.IMAGES"), "unconfigured IMAGES binding is still used");
-assert(!read("cloudflare-env.d.ts").includes("IMAGES"), "unconfigured IMAGES binding remains typed");
+const forbiddenBindingPattern = /\bIMAGES\b/;
+for (const filePath of sourceFiles(rootDirectory)) {
+  if (filePath === path.join(rootDirectory, "scripts", "phase2-preflight.mjs")) continue;
+  const relativePath = path.relative(rootDirectory, filePath);
+  assert(!forbiddenBindingPattern.test(fs.readFileSync(filePath, "utf8")), `unconfigured IMAGES binding remains in ${relativePath}`);
+}
 
-console.log("Phase 2 preflight: config, queue names, environment separation, secret contract, and bindings verified.");
+console.log("Phase 2 preflight: isolated environments, config parsing, secret contract, and bindings verified.");
+
+function queueNames(config) {
+  return new Set([
+    ...(config?.producers ?? []).map((queue) => queue.queue),
+    ...(config?.consumers ?? []).map((queue) => queue.queue),
+  ]);
+}
+
+function assertRequiredQueues(queues, prefix, label) {
+  const required = ["evaluate", "judge", "pipeline-dlq"].map((suffix) => `${prefix}${suffix}`);
+  for (const queue of required) assert(queues.has(queue), `${label} is missing configured queue: ${queue}`);
+  for (const queue of queues) assert(queue.startsWith(prefix), `${label} queue crosses environment boundary: ${queue}`);
+}
+
+function assertDisjoint(left, right, label) {
+  for (const value of left) assert(!right.has(value), `${label} overlap: ${value}`);
+}
+
+function parseEnvNames(text) {
+  const names = new Set();
+  for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const match = /^([A-Z][A-Z0-9_]*)\s*=/.exec(line);
+    assert(match, `malformed .env.example line ${index + 1}`);
+    names.add(match[1]);
+  }
+  return names;
+}
+
+function sourceFiles(root) {
+  const files = [];
+  const roots = ["app", "lib", "scripts", "usercontent", "worker"];
+  for (const relativeRoot of roots) collect(path.join(root, relativeRoot), files);
+  files.push(path.join(root, "cloudflare-env.d.ts"));
+  files.push(path.join(root, "wrangler.jsonc"));
+  files.push(path.join(root, "wrangler.usercontent.jsonc"));
+  return files.filter((filePath) => /\.(?:[cm]?[jt]sx?|jsonc)$/i.test(filePath) || filePath.endsWith(".d.ts"));
+}
+
+function collect(directory, files) {
+  if (!fs.existsSync(directory)) return;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (["node_modules", "dist", ".wrangler", ".wrangler-dry-run", ".git"].includes(entry.name)) continue;
+      collect(entryPath, files);
+    } else {
+      files.push(entryPath);
+    }
+  }
+}

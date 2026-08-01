@@ -25,35 +25,36 @@ for (const key of overrideKeys) {
   }
 }
 
-// The built config inherits top-level (= production) values. Any binding-type
-// key we do not explicitly override must be empty, otherwise a future binding
-// (KV, DO, service, ...) would silently ship production resources to staging.
-const bindingKeysThatMustBeEmpty = [
-  "durable_objects",
-  "kv_namespaces",
-  "services",
-  "workflows",
-  "send_email",
-  "vectorize",
-  "hyperdrive",
-  "pipelines",
-  "secrets_store_secrets",
-  "analytics_engine_datasets",
-  "dispatch_namespaces",
-  "mtls_certificates",
-  "ai_search_namespaces",
-  "agent_memory",
-  "worker_loaders",
-  "ratelimits",
-  "vpc_services",
-  "vpc_networks",
-  "logfwdr",
-  "dispatch_namespaces",
-];
-for (const key of bindingKeysThatMustBeEmpty) {
-  if (!isEmptyBinding(builtConfig[key])) {
+// The built config inherits top-level (= production) values. Inverted
+// allowlist: every key that is neither overridden per environment nor a
+// known-safe non-binding key must be EMPTY, so any future binding type (KV,
+// DO, service, tail consumer, vars, ...) fails loudly instead of silently
+// shipping production resources to staging.
+const knownSafeKeys = new Set([
+  "configPath",
+  "userConfigPath",
+  "topLevelName",
+  "definedEnvironments",
+  "compatibility_date",
+  "compatibility_flags",
+  "jsx_factory",
+  "jsx_fragment",
+  "rules",
+  "main",
+  "assets",
+  "exports",
+  "migrations",
+  "dev",
+  "no_bundle",
+  // Bundler file-selection defaults, not resource bindings.
+  "python_modules",
+  ...overrideKeys,
+]);
+for (const [key, value] of Object.entries(builtConfig)) {
+  if (knownSafeKeys.has(key)) continue;
+  if (!isEmptyBinding(value)) {
     throw new Error(
-      `built Worker config carries an unmanaged binding (${key}); teach prepare-main-deploy.mjs how to override it per environment before deploying`,
+      `built Worker config carries an unmanaged key (${key}); teach prepare-main-deploy.mjs how to override it per environment before deploying`,
     );
   }
 }

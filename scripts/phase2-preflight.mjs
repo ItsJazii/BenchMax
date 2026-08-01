@@ -121,8 +121,12 @@ function queueNames(config) {
 
 function assertRequiredQueues(queues, prefix, label) {
   const required = ["evaluate", "judge", "pipeline-dlq"].map((suffix) => `${prefix}${suffix}`);
+  // Exact set membership: a prefix check alone would let staging queue names
+  // (benchmax-staging-*) pass inside the production block, since they also
+  // start with "benchmax-".
+  const allowed = new Set(required);
   for (const queue of required) assert(queues.has(queue), `${label} is missing configured queue: ${queue}`);
-  for (const queue of queues) assert(queue.startsWith(prefix), `${label} queue crosses environment boundary: ${queue}`);
+  for (const queue of queues) assert(allowed.has(queue), `${label} queue crosses environment boundary: ${queue}`);
 }
 
 function assertDisjoint(left, right, label) {

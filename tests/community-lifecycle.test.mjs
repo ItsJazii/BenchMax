@@ -119,12 +119,21 @@ test(
       const sweepResponse = await worker.fetch("http://lifecycle.test/sweeps");
       const sweeps = await sweepResponse.json();
       assert.equal(sweepResponse.status, 200, JSON.stringify(sweeps));
-      assert.deepEqual(sweeps.firstTopTen, ["sweep-live-run"]);
+      assert.deepEqual(sweeps.firstTopTen, [
+        "sweep-frozen-topten-run",
+        "sweep-live-run",
+      ]);
       assert.ok(
         !sweeps.secondTopTen.includes("sweep-failed-run"),
         "terminally failed run re-selected by the top-ten sweep",
       );
+      assert.ok(
+        !sweeps.secondTopTen.includes("sweep-frozen-topten-run"),
+        "frozen-evaluation top-ten run with a scored showcase re-selected after termination",
+      );
       assert.equal(sweeps.failedShowcaseJudgeStatus, "failed");
+      assert.equal(sweeps.frozenTopTenShowcaseJudgeStatus, "failed");
+      assert.equal(sweeps.frozenTopTenRunStatus, "evaluation_failed");
       assert.deepEqual(sweeps.firstDispute, ["sweep-dispute-run"]);
       assert.deepEqual(
         sweeps.secondDispute,

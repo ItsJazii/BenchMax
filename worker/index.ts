@@ -33,7 +33,10 @@ import {
   shouldDelayCommunityPipelineFailure,
   stageClaimDisposition,
 } from "../lib/pipeline/recovery";
-import { processPipelineDeadLetter } from "../lib/pipeline/dead-letter";
+import {
+  isPipelineDeadLetterQueue,
+  processPipelineDeadLetter,
+} from "../lib/pipeline/dead-letter";
 import { sweepExpiredUploadSessions } from "../lib/data/upload-maintenance";
 import {
   markOverdueResults,
@@ -69,7 +72,7 @@ const worker = {
     batch: MessageBatch<PipelineMessage>,
     env: Env,
   ): Promise<void> {
-    if (batch.queue === "benchmax-pipeline-dlq") {
+    if (isPipelineDeadLetterQueue(batch.queue)) {
       await consumePipelineDeadLetters(batch);
       return;
     }

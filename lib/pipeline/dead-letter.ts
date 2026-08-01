@@ -1,6 +1,13 @@
 import type { PipelineMessage } from "./messages";
 import type { RunStatus } from "@/lib/security/run-policy";
 
+// Environment-agnostic: the same Worker script consumes
+// "benchmax-pipeline-dlq" in production and
+// "benchmax-staging-pipeline-dlq" in staging.
+export function isPipelineDeadLetterQueue(queueName: string): boolean {
+  return queueName.endsWith("pipeline-dlq");
+}
+
 export function isActivePipelineStageStatus(
   stage: PipelineMessage["stage"],
   status: RunStatus | null,

@@ -486,7 +486,11 @@ async function markRepairFailure(input: {
     .where(
       and(
         eq(showcases.id, input.showcaseId),
-        inArray(showcases.judgeStatus, ["judging", "overdue"]),
+        // "scored" is included because frozen-evaluation and budget-exhausted
+        // terminations can fire before the sweep flips the showcase to
+        // "judging"; without it the run never reaches a terminal judgeStatus
+        // and the sweep re-selects it every tick.
+        inArray(showcases.judgeStatus, ["judging", "overdue", "scored"]),
       ),
     );
   await appendAuditEvent({

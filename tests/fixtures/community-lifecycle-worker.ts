@@ -474,6 +474,18 @@ async function seedSweepFixtures() {
         judgeStatus: "judging",
         rankingStatus: "eligible",
       },
+      {
+        // A frozen-evaluation top-ten candidate whose showcase is still
+        // "scored" (termination fires before the sweep ever set "judging") —
+        // it must reach a terminal judgeStatus on the first pass instead of
+        // being re-selected forever.
+        ...showcaseBase,
+        id: "sweep-frozen-topten-showcase",
+        slug: "sweep-frozen-topten-showcase",
+        title: "Sweep frozen top ten",
+        judgeStatus: "scored",
+        rankingStatus: "eligible",
+      },
     ]),
   ]);
   const runBase = {
@@ -515,16 +527,34 @@ async function seedSweepFixtures() {
         evaluationVersionId: "sweep-frozen-eval",
         showcaseId: "sweep-dispute-showcase",
       },
+      {
+        ...runBase,
+        id: "sweep-frozen-topten-run",
+        publicSlug: "sweep-frozen-topten-run",
+        evaluationVersionId: "sweep-frozen-eval",
+        showcaseId: "sweep-frozen-topten-showcase",
+      },
     ]),
-    db.insert(resultLeaderboardSnapshots).values({
-      id: "sweep-snapshot",
-      benchmarkVersionId: BENCHMARK_VERSION_ID,
-      evaluationVersionId: EVALUATION_ID,
-      version: 900,
-      resultSetHash: "sweep-result-set",
-      status: "building",
-      createdAt: now,
-    }),
+    db.insert(resultLeaderboardSnapshots).values([
+      {
+        id: "sweep-snapshot",
+        benchmarkVersionId: BENCHMARK_VERSION_ID,
+        evaluationVersionId: EVALUATION_ID,
+        version: 900,
+        resultSetHash: "sweep-result-set",
+        status: "building",
+        createdAt: now,
+      },
+      {
+        id: "sweep-frozen-snapshot",
+        benchmarkVersionId: BENCHMARK_VERSION_ID,
+        evaluationVersionId: "sweep-frozen-eval",
+        version: 901,
+        resultSetHash: "sweep-frozen-result-set",
+        status: "building",
+        createdAt: now,
+      },
+    ]),
     db.insert(resultLeaderboardEntries).values([
       {
         id: "sweep-failed-entry",
@@ -543,6 +573,16 @@ async function seedSweepFixtures() {
         runId: "sweep-live-run",
         rank: 2,
         scoreBps: 8_000,
+        sampleCount: 1,
+        createdAt: now,
+      },
+      {
+        id: "sweep-frozen-topten-entry",
+        snapshotId: "sweep-frozen-snapshot",
+        showcaseId: "sweep-frozen-topten-showcase",
+        runId: "sweep-frozen-topten-run",
+        rank: 1,
+        scoreBps: 9_500,
         sampleCount: 1,
         createdAt: now,
       },
@@ -570,6 +610,15 @@ async function runSweeps() {
     .from(showcases)
     .where(eq(showcases.id, "sweep-failed-showcase"));
 
+  const [frozenTopTenShowcase] = await db
+    .select({ judgeStatus: showcases.judgeStatus })
+    .from(showcases)
+    .where(eq(showcases.id, "sweep-frozen-topten-showcase"));
+  const [frozenTopTenRun] = await db
+    .select({ status: runs.status })
+    .from(runs)
+    .where(eq(runs.id, "sweep-frozen-topten-run"));
+
   const firstDispute = await repairDeferredDisputeRejudgments();
   const secondDispute = await repairDeferredDisputeRejudgments();
   const [disputeShowcase] = await db
@@ -587,6 +636,8 @@ async function runSweeps() {
     failedShowcaseJudgeStatus: failedShowcase?.judgeStatus,
     firstDispute,
     firstTopTen,
+    frozenTopTenRunStatus: frozenTopTenRun?.status,
+    frozenTopTenShowcaseJudgeStatus: frozenTopTenShowcase?.judgeStatus,
     secondDispute,
     secondTopTen,
   };

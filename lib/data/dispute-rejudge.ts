@@ -332,7 +332,10 @@ async function markRepairFailure(input: {
     .where(
       and(
         eq(showcases.id, input.showcaseId),
-        inArray(showcases.judgeStatus, ["judging", "overdue"]),
+        // "scored" included so a frozen-evaluation termination requested
+        // before the dispute flips the showcase to "judging" still reaches a
+        // terminal judgeStatus instead of leaving inconsistent state.
+        inArray(showcases.judgeStatus, ["judging", "overdue", "scored"]),
       ),
     );
   await appendAuditEvent({

@@ -82,6 +82,15 @@ for (const [key, value] of Object.entries(builtConfig)) {
 const deployConfig = { ...builtConfig };
 for (const key of overrideKeys) deployConfig[key] = environment[key];
 
+// The generated config lives in dist/server/, so a relative migrations_dir
+// would resolve to a non-existent dist/server/drizzle. Deploys never apply
+// migrations; strip the key so nobody can run
+// `d1 migrations apply --config dist/server/wrangler.<env>.json` by mistake —
+// migrations always go through `wrangler.jsonc --env <environment>`.
+deployConfig.d1_databases = deployConfig.d1_databases.map(
+  ({ migrations_dir, ...database }) => database,
+);
+
 const outputPath = path.join(
   rootDirectory,
   "dist",

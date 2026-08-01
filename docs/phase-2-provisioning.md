@@ -74,6 +74,19 @@ npm test
 npm run phase2:prepare-main -- staging
 npx wrangler deploy --dry-run --config dist/server/wrangler.staging.json --outdir .wrangler-dry-run/main
 npx wrangler deploy --dry-run --config wrangler.usercontent.jsonc --env staging --outdir .wrangler-dry-run/usercontent
+npm run phase2:prepare-main -- production
+npx wrangler deploy --dry-run --config dist/server/wrangler.production.json --outdir .wrangler-dry-run/main-production
+npx wrangler deploy --dry-run --config wrangler.usercontent.jsonc --env production --outdir .wrangler-dry-run/usercontent-production
+```
+
+**Migrations never use the generated deploy configs.** The
+`dist/server/wrangler.<environment>.json` files exist only for `wrangler
+deploy` (the generator strips `migrations_dir`, so migration commands against
+them fail fast). Apply migrations exclusively through the source config with an
+explicit environment:
+
+```powershell
+npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc --env staging
 ```
 
 A green preflight proves configuration consistency only. It does not prove that

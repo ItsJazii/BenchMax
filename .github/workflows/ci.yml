@@ -39,4 +39,7 @@ jobs:
       - run: node scripts/prepare-main-deploy.mjs staging
       - run: npx wrangler deploy --dry-run --config dist/server/wrangler.staging.json --outdir .wrangler-dry-run/main
       - run: npx wrangler deploy --dry-run --config wrangler.usercontent.jsonc --env staging --outdir .wrangler-dry-run/usercontent
+      - run: node scripts/prepare-main-deploy.mjs production
+      - run: npx wrangler deploy --dry-run --config dist/server/wrangler.production.json --outdir .wrangler-dry-run/main-production
+      - run: npx wrangler deploy --dry-run --config wrangler.usercontent.jsonc --env production --outdir .wrangler-dry-run/usercontent-production
       - run: npm audit --omit=dev --audit-level=high

@@ -1,163 +1,145 @@
 # BenchMax handoff
 
-**Checkpoint date:** 2026-08-02 (Asia/Karachi)  
-**Repository:** `E:\benchmax`  
-**Current branch:** `codex/phase-2-foundation`  
-**Local checkpoint:** `580df53` — `Complete secure Phase 2 foundation`  
-**Remote Phase 2 branch:** `496ab05` (the local checkpoint has not been pushed)  
-**Remote main:** `ce96c5c`  
+**Checkpoint date:** 2026-08-02 (Asia/Karachi)
+**Repository:** `E:\benchmax` · remote `https://github.com/ItsJazii/BenchMax` (private)
+**Current branch:** `codex/phase-2-foundation` (pushed, worktree clean)
+**Local/remote head:** `31b4166` — `Silence intentional migrations_dir strip lint warning`
+**Remote main:** `ce96c5c`
+**Open PR:** #2 — "Phase 2 foundation: environment isolation, deploy safety, and audit closures" (open, not draft; supersedes closed PR #1)
 
-This file is a restart point for the next session. It contains no credentials,
-tokens, private keys, database exports, or provider secrets.
+No credentials, tokens, keys, or exports in this file. This is the restart point
+for the next session. Reference docs: `PLAN.md` (product spec, source of truth),
+`LAUNCH-PLAN.md` (phases), `REVIEW-FIXES-3.md` (audit history),
+`docs/phase-2-provisioning.md` (deploy procedure).
 
-## Current phase status
+## What happened since the previous checkpoint (`580df53`)
 
-| Phase | Status | Notes |
-| --- | --- | --- |
-| Phase 0 | Complete | Code residuals, schema/catalog work, pipeline work, and launch docs are on the repository. |
-| Phase 1 | Complete | Private GitHub repository, clean-checkout CI, PR controls, security docs, and CODEOWNERS are in place. |
-| Phase 2 repository foundation | Complete | Secure environment isolation, Cloudflare config validation, deployment preparation, CI gates, and docs are committed locally. |
-| Phase 2 external provisioning | In progress | Waiting on owner-controlled Cloudflare billing/security, domains, Clerk, judge, and E2B setup. |
-| Phase 3 | Not started | Staging deployment, migrations, calibration, and lifecycle validation happen after Phase 2 exits. |
+Codex usage limits were hit, so Claude implemented directly. All work is
+committed and pushed; every commit passed preflight + typecheck + lint + full
+suite before push.
 
-## What is complete locally
+1. `5fae3cc` **Close Phase 2 audit findings** — migration `0020` restores the
+   `catalog_requests_no_delete` trigger dropped by 0019's table rebuild (with
+   invariants existence + behavioral delete probes); top-ten escalation sweep
+   excludes terminally failed results; preflight pins the provisioned
+   staging/production D1 IDs and required crons; `prepare-main-deploy.mjs`
+   errors on missing env override keys and non-empty unmanaged binding types;
+   lifecycle fixture gained a `/sweeps` endpoint (real-migrations e2e of both
+   repair sweeps); corrected two inaccurate completion claims in
+   REVIEW-FIXES-3.md.
+2. PR #1 was closed by the owner; the full branch was pushed and **PR #2**
+   opened as the complete reviewable surface. Four Devin review rounds
+   followed, each triaged, fixed, gated, and pushed:
+   - `900046a` (round 1): environment-agnostic DLQ routing
+     (`isPipelineDeadLetterQueue`, suffix match, unit-tested);
+     `markRepairFailure` (both copies) terminalizes from `scored` too; exact
+     per-environment queue-set validation in preflight; inverted known-safe
+     allowlist over built-config keys in prepare-main-deploy; e2e scenario:
+     frozen-eval top-ten candidate with a `scored` showcase terminalizes on
+     pass one.
+   - `3d627f9` (round 2): top-level (no `--env`) configs returned to the
+     fail-closed placeholder D1 ID with preflight asserting the placeholder
+     (a stray remote command can never reach production);
+     frozen-evaluation dispute termination is sweep-only (a stranger's
+     dispute can no longer flip a public scored result to failed);
+     `markRepairFailure` lands from any non-`failed` state and the sweep also
+     excludes `evaluation_failed`/`disqualified` runs; benign scalar plugin
+     keys pre-classified.
+   - `e49b2b9` (round 3): symmetric env-block guard (any env key outside the
+     copied set fails loudly instead of being silently dropped); top-level
+     queues/buckets renamed local-only (`benchmax-local-*`) so a stray deploy
+     cannot attach to production resources regardless of wrangler's binding
+     validation order; frozen-dispute semantics documented in-code as
+     deliberate.
+   - `d25af32` + `31b4166` (round 4): CI rehearses the production release
+     path (prepare + dry-runs for production, both workers); generated deploy
+     configs strip `migrations_dir` (migrations only ever via
+     `wrangler.jsonc --env <environment>`, documented with the exact
+     command); lint cleanup.
 
-- Production and isolated staging D1/Queue resource names are separated in both
-  Worker configurations.
-- `scripts/phase2-config.mjs` parses JSONC safely, including comments,
-  trailing commas, and strings containing comment-like characters.
-- `scripts/phase2-preflight.mjs` validates both configs, resource IDs, queue
-  separation, required environment keys, malformed `.env.example` lines, and
-  forbidden image-binding usage.
-- `scripts/prepare-main-deploy.mjs` creates an environment-specific config from
-  the built Worker so the Vinext-generated config cannot silently fall back to
-  production resources.
-- CI has explicit read-only permissions, pinned checkout/setup actions,
-  disabled checkout credentials, generated Wrangler types plus a check, full
-  tests, typecheck, lint, deployment dry-runs, and production dependency audit.
-- The browser-heavy evaluator and lifecycle test files run serially in the full
-  test command. This prevents resource contention from exceeding the evaluator
-  child-process timeout.
-- Documentation was updated in `README.md`, `CONTRIBUTING.md`,
-  `LAUNCH-PLAN.md`, and `docs/phase-2-provisioning.md`.
-- Devin's previous findings were addressed: staging isolation, JSONC parsing,
-  generated main deploy configs, strict env-key parsing, and repo-wide image
-  binding checks.
+Devin verified all round 1–3 findings as resolved (13 findings addressed
+total). Round 5 may still arrive for the last two commits — check first
+(below). CI was green on every pushed head; the newest run was in progress at
+checkpoint time.
 
-## Verification evidence
+## Deliberate design decisions — do NOT "fix" these
 
-The following passed before checkpoint commit `580df53`:
+- **Top-level wrangler blocks are local-only by design**: placeholder D1 ID
+  `00000000-0000-4000-8000-000000000000`, `benchmax-local-*` queues,
+  `benchmax-local-uploads` bucket. Real resources exist only in
+  `env.staging` / `env.production`. Preflight enforces this shape; reverting
+  it reintroduces the production-touch hazard Devin flagged.
+- **Frozen-evaluation disputes on a `scored` showcase never terminalize**:
+  the result keeps its valid score; the open dispute in the moderation queue
+  is the ops signal; moderators resolve with rejudgment "not-applicable".
+  Only stuck `judging`/`overdue` states are sweep-terminalized.
+- **Migrations never use generated deploy configs** (`migrations_dir` is
+  stripped from them intentionally).
+- The gating production dependency audit in CI is a documented decision
+  (accepted flake risk), not an oversight.
 
-- `npm run phase2:preflight`
-- `npx tsc --noEmit --pretty false`
-- `npm run lint -- --no-cache`
-- `npm audit --omit=dev --audit-level=high` — 0 vulnerabilities
-- `npm test` — pretests (3), core security/integration tests (102),
-  evaluator/lifecycle tests (3), D1 invariants, build, and rendered HTML tests
-  (28) all passed
-- Main Worker staging and production Wrangler dry-runs
-- User-content Worker staging and production Wrangler dry-runs
+## Where to start tomorrow
 
-Only known non-fatal warnings remained: Playwright/Vinext experimental output,
-the Vite native config-loader warning, and a rendered-test temporary-directory
-cleanup warning on Windows.
+1. `git fetch && git status` — confirm clean and on `codex/phase-2-foundation`.
+2. Check PR #2: latest CI run result and whether Devin posted a round-5
+   review (`gh api repos/ItsJazii/BenchMax/pulls/2/comments`, baseline count
+   at checkpoint: 32). If new findings exist: triage, fix, run the full gates
+   (`npm run phase2:preflight`, `npx tsc --noEmit`, `npm run lint`,
+   `npm test`), push. Repeat until Devin is clean.
+3. When CI + Devin are clean: the owner decides the merge. After merge,
+   delete the branch and continue on focused PRs off `main`.
+4. Then Phase 2 external prerequisites (owner actions, in this order —
+   nothing below may proceed before items 1–2):
+   1. Owner enrolls Cloudflare 2FA, then enables account-level enforcement.
+   2. Enable R2 and the Workers Paid capability in the dashboard.
+   3. Choose the main HTTPS origin and the separate cookieless user-content
+      origin (workers.dev acceptable for user content if deliberately chosen).
+   4. Clerk app: Google, GitHub, email-code; exact production origins.
+   5. Anthropic judge API key (snapshot pinned later, during Phase 3
+      calibration).
+   6. E2B account.
+5. After prerequisites, agent work: create private buckets
+   `benchmax-uploads-staging` and `benchmax-uploads`; build the
+   `sandbox/browser-web-v1` E2B template and record the immutable template ID
+   + build hash; load all secrets via `wrangler secret put` (never in files);
+   deploy both Workers to isolated staging
+   (`npm run phase2:prepare-main -- staging`, dry-run first); apply
+   migrations via `wrangler.jsonc --env staging`; seed catalogs via the
+   owner endpoint.
+6. Then LAUNCH-PLAN Phase 3 (staging validation): calibration with the pinned
+   judge snapshot, **measure real judge cost per result and set budget caps
+   from measurement**, full synthetic lifecycle for all three evidence types,
+   catalog-request/dispute/safety-block/overdue paths, PLAN §9 release gates.
 
-## Current Cloudflare evidence
+## Open items that are not code
 
-Account ID (non-secret): `be0217f3d7fe3bd6ecaac6f55178f99e`
+- Owner product decision (needed before beta): submission-vs-judging cap
+  ratio — currently 10 drafts + 20 publishes/day vs 5 judged/day per account.
+- Cloudflare account state (unchanged from last checkpoint): 2FA off, R2 not
+  enabled, no zones/workers deployed; production + staging D1 and all six
+  queues provisioned; no migrations applied remotely (deferred to Phase 3).
+- Known non-fatal local warnings: Windows EPERM temp-dir cleanup after the
+  rendered/lifecycle tests (tolerated with a warning), Vite native config
+  loader notice, `unstable_dev` experimental notice.
+- Deferred cosmetics (tracked in REVIEW-FIXES-3.md round-3.3 item 7):
+  dead `kind='model'` enum value, stale `sampleCount=3` CHECK,
+  `harnessContractHash` stores raw contract JSON, empty route dirs.
 
-- Account-level 2FA enforcement: **off**.
-- The current owner identity also reports 2FA: **not enrolled**.
-- R2 bucket listing returns Cloudflare error `10042`: R2 must be enabled in the
-  Dashboard first.
-- Workers scripts: none.
-- Worker custom domains: none.
-- Workers.dev subdomain: not provisioned.
-- Zones attached to the account: none.
-- Production D1: `benchmax-d1`, ID
-  `1b90635c-2906-472f-a0d1-242cbceee802`, 0 tables, jurisdiction `null`.
-- Staging D1: `benchmax-staging-d1`, ID
-  `5d44e60d-bff8-4036-9c4d-383464230670`, 0 tables, jurisdiction `null`.
-- Production queues exist: `benchmax-evaluate`, `benchmax-judge`,
-  `benchmax-pipeline-dlq`.
-- Staging queues exist: `benchmax-staging-evaluate`,
-  `benchmax-staging-judge`, `benchmax-staging-pipeline-dlq`.
-- All six queues currently have zero consumers.
-- No D1 migrations have been applied; this is intentionally deferred to Phase 3
-  staging validation.
+## Verification evidence at checkpoint
 
-Do not enable account enforcement before the owner enrolls 2FA. Do not enable
-paid services, create public origins, deploy Workers, or apply migrations to
-production until the required owner decisions and security prerequisites exist.
-
-## Remaining Phase 2 work
-
-Owner actions:
-
-1. Enroll the Cloudflare owner account in 2FA, then enable account-level 2FA
-   enforcement.
-2. Enable R2 and the Workers Paid capability in the Cloudflare Dashboard.
-3. Choose the main HTTPS application origin and a separate cookieless
-   user-content origin. A workers.dev origin is acceptable for user content if
-   deliberately chosen.
-4. Create the private buckets `benchmax-uploads-staging` and
-   `benchmax-uploads` after R2 is enabled. Keep public access disabled.
-5. Create/configure Clerk with Google, GitHub, and email-code sign-in and exact
-   production origins.
-6. Choose and pin the immutable judge model snapshot after calibration.
-7. Build the E2B `sandbox/browser-web-v1` template and record its immutable
-   template ID and build hash.
-8. Store secrets only through the approved runtime secret path (for example,
-   `wrangler secret put` or Cloudflare Secret Store). Never paste secrets into
-   chat, Markdown, JSONC, `.env`, GitHub logs, queue messages, or D1.
-
-After these prerequisites exist, Codex can create/verify the buckets, deploy
-isolated staging Workers, configure the disjoint queue consumers, and proceed
-to Phase 3. Do not treat the local dry-runs as proof that Cloudflare resources
-are deployed.
-
-## PR state and required workflow
-
-- Draft PR: https://github.com/ItsJazii/BenchMax/pull/1
-- PR head currently on GitHub: `496ab05`.
-- CI and Devin were green for that older remote head.
-- Local commit `580df53` and this handoff file are not pushed yet.
-- Keep the PR draft and do not merge while Phase 2 external prerequisites are
-  incomplete.
-
-When Phase 2 is genuinely complete:
-
-1. Run the full validation gates again.
-2. Push the complete local branch to the existing PR.
-3. Wait for CI and Devin review.
-4. Fix every Devin finding, rerun all gates, push again, and wait for a second
-   Devin approval.
-5. Merge only after the second review is clear.
+Green locally before every push: `npm run phase2:preflight`,
+`npx tsc --noEmit`, `npm run lint`, full `npm test` (pretests, 100+ core
+tests, evaluator smoke with real Chromium, lifecycle + sweeps e2e against
+migrations 0000–0020, D1 invariants, production build, 28 rendered checks),
+`drizzle-kit check`, staging + production deploy-prep and dry-runs.
 
 ## Resume commands
 
 ```powershell
 Set-Location E:\benchmax
+git fetch
 git status
-git switch codex/phase-2-foundation
-git log -1 --oneline --decorate
+git log -3 --oneline
+gh pr view 2 -R ItsJazii/BenchMax
 npm run phase2:preflight
 ```
-
-After owner prerequisites are confirmed, rerun the full suite and the four
-environment-specific dry-runs before pushing. The local app was listening at
-`http://localhost:5173` at the last check; use `npm run dev` if it is no longer
-running.
-
-## Prior browser-wallet issue
-
-The `Cannot redefine property: ethereum` popup came from the external wallet
-extension at `chrome-extension://.../evmAsk.js`, not from BenchMax. Repository
-search found no wallet, EVM, MetaMask, wagmi, or viem integration. Test with a
-clean browser profile or only one wallet extension enabled.
-
-## Important pause state
-
-The user requested a pause after saving the checkpoint. Do not push, merge,
-deploy, enable billing, change account security, install plugins, or apply
-database migrations until the user resumes and the prerequisites are reviewed.

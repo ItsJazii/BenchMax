@@ -1,5 +1,46 @@
 # Benchmax pivot review — round 3 (2026-08-01)
 
+## Round 3.3 addendum — Phase-2 foundation audit (2026-08-02)
+
+Audited: 372e8ca (round-3.2 closure), the ce96c5c history restructure, and the
+Phase-2 commits c572254/2d3ccf9/496ab05/580df53/2718674. Full suite + preflight
+green locally; CI green on GitHub for main and the PR head. No secrets committed;
+merge restructure lost nothing.
+
+**Fix next (one Codex ticket, before Phase 2 owner steps complete):**
+1. [High-Med] Migration 0019's `catalog_requests` table rebuild silently DROPS the
+   `catalog_requests_no_delete` trigger (0008) and never recreates it — catalog
+   requests are now hard-deletable at SQL level. Recreate in a follow-up migration
+   and add the trigger to the invariants existence list + a behavioral delete probe.
+2. [Med] Frozen/exhausted top-ten runs: `repairBudgetPendingEscalations` candidate
+   query (lib/ranking/result-snapshots.ts:295-314) lacks a terminal-state filter —
+   re-selects failed runs every 2 min forever (~720 duplicate audit rows/day/run).
+   Mirror the dispute sweep's judgeStatus filter.
+3. [Med] Preflight blind spots: pin the actual staging/production D1 IDs (a swapped-
+   ID config passes today), validate `triggers` blocks, and give
+   prepare-main-deploy.mjs a binding-type allowlist + error on absent env keys
+   (today: unknown binding types pass through from the production-derived built
+   config; a missing env key silently deletes the section — dead crons preflight-green).
+4. [Low] Correct two false completion claims in the follow-up notes: there is NO
+   explicit CI build step (build runs inside npm test) and npm audit still GATES
+   (decision documented in handoff.md — keep docs consistent either way).
+5. [Low] Write the end-to-end sweep tests (repairBudgetPendingEscalations,
+   repairDeferredDisputeRejudgments) and CAS lease/race paths — requested in 3.2,
+   still absent.
+6. [Med, action not code] Push local 580df53+2718674 when the pause lifts: the
+   remote PR head (496ab05) still has staging env blocks bound to PRODUCTION D1/
+   bucket/queues — deploying "staging" from the remote branch would touch prod data.
+7. Cosmetics still deferred (dead 'model' enum re-minted in 0019 CHECK,
+   sampleCount=3 CHECK, raw-JSON harnessContractHash, empty route dirs).
+
+Verified genuinely fixed in this batch: dispatch-level attempt caps (durable, all
+failure modes), blocked-result owner view (ownership-scoped SQL), contributor
+server-side filter, status-label normalization, safetyApproved re-read, FK restrict
+on catalog_requests (modulo item 1), frozen-eval terminal state for disputes, CI
+hardening (pinned SHAs, read-only perms, no credential persistence, mandatory smoke),
+staging isolation in local configs, JSONC parser sound, Devin's PR findings addressed
+locally.
+
 ## Round 3.1 addendum — P0 verification results (same day)
 
 All six P0s below are **verified FIXED** (adversarial re-review + full suite green,
@@ -78,8 +119,11 @@ commit:
 - Frozen evaluation versions stop dispute and top-ten repair paths with an explicit
   terminal state. Judge eligibility re-reads the current safety decision.
 - Public blocked-result ownership, contributor pagination, honest unavailable/empty
-  states, normalized result labels, the explicit CI build, report-only dependency
-  audit, and the frozen-evaluation rebuild guard are in place.
+  states, normalized result labels, and the frozen-evaluation rebuild guard are in
+  place. (Correction 2026-08-02: there is no explicit CI build step — the production
+  build runs inside `npm test`, and the wrangler dry-runs depend on that ordering —
+  and `npm audit --omit=dev --audit-level=high` still GATES CI; the gating audit is
+  the documented decision per handoff.md, accepted as a flake risk.)
 
 Still deferred to staging/launch work: the upload/scan-to-rankable browser journey,
 the final submission-vs-judging cap decision, and the cosmetic cleanup/evidence-shape

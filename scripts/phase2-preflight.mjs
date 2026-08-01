@@ -16,6 +16,9 @@ const environments = {
     mainName: "benchmax-staging",
     usercontentName: "benchmax-usercontent-staging",
     databaseName: "benchmax-staging-d1",
+    // Provisioned resource IDs are pinned (non-secret; see docs/phase-2-provisioning.md)
+    // so a staging<->production ID swap cannot pass on matching names alone.
+    databaseId: "5d44e60d-bff8-4036-9c4d-383464230670",
     bucketName: "benchmax-uploads-staging",
     queuePrefix: "benchmax-staging-",
   },
@@ -25,10 +28,12 @@ const environments = {
     mainName: "benchmax",
     usercontentName: "benchmax-usercontent",
     databaseName: "benchmax-d1",
+    databaseId: "1b90635c-2906-472f-a0d1-242cbceee802",
     bucketName: "benchmax-uploads",
     queuePrefix: "benchmax-",
   },
 };
+const requiredCrons = ["*/2 * * * *", "0 3 * * 1"];
 
 const databaseIds = {};
 const queueNamesByEnvironment = {};
@@ -45,8 +50,14 @@ for (const [environmentName, expected] of Object.entries(environments)) {
   assert.equal(mainDatabase?.database_name, expected.databaseName, `main Worker ${environmentName} D1 name is wrong`);
   assert.equal(usercontentDatabase?.database_name, expected.databaseName, `user-content Worker ${environmentName} D1 name is wrong`);
   assert.match(mainDatabase?.database_id ?? "", /^[0-9a-f-]{36}$/i, `main Worker ${environmentName} D1 ID is missing or invalid`);
+  assert.equal(mainDatabase?.database_id, expected.databaseId, `main Worker ${environmentName} D1 ID does not match the provisioned ${expected.databaseName} database`);
   assert.equal(mainDatabase?.database_id, usercontentDatabase?.database_id, `${environmentName} Workers must share one D1 database`);
   databaseIds[environmentName] = mainDatabase.database_id;
+
+  const crons = expected.main.triggers?.crons ?? [];
+  for (const cron of requiredCrons) {
+    assert(crons.includes(cron), `main Worker ${environmentName} is missing cron trigger: ${cron}`);
+  }
 
   assert.equal(expected.main.r2_buckets?.[0]?.binding, "UPLOADS", `main Worker ${environmentName} must bind UPLOADS`);
   assert.equal(expected.usercontent.r2_buckets?.[0]?.binding, "UPLOADS", `user-content Worker ${environmentName} must bind UPLOADS`);
@@ -61,6 +72,9 @@ for (const [environmentName, expected] of Object.entries(environments)) {
 assert.notEqual(databaseIds.staging, databaseIds.production, "staging and production must use separate D1 databases");
 assertDisjoint(queueNamesByEnvironment.staging, queueNamesByEnvironment.production, "staging and production queues");
 assertRequiredQueues(queueNames(mainConfig.queues), "benchmax-", "top-level main Worker");
+for (const cron of requiredCrons) {
+  assert((mainConfig.triggers?.crons ?? []).includes(cron), `top-level main Worker is missing cron trigger: ${cron}`);
+}
 assert.equal(mainConfig.d1_databases?.[0]?.database_id, databaseIds.production, "top-level main Worker must match production D1");
 assert.equal(usercontentConfig.d1_databases?.[0]?.database_id, databaseIds.production, "top-level user-content Worker must match production D1");
 

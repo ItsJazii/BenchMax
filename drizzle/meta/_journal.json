@@ -1,146 +1,153 @@
 {
-  "version": "7",
-  "dialect": "sqlite",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "6",
-      "when": 1785320819920,
-      "tag": "0000_colossal_shooting_star",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1785321131158,
-      "tag": "0001_legal_sally_floyd",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1785324262329,
-      "tag": "0002_ranked_run_core",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1785367200000,
-      "tag": "0003_run_reports",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1785370800000,
-      "tag": "0004_aggregate_leaderboards",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1785374400000,
-      "tag": "0005_submission_rights",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1785378000000,
-      "tag": "0006_evaluation_origin_pin",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1785381600000,
-      "tag": "0007_generation_contract_freeze",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1785444000000,
-      "tag": "0008_community_results_pivot",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "6",
-      "when": 1785444771037,
-      "tag": "0009_community_test_categories",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "6",
-      "when": 1785445110579,
-      "tag": "0010_result_leaderboard_snapshots",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "6",
-      "when": 1785447674182,
-      "tag": "0011_catalog_request_config_links",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "6",
-      "when": 1785450373787,
-      "tag": "0012_judge_budget_reservations",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "6",
-      "when": 1785507133874,
-      "tag": "0013_result_aggregate_snapshots",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "6",
-      "when": 1785507435765,
-      "tag": "0014_immutable_test_versions",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "6",
-      "when": 1785507825662,
-      "tag": "0015_legacy_pipeline_seal",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "6",
-      "when": 1785509787503,
-      "tag": "0016_result_spend_records",
-      "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "6",
-      "when": 1785576042195,
-      "tag": "0017_result_snapshot_immutability",
-      "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "6",
-      "when": 1785577000000,
-      "tag": "0018_catalog_configuration_canonicalization",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "6",
-      "when": 1785602431828,
-      "tag": "0019_catalog_request_fk_legacy_run_seal",
-      "breakpoints": true
-    }
-  ]
+ "version": "7",
+ "dialect": "sqlite",
+ "entries": [
+  {
+   "idx": 0,
+   "version": "6",
+   "when": 1785320819920,
+   "tag": "0000_colossal_shooting_star",
+   "breakpoints": true
+  },
+  {
+   "idx": 1,
+   "version": "6",
+   "when": 1785321131158,
+   "tag": "0001_legal_sally_floyd",
+   "breakpoints": true
+  },
+  {
+   "idx": 2,
+   "version": "6",
+   "when": 1785324262329,
+   "tag": "0002_ranked_run_core",
+   "breakpoints": true
+  },
+  {
+   "idx": 3,
+   "version": "6",
+   "when": 1785367200000,
+   "tag": "0003_run_reports",
+   "breakpoints": true
+  },
+  {
+   "idx": 4,
+   "version": "6",
+   "when": 1785370800000,
+   "tag": "0004_aggregate_leaderboards",
+   "breakpoints": true
+  },
+  {
+   "idx": 5,
+   "version": "6",
+   "when": 1785374400000,
+   "tag": "0005_submission_rights",
+   "breakpoints": true
+  },
+  {
+   "idx": 6,
+   "version": "6",
+   "when": 1785378000000,
+   "tag": "0006_evaluation_origin_pin",
+   "breakpoints": true
+  },
+  {
+   "idx": 7,
+   "version": "6",
+   "when": 1785381600000,
+   "tag": "0007_generation_contract_freeze",
+   "breakpoints": true
+  },
+  {
+   "idx": 8,
+   "version": "6",
+   "when": 1785444000000,
+   "tag": "0008_community_results_pivot",
+   "breakpoints": true
+  },
+  {
+   "idx": 9,
+   "version": "6",
+   "when": 1785444771037,
+   "tag": "0009_community_test_categories",
+   "breakpoints": true
+  },
+  {
+   "idx": 10,
+   "version": "6",
+   "when": 1785445110579,
+   "tag": "0010_result_leaderboard_snapshots",
+   "breakpoints": true
+  },
+  {
+   "idx": 11,
+   "version": "6",
+   "when": 1785447674182,
+   "tag": "0011_catalog_request_config_links",
+   "breakpoints": true
+  },
+  {
+   "idx": 12,
+   "version": "6",
+   "when": 1785450373787,
+   "tag": "0012_judge_budget_reservations",
+   "breakpoints": true
+  },
+  {
+   "idx": 13,
+   "version": "6",
+   "when": 1785507133874,
+   "tag": "0013_result_aggregate_snapshots",
+   "breakpoints": true
+  },
+  {
+   "idx": 14,
+   "version": "6",
+   "when": 1785507435765,
+   "tag": "0014_immutable_test_versions",
+   "breakpoints": true
+  },
+  {
+   "idx": 15,
+   "version": "6",
+   "when": 1785507825662,
+   "tag": "0015_legacy_pipeline_seal",
+   "breakpoints": true
+  },
+  {
+   "idx": 16,
+   "version": "6",
+   "when": 1785509787503,
+   "tag": "0016_result_spend_records",
+   "breakpoints": true
+  },
+  {
+   "idx": 17,
+   "version": "6",
+   "when": 1785576042195,
+   "tag": "0017_result_snapshot_immutability",
+   "breakpoints": true
+  },
+  {
+   "idx": 18,
+   "version": "6",
+   "when": 1785577000000,
+   "tag": "0018_catalog_configuration_canonicalization",
+   "breakpoints": true
+  },
+  {
+   "idx": 19,
+   "version": "6",
+   "when": 1785602431828,
+   "tag": "0019_catalog_request_fk_legacy_run_seal",
+   "breakpoints": true
+  },
+  {
+   "idx": 20,
+   "version": "6",
+   "when": 1785613847958,
+   "tag": "0020_restore_catalog_request_delete_seal",
+   "breakpoints": true
+  }
+ ]
 }

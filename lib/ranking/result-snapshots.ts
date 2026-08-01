@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   judgeSamples,
@@ -292,10 +292,17 @@ export async function repairBudgetPendingEscalations(limit = 50) {
         resultLeaderboardSnapshots.evaluationVersionId,
       ),
     )
+    .innerJoin(
+      showcases,
+      eq(showcases.id, resultLeaderboardEntries.showcaseId),
+    )
     .where(
       and(
         inArray(resultLeaderboardSnapshots.status, ["published", "building"]),
         inArray(evaluationVersions.status, ["active", "frozen"]),
+        // Terminal repairs (markRepairFailure) set judgeStatus='failed'; without
+        // this filter the sweep re-selects them every cron tick forever.
+        ne(showcases.judgeStatus, "failed"),
         sql`${resultLeaderboardEntries.rank} <= 10`,
         sql`(
           SELECT count(*)

@@ -3,7 +3,8 @@
 Everything between the current state and a publicly launched product, in order.
 Owner tags: **[Codex]** implements, **[Claude]** reviews/verifies, **[You]** are the
 only one who can do accounts, payments, domains, and product decisions.
-Reference docs: PLAN.md (product spec), REVIEW-FIXES-3.md (open code items).
+Reference docs: PLAN.md (product spec); open code items and session state live in
+the local (untracked) handoff.md.
 
 ---
 

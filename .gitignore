@@ -47,3 +47,7 @@ next-env.d.ts
 /build/dry-run-main/
 /build/dry-run-usercontent/
 *.tsbuildinfo
+
+# session-coordination notes stay local
+handoff.md
+REVIEW-FIXES*.md

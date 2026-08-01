@@ -77,6 +77,12 @@ assertDisjoint(queueNamesByEnvironment.staging, queueNamesByEnvironment.producti
 assertRequiredQueues(queueNames(mainConfig.queues), "benchmax-local-", "top-level main Worker");
 assert.equal(mainConfig.r2_buckets?.[0]?.bucket_name, "benchmax-local-uploads", "top-level main Worker bucket must be the local-only bucket");
 assert.equal(usercontentConfig.r2_buckets?.[0]?.bucket_name, "benchmax-local-uploads", "top-level user-content Worker bucket must be the local-only bucket");
+assert.equal(mainConfig.name, "benchmax-local", "top-level main Worker name must be local-only");
+assert.equal(usercontentConfig.name, "benchmax-usercontent-local", "top-level user-content Worker name must be local-only");
+for (const expected of Object.values(environments)) {
+  assert.notEqual(mainConfig.name, expected.mainName, "top-level main Worker name must differ from every deployed environment name");
+  assert.notEqual(usercontentConfig.name, expected.usercontentName, "top-level user-content Worker name must differ from every deployed environment name");
+}
 for (const cron of requiredCrons) {
   assert((mainConfig.triggers?.crons ?? []).includes(cron), `top-level main Worker is missing cron trigger: ${cron}`);
 }

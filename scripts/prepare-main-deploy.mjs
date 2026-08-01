@@ -87,9 +87,11 @@ for (const key of overrideKeys) deployConfig[key] = environment[key];
 // migrations; strip the key so nobody can run
 // `d1 migrations apply --config dist/server/wrangler.<env>.json` by mistake —
 // migrations always go through `wrangler.jsonc --env <environment>`.
-deployConfig.d1_databases = deployConfig.d1_databases.map(
-  ({ migrations_dir, ...database }) => database,
-);
+deployConfig.d1_databases = deployConfig.d1_databases.map((database) => {
+  const stripped = { ...database };
+  delete stripped.migrations_dir;
+  return stripped;
+});
 
 const outputPath = path.join(
   rootDirectory,

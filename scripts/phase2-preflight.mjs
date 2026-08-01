@@ -75,8 +75,15 @@ assertRequiredQueues(queueNames(mainConfig.queues), "benchmax-", "top-level main
 for (const cron of requiredCrons) {
   assert((mainConfig.triggers?.crons ?? []).includes(cron), `top-level main Worker is missing cron trigger: ${cron}`);
 }
-assert.equal(mainConfig.d1_databases?.[0]?.database_id, databaseIds.production, "top-level main Worker must match production D1");
-assert.equal(usercontentConfig.d1_databases?.[0]?.database_id, databaseIds.production, "top-level user-content Worker must match production D1");
+// The top-level (no --env) blocks must stay on the fail-closed placeholder so
+// a command that omits --env can never reach live data (an invalid D1 ID also
+// aborts a whole stray deploy before queue consumers or crons attach).
+const LOCAL_PLACEHOLDER_D1_ID = "00000000-0000-4000-8000-000000000000";
+assert.equal(mainConfig.d1_databases?.[0]?.database_id, LOCAL_PLACEHOLDER_D1_ID, "top-level main Worker must keep the fail-closed local placeholder D1 ID");
+assert.equal(usercontentConfig.d1_databases?.[0]?.database_id, LOCAL_PLACEHOLDER_D1_ID, "top-level user-content Worker must keep the fail-closed local placeholder D1 ID");
+for (const environmentDatabaseId of Object.values(databaseIds)) {
+  assert.notEqual(environmentDatabaseId, LOCAL_PLACEHOLDER_D1_ID, "environment blocks must carry real provisioned D1 IDs");
+}
 
 const envNames = parseEnvNames(read(".env.example"));
 const requiredEnvNames = [

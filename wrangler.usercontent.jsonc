@@ -8,7 +8,8 @@
     {
       "binding": "DB",
       "database_name": "benchmax-d1",
-      "database_id": "1b90635c-2906-472f-a0d1-242cbceee802"
+      // Fail-closed placeholder — see wrangler.jsonc; remote ops require --env.
+      "database_id": "00000000-0000-4000-8000-000000000000"
     }
   ],
   "r2_buckets": [

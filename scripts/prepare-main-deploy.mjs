@@ -48,6 +48,15 @@ const knownSafeKeys = new Set([
   "no_bundle",
   // Bundler file-selection defaults, not resource bindings.
   "python_modules",
+  // Benign scalar/operational keys the Cloudflare plugin may emit; none carry
+  // environment-scoped resource references.
+  "account_id",
+  "send_metrics",
+  "minify",
+  "observability",
+  "workers_dev",
+  "preview_urls",
+  "keep_vars",
   ...overrideKeys,
 ]);
 for (const [key, value] of Object.entries(builtConfig)) {

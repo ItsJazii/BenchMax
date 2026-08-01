@@ -296,13 +296,18 @@ export async function repairBudgetPendingEscalations(limit = 50) {
       showcases,
       eq(showcases.id, resultLeaderboardEntries.showcaseId),
     )
+    .innerJoin(runs, eq(runs.id, resultLeaderboardEntries.runId))
     .where(
       and(
         inArray(resultLeaderboardSnapshots.status, ["published", "building"]),
         inArray(evaluationVersions.status, ["active", "frozen"]),
         // Terminal repairs (markRepairFailure) set judgeStatus='failed'; without
-        // this filter the sweep re-selects them every cron tick forever.
+        // this filter the sweep re-selects them every cron tick forever. The
+        // run-status exclusions are the durable belt-and-braces: even if a
+        // showcase label is ever left non-terminal, a run that already reached
+        // a terminal status is never re-swept.
         ne(showcases.judgeStatus, "failed"),
+        sql`${runs.status} NOT IN ('evaluation_failed', 'disqualified')`,
         sql`${resultLeaderboardEntries.rank} <= 10`,
         sql`(
           SELECT count(*)
@@ -486,11 +491,11 @@ async function markRepairFailure(input: {
     .where(
       and(
         eq(showcases.id, input.showcaseId),
-        // "scored" is included because frozen-evaluation and budget-exhausted
-        // terminations can fire before the sweep flips the showcase to
-        // "judging"; without it the run never reaches a terminal judgeStatus
-        // and the sweep re-selects it every tick.
-        inArray(showcases.judgeStatus, ["judging", "overdue", "scored"]),
+        // Terminalization must land from ANY non-terminal state: frozen or
+        // budget-exhausted repairs can fire while the showcase is "scored"
+        // (before the sweep ever set "judging"), and schema states like
+        // "queued"/"evaluating" must not strand a terminal repair either.
+        ne(showcases.judgeStatus, "failed"),
       ),
     );
   await appendAuditEvent({

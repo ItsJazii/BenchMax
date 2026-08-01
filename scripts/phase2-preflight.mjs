@@ -134,6 +134,11 @@ function queueNames(config) {
   return new Set([
     ...(config?.producers ?? []).map((queue) => queue.queue),
     ...(config?.consumers ?? []).map((queue) => queue.queue),
+    // Dead-letter routing targets are queue references too; without them a
+    // staging consumer could silently route failures into production's DLQ.
+    ...(config?.consumers ?? [])
+      .map((queue) => queue.dead_letter_queue)
+      .filter(Boolean),
   ]);
 }
 

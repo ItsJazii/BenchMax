@@ -19,12 +19,17 @@ import {
   catalogRequests,
   resultConfigurations,
   judgeSamples,
+  resultLeaderboardSnapshots,
+  resultLeaderboardEntries,
+  disputes,
 } from "../../db/schema";
 import { createShowcaseDraft } from "../../lib/data/showcases";
 import { publishShowcase } from "../../lib/data/showcases";
 import { queuePublishedResult } from "../../lib/data/results";
 import { judgeRun } from "../../lib/judging/judge-run";
 import { resolveCatalogRequest } from "../../lib/data/catalog-requests";
+import { repairBudgetPendingEscalations } from "../../lib/ranking/result-snapshots";
+import { repairDeferredDisputeRejudgments } from "../../lib/data/dispute-rejudge";
 import { canonicalJson } from "../../lib/security/canonical";
 import { sha256Hex } from "../../lib/security/policy";
 
@@ -389,12 +394,265 @@ async function runLifecycle() {
   };
 }
 
+async function seedSweepFixtures() {
+  const db = getDb();
+  const now = new Date("2026-08-01T01:00:00.000Z");
+  await db.insert(resultConfigurations).values({
+    id: "sweep-result-config",
+    modelVersionId: JUDGE_MODEL_VERSION_ID,
+    harnessId: HARNESS_ID,
+    modelLabel: "Sweep Model",
+    modelVersionLabel: "sweep-v1",
+    harnessLabel: "Lifecycle Harness v1",
+    reasoningRaw: "medium",
+    reasoningNormalized: "medium",
+    declaredSettingsJson: "{}",
+    metadataHash: "sweep-result-config-hash",
+    catalogStatus: "pending",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(evaluationVersions).values({
+    id: "sweep-frozen-eval",
+    version: 2,
+    judgeProvider: "lifecycle-provider",
+    judgeModel: "lifecycle-judge",
+    judgeModelVersion: "judge-snapshot-v1",
+    endpointOrigin: "https://judge.example.test",
+    promptTemplate: "Judge the frozen evidence.",
+    promptTemplateHash: "sweep-frozen-prompt-hash",
+    rubricProtocolVersion: "community-rubric-v1",
+    sampleCount: 3,
+    maxTokensPerSample: 200,
+    calibrationSetHash: "lifecycle-calibration",
+    driftThresholdBps: 100,
+    status: "frozen",
+    createdAt: now,
+    updatedAt: now,
+  });
+  const showcaseBase = {
+    ownerId: CONTRIBUTOR_ID,
+    summary: "A sweep repair fixture result used to prove terminal filtering.",
+    category: "frontend" as const,
+    benchmarkVersionId: BENCHMARK_VERSION_ID,
+    resultConfigurationId: "sweep-result-config",
+    modelLabel: "Sweep Model",
+    harness: "Lifecycle Harness v1",
+    reasoningLevel: "medium",
+    prompt: "Build the exact lifecycle fixture.",
+    sourceVisibility: "public" as const,
+    rightsAttestedAt: now,
+    status: "published" as const,
+    safetyStatus: "approved" as const,
+    publishedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.batch([
+    db.insert(showcases).values([
+      {
+        ...showcaseBase,
+        id: "sweep-failed-showcase",
+        slug: "sweep-failed-showcase",
+        title: "Sweep terminal failure",
+        judgeStatus: "failed",
+        rankingStatus: "ineligible",
+      },
+      {
+        ...showcaseBase,
+        id: "sweep-live-showcase",
+        slug: "sweep-live-showcase",
+        title: "Sweep live escalation",
+        judgeStatus: "overdue",
+        rankingStatus: "eligible",
+      },
+      {
+        ...showcaseBase,
+        id: "sweep-dispute-showcase",
+        slug: "sweep-dispute-showcase",
+        title: "Sweep frozen dispute",
+        judgeStatus: "judging",
+        rankingStatus: "eligible",
+      },
+      {
+        // A frozen-evaluation top-ten candidate whose showcase is still
+        // "scored" (termination fires before the sweep ever set "judging") —
+        // it must reach a terminal judgeStatus on the first pass instead of
+        // being re-selected forever.
+        ...showcaseBase,
+        id: "sweep-frozen-topten-showcase",
+        slug: "sweep-frozen-topten-showcase",
+        title: "Sweep frozen top ten",
+        judgeStatus: "scored",
+        rankingStatus: "eligible",
+      },
+    ]),
+  ]);
+  const runBase = {
+    contributorId: CONTRIBUTOR_ID,
+    benchmarkVersionId: BENCHMARK_VERSION_ID,
+    configurationId: CONFIGURATION_ID,
+    credentialMode: "community-submission" as const,
+    status: "scored" as const,
+    attemptIndex: 1,
+    environmentHash: "lifecycle-environment",
+    harnessContractHash: "lifecycle-harness-contract",
+    rankEligible: false,
+    injectionFlag: false,
+    postPublicationMarker: false,
+    playableEnabled: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.batch([
+    db.insert(runs).values([
+      {
+        ...runBase,
+        id: "sweep-failed-run",
+        publicSlug: "sweep-failed-run",
+        evaluationVersionId: EVALUATION_ID,
+        showcaseId: "sweep-failed-showcase",
+      },
+      {
+        ...runBase,
+        id: "sweep-live-run",
+        publicSlug: "sweep-live-run",
+        evaluationVersionId: EVALUATION_ID,
+        showcaseId: "sweep-live-showcase",
+      },
+      {
+        ...runBase,
+        id: "sweep-dispute-run",
+        publicSlug: "sweep-dispute-run",
+        evaluationVersionId: "sweep-frozen-eval",
+        showcaseId: "sweep-dispute-showcase",
+      },
+      {
+        ...runBase,
+        id: "sweep-frozen-topten-run",
+        publicSlug: "sweep-frozen-topten-run",
+        evaluationVersionId: "sweep-frozen-eval",
+        showcaseId: "sweep-frozen-topten-showcase",
+      },
+    ]),
+    db.insert(resultLeaderboardSnapshots).values([
+      {
+        id: "sweep-snapshot",
+        benchmarkVersionId: BENCHMARK_VERSION_ID,
+        evaluationVersionId: EVALUATION_ID,
+        version: 900,
+        resultSetHash: "sweep-result-set",
+        status: "building",
+        createdAt: now,
+      },
+      {
+        id: "sweep-frozen-snapshot",
+        benchmarkVersionId: BENCHMARK_VERSION_ID,
+        evaluationVersionId: "sweep-frozen-eval",
+        version: 901,
+        resultSetHash: "sweep-frozen-result-set",
+        status: "building",
+        createdAt: now,
+      },
+    ]),
+    db.insert(resultLeaderboardEntries).values([
+      {
+        id: "sweep-failed-entry",
+        snapshotId: "sweep-snapshot",
+        showcaseId: "sweep-failed-showcase",
+        runId: "sweep-failed-run",
+        rank: 1,
+        scoreBps: 9_000,
+        sampleCount: 1,
+        createdAt: now,
+      },
+      {
+        id: "sweep-live-entry",
+        snapshotId: "sweep-snapshot",
+        showcaseId: "sweep-live-showcase",
+        runId: "sweep-live-run",
+        rank: 2,
+        scoreBps: 8_000,
+        sampleCount: 1,
+        createdAt: now,
+      },
+      {
+        id: "sweep-frozen-topten-entry",
+        snapshotId: "sweep-frozen-snapshot",
+        showcaseId: "sweep-frozen-topten-showcase",
+        runId: "sweep-frozen-topten-run",
+        rank: 1,
+        scoreBps: 9_500,
+        sampleCount: 1,
+        createdAt: now,
+      },
+    ]),
+    db.insert(disputes).values({
+      id: "sweep-dispute",
+      runId: "sweep-dispute-run",
+      openedByUserId: CONTRIBUTOR_ID,
+      reason: "The frozen-evaluation dispute must terminate, not loop.",
+      status: "open",
+      createdAt: now,
+      updatedAt: now,
+    }),
+  ]);
+}
+
+async function runSweeps() {
+  const db = getDb();
+  await seedSweepFixtures();
+
+  const firstTopTen = await repairBudgetPendingEscalations();
+  const secondTopTen = await repairBudgetPendingEscalations();
+  const [failedShowcase] = await db
+    .select({ judgeStatus: showcases.judgeStatus })
+    .from(showcases)
+    .where(eq(showcases.id, "sweep-failed-showcase"));
+
+  const [frozenTopTenShowcase] = await db
+    .select({ judgeStatus: showcases.judgeStatus })
+    .from(showcases)
+    .where(eq(showcases.id, "sweep-frozen-topten-showcase"));
+  const [frozenTopTenRun] = await db
+    .select({ status: runs.status })
+    .from(runs)
+    .where(eq(runs.id, "sweep-frozen-topten-run"));
+
+  const firstDispute = await repairDeferredDisputeRejudgments();
+  const secondDispute = await repairDeferredDisputeRejudgments();
+  const [disputeShowcase] = await db
+    .select({ judgeStatus: showcases.judgeStatus })
+    .from(showcases)
+    .where(eq(showcases.id, "sweep-dispute-showcase"));
+  const [disputeRun] = await db
+    .select({ status: runs.status })
+    .from(runs)
+    .where(eq(runs.id, "sweep-dispute-run"));
+
+  return {
+    disputeRunStatus: disputeRun?.status,
+    disputeShowcaseJudgeStatus: disputeShowcase?.judgeStatus,
+    failedShowcaseJudgeStatus: failedShowcase?.judgeStatus,
+    firstDispute,
+    firstTopTen,
+    frozenTopTenRunStatus: frozenTopTenRun?.status,
+    frozenTopTenShowcaseJudgeStatus: frozenTopTenShowcase?.judgeStatus,
+    secondDispute,
+    secondTopTen,
+  };
+}
+
 const lifecycleWorker = {
   async fetch(request: Request) {
-    if (new URL(request.url).pathname !== "/lifecycle") {
+    const pathname = new URL(request.url).pathname;
+    if (pathname !== "/lifecycle" && pathname !== "/sweeps") {
       return new Response("Not found", { status: 404 });
     }
     try {
+      if (pathname === "/sweeps") {
+        return Response.json(await runSweeps());
+      }
       return Response.json(await runLifecycle());
     } catch (error) {
       return Response.json(

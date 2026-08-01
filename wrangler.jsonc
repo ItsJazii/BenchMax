@@ -18,6 +18,10 @@
     {
       "binding": "DB",
       "database_name": "benchmax-d1",
+      // Deliberate fail-closed placeholder: the top-level (no --env) config is
+      // for local development only. Any remote operation that omits
+      // --env staging|production fails on this invalid ID instead of touching
+      // live data. Real IDs live only in the env blocks below.
       "database_id": "00000000-0000-4000-8000-000000000000",
       "migrations_dir": "drizzle"
     }
@@ -25,7 +29,7 @@
   "r2_buckets": [
     {
       "binding": "UPLOADS",
-      "bucket_name": "benchmax-uploads"
+      "bucket_name": "benchmax-local-uploads"
     }
   ],
   "triggers": {
@@ -35,38 +39,156 @@
     "producers": [
       {
         "binding": "EVALUATE_QUEUE",
-        "queue": "benchmax-evaluate"
+        "queue": "benchmax-local-evaluate"
       },
       {
         "binding": "JUDGE_QUEUE",
-        "queue": "benchmax-judge"
+        "queue": "benchmax-local-judge"
       },
       {
         "binding": "PIPELINE_DLQ",
-        "queue": "benchmax-pipeline-dlq"
+        "queue": "benchmax-local-pipeline-dlq"
       }
     ],
     "consumers": [
       {
-        "queue": "benchmax-evaluate",
+        "queue": "benchmax-local-evaluate",
         "max_batch_size": 1,
         "max_batch_timeout": 5,
         "max_retries": 3,
-        "dead_letter_queue": "benchmax-pipeline-dlq"
+        "dead_letter_queue": "benchmax-local-pipeline-dlq"
       },
       {
-        "queue": "benchmax-judge",
+        "queue": "benchmax-local-judge",
         "max_batch_size": 1,
         "max_batch_timeout": 5,
         "max_retries": 3,
-        "dead_letter_queue": "benchmax-pipeline-dlq"
+        "dead_letter_queue": "benchmax-local-pipeline-dlq"
       },
       {
-        "queue": "benchmax-pipeline-dlq",
+        "queue": "benchmax-local-pipeline-dlq",
         "max_batch_size": 1,
         "max_batch_timeout": 5,
         "max_retries": 3
       }
     ]
+  },
+  "env": {
+    "staging": {
+      "name": "benchmax-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "benchmax-staging-d1",
+          "database_id": "5d44e60d-bff8-4036-9c4d-383464230670",
+          "migrations_dir": "drizzle"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "UPLOADS",
+          "bucket_name": "benchmax-uploads-staging"
+        }
+      ],
+      "triggers": {
+        "crons": ["*/2 * * * *", "0 3 * * 1"]
+      },
+      "queues": {
+        "producers": [
+          {
+            "binding": "EVALUATE_QUEUE",
+            "queue": "benchmax-staging-evaluate"
+          },
+          {
+            "binding": "JUDGE_QUEUE",
+            "queue": "benchmax-staging-judge"
+          },
+          {
+            "binding": "PIPELINE_DLQ",
+            "queue": "benchmax-staging-pipeline-dlq"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "benchmax-staging-evaluate",
+            "max_batch_size": 1,
+            "max_batch_timeout": 5,
+            "max_retries": 3,
+            "dead_letter_queue": "benchmax-staging-pipeline-dlq"
+          },
+          {
+            "queue": "benchmax-staging-judge",
+            "max_batch_size": 1,
+            "max_batch_timeout": 5,
+            "max_retries": 3,
+            "dead_letter_queue": "benchmax-staging-pipeline-dlq"
+          },
+          {
+            "queue": "benchmax-staging-pipeline-dlq",
+            "max_batch_size": 1,
+            "max_batch_timeout": 5,
+            "max_retries": 3
+          }
+        ]
+      }
+    },
+    "production": {
+      "name": "benchmax",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "benchmax-d1",
+          "database_id": "1b90635c-2906-472f-a0d1-242cbceee802",
+          "migrations_dir": "drizzle"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "UPLOADS",
+          "bucket_name": "benchmax-uploads"
+        }
+      ],
+      "triggers": {
+        "crons": ["*/2 * * * *", "0 3 * * 1"]
+      },
+      "queues": {
+        "producers": [
+          {
+            "binding": "EVALUATE_QUEUE",
+            "queue": "benchmax-evaluate"
+          },
+          {
+            "binding": "JUDGE_QUEUE",
+            "queue": "benchmax-judge"
+          },
+          {
+            "binding": "PIPELINE_DLQ",
+            "queue": "benchmax-pipeline-dlq"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "benchmax-evaluate",
+            "max_batch_size": 1,
+            "max_batch_timeout": 5,
+            "max_retries": 3,
+            "dead_letter_queue": "benchmax-pipeline-dlq"
+          },
+          {
+            "queue": "benchmax-judge",
+            "max_batch_size": 1,
+            "max_batch_timeout": 5,
+            "max_retries": 3,
+            "dead_letter_queue": "benchmax-pipeline-dlq"
+          },
+          {
+            "queue": "benchmax-pipeline-dlq",
+            "max_batch_size": 1,
+            "max_batch_timeout": 5,
+            "max_retries": 3
+          }
+        ]
+      }
+    }
   }
 }

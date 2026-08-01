@@ -62,6 +62,7 @@ try {
     "0017_result_snapshot_immutability.sql",
     "0018_catalog_configuration_canonicalization.sql",
     "0019_catalog_request_fk_legacy_run_seal.sql",
+    "0020_restore_catalog_request_delete_seal.sql",
   ]) {
     assert.match(migrationOutput, new RegExp(migration.replaceAll(".", "\\.")));
   }
@@ -192,6 +193,24 @@ try {
     false,
   );
   assert.match(blockedCanonicalStatusReopen, /catalog status cannot be reopened/i);
+  wrangler([
+    "d1",
+    "execute",
+    "DB",
+    "--command",
+    "INSERT INTO catalog_requests (id, result_configuration_id, requester_user_id, kind, requested_label, normalized_label, status, created_at, updated_at) VALUES ('seal-catalog-request', 'pending-result-config', 'freeze-user', 'model-version', 'Pending Model v1', 'pending model v1', 'pending', 1, 1);",
+  ]);
+  const blockedCatalogRequestDelete = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "DELETE FROM catalog_requests WHERE id = 'seal-catalog-request';",
+    ],
+    false,
+  );
+  assert.match(blockedCatalogRequestDelete, /catalog requests are append-preserved/i);
   const blockedEvaluationMutation = wrangler(
     [
       "d1",
@@ -551,6 +570,7 @@ try {
   );
   assert.match(foreignKeyCheckOutput, /"results"\s*:\s*\[\]/);
   for (const trigger of [
+    "catalog_requests_no_delete",
     "audit_events_no_update",
     "audit_events_no_delete",
     "legacy_generation_funding_no_insert",

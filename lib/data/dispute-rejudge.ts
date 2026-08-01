@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   disputes,
@@ -72,6 +72,21 @@ export async function requestDisputeRejudgment(input: {
     return { missingSamples, status: "already-complete" as const };
   }
   if (run.evaluationStatus === "frozen") {
+    // Only the recovery sweep may terminalize a frozen-evaluation run. A
+    // dispute is open to any authenticated user, and terminalizing here would
+    // let a stranger's dispute flip a publicly scored result to "failed";
+    // user-initiated disputes on frozen versions simply record as
+    // not-applicable and await moderation. Deliberate consequence: a dispute
+    // against a frozen-evaluation run whose showcase is still "scored" is
+    // never terminalized at all — the result keeps its valid score, the open
+    // dispute stays visible in the moderation queue (that is the ops signal),
+    // and the moderator resolves it there with rejudgment "not-applicable".
+    if (!input.repairAttempt) {
+      await auditRejudge(input, "run.dispute_rejudge_frozen_not_applicable", {
+        missingSamples,
+      });
+      return { status: "not-applicable" as const };
+    }
     await markRepairFailure({
       reason: FROZEN_EVALUATION_REPAIR_FAILURE_CODE,
       runId: input.runId,
@@ -332,7 +347,9 @@ async function markRepairFailure(input: {
     .where(
       and(
         eq(showcases.id, input.showcaseId),
-        inArray(showcases.judgeStatus, ["judging", "overdue"]),
+        // Terminalization must land from ANY non-terminal state so a terminal
+        // repair never leaves an inconsistent run/showcase pair behind.
+        ne(showcases.judgeStatus, "failed"),
       ),
     );
   await appendAuditEvent({

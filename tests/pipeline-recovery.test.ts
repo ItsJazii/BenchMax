@@ -13,7 +13,10 @@ import {
   shouldDelayCommunityPipelineFailure,
   stageClaimDisposition,
 } from "../lib/pipeline/recovery";
-import { processPipelineDeadLetter } from "../lib/pipeline/dead-letter";
+import {
+  isPipelineDeadLetterQueue,
+  processPipelineDeadLetter,
+} from "../lib/pipeline/dead-letter";
 import { isAllowedRunTransition } from "../lib/security/run-policy";
 import {
   isPipelineStageVersion,
@@ -32,6 +35,13 @@ import {
   REPAIRABLE_COMMUNITY_RUN_STATUSES,
   selectResultDispatchAction,
 } from "../lib/pipeline/result-dispatch";
+
+test("dead-letter routing recognizes every environment's DLQ name", () => {
+  assert.equal(isPipelineDeadLetterQueue("benchmax-pipeline-dlq"), true);
+  assert.equal(isPipelineDeadLetterQueue("benchmax-staging-pipeline-dlq"), true);
+  assert.equal(isPipelineDeadLetterQueue("benchmax-evaluate"), false);
+  assert.equal(isPipelineDeadLetterQueue("benchmax-staging-judge"), false);
+});
 
 test("pipeline stage versions accept bounded refresh idempotency tokens", () => {
   assert.equal(

@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "benchmax-usercontent",
+  "name": "benchmax-usercontent-local",
   "main": "usercontent/worker.ts",
   "compatibility_date": "2026-07-29",
   "compatibility_flags": ["nodejs_compat"],
@@ -8,13 +8,48 @@
     {
       "binding": "DB",
       "database_name": "benchmax-d1",
+      // Fail-closed placeholder — see wrangler.jsonc; remote ops require --env.
       "database_id": "00000000-0000-4000-8000-000000000000"
     }
   ],
   "r2_buckets": [
     {
       "binding": "UPLOADS",
-      "bucket_name": "benchmax-uploads"
+      "bucket_name": "benchmax-local-uploads"
     }
-  ]
+  ],
+  "env": {
+    "staging": {
+      "name": "benchmax-usercontent-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "benchmax-staging-d1",
+          "database_id": "5d44e60d-bff8-4036-9c4d-383464230670"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "UPLOADS",
+          "bucket_name": "benchmax-uploads-staging"
+        }
+      ]
+    },
+    "production": {
+      "name": "benchmax-usercontent",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "benchmax-d1",
+          "database_id": "1b90635c-2906-472f-a0d1-242cbceee802"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "UPLOADS",
+          "bucket_name": "benchmax-uploads"
+        }
+      ]
+    }
+  }
 }

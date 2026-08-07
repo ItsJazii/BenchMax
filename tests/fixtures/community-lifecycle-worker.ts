@@ -30,6 +30,7 @@ import { queuePublishedResult } from "../../lib/data/results";
 import { judgeRun, JudgeContractError } from "../../lib/judging/judge-run";
 import { resolveCatalogRequest } from "../../lib/data/catalog-requests";
 import { seedRankedCatalog } from "../../lib/data/catalog-admin";
+import { listModerationQueue } from "../../lib/data/community";
 import { runJudgeCalibration } from "../../lib/judging/calibration";
 import { JUDGE_PROTOCOL_TEMPLATE_V1 } from "../../lib/domain/ranked-catalog";
 import { repairBudgetPendingEscalations } from "../../lib/ranking/result-snapshots";
@@ -672,6 +673,7 @@ async function runSweeps() {
     firstTopTen,
     frozenTopTenRunStatus: frozenTopTenRun?.status,
     frozenTopTenShowcaseJudgeStatus: frozenTopTenShowcase?.judgeStatus,
+    moderationAlerts,
     secondDispute,
     secondTopTen,
   };
@@ -774,6 +776,14 @@ async function runJudgePolicy() {
     .select({ status: evaluationVersions.status })
     .from(evaluationVersions)
     .where(eq(evaluationVersions.id, "policy-active-alias"));
+
+  // At this point the newest frozen version (the alias, v50) has no newer
+  // active successor, so it must be the single calibration alert: newer
+  // candidates must not suppress it, and older frozen versions (the
+  // lifecycle v1 freeze, the sweep fixture's v2) must not bury it.
+  const moderationAlerts = (await listModerationQueue()).calibrationAlerts.map(
+    (alert: { id: string }) => alert.id,
+  );
 
   // Frozen-latest recovery: re-seeding the identical config must mint a new
   // draft instead of silently deduping against the frozen row.

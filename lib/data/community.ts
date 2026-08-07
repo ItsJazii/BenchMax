@@ -435,14 +435,16 @@ export async function listModerationQueue() {
       .where(
         and(
           eq(evaluationVersions.status, "frozen"),
-          // A frozen version with a NEWER non-frozen successor was superseded
-          // in the ordinary course (activation freezes the prior active row);
-          // listing those forever would bury genuine calibration failures
-          // under permanent false criticals.
+          // Only a newer ACTIVE version supersedes a freeze (activation
+          // freezes the prior active row in the ordinary course). A newer
+          // candidate or draft must NOT suppress the alert: a candidate can
+          // never judge, so a frozen live version beneath one is a real
+          // outage. Among unsuperseded freezes, only the newest alerts, so
+          // historical failures cannot bury the current one.
           sql`NOT EXISTS (
             SELECT 1 FROM evaluation_versions AS successor
             WHERE successor.version > ${evaluationVersions.version}
-              AND successor.status != 'frozen'
+              AND successor.status IN ('active', 'frozen')
           )`,
         ),
       )

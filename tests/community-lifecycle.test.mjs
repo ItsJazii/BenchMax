@@ -178,6 +178,11 @@ test(
       );
       assert.equal(policy.terminalErrorCode, "judge_model_not_immutable");
       assert.equal(policy.immutabilityAuditRecorded, "judge.model_not_immutable");
+      assert.deepEqual(
+        policy.moderationAlerts,
+        ["policy-active-alias"],
+        "the newest unsuperseded freeze must be the single calibration alert — not suppressed by newer candidates, not buried by older freezes",
+      );
     } finally {
       if (worker) await worker.stop();
       try {

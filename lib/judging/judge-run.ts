@@ -33,6 +33,7 @@ import {
 import {
   assertLiveJudgeModelIsImmutable,
   callPinnedJudge,
+  JudgeConfigurationError,
 } from "./provider";
 import {
   buildJudgePromptPayload,
@@ -56,10 +57,17 @@ export async function judgeRun(runId: string, stageVersion = "1") {
   if (contract.evaluationStatus !== "active") {
     throw new JudgeContractError("evaluation_not_active");
   }
-  assertLiveJudgeModelIsImmutable(
-    contract.judgeProvider,
-    contract.judgeModelVersion,
-  );
+  try {
+    assertLiveJudgeModelIsImmutable(
+      contract.judgeProvider,
+      contract.judgeModelVersion,
+    );
+  } catch (error) {
+    if (error instanceof JudgeConfigurationError) {
+      throw new JudgeContractError("judge_model_not_immutable");
+    }
+    throw error;
+  }
   if (contract.runStatus === "evaluating") {
     await transitionRun({ id: runId, from: "evaluating", to: "judging" });
   } else if (

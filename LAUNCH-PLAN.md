@@ -58,7 +58,9 @@ the cap decision, and the explicitly deferred launch polish listed below.
    domain; collect publishable + secret keys.
 4. **[You]** Kimi K3 API access is available for staging calibration.
    **[You + Devin]** may measure the moving `kimi-k3` alias at pinned `low`
-   reasoning effort as a candidate; a passing candidate is retired after
+   reasoning effort as a candidate. Kimi's sampling parameters are vendor-fixed,
+   so Phase 3 must verify that the three-sample median and drift threshold absorb
+   observed variance. A passing candidate is retired after
    calibration and cannot rank or recalibrate. A future immutable ID creates a
    new evaluation version rather than mutating this measured candidate. Launch
    still requires either an immutable Moonshot K3 model ID or a calibrated

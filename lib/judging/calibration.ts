@@ -274,12 +274,27 @@ async function freezeEvaluation(
   reason: string,
   metadata: Record<string, unknown>,
 ) {
+  // Only draft/active rows can freeze (the 0022 status-transition trigger
+  // makes candidate a terminal sink). The catch-all caller can reach this
+  // after holdCalibratedCandidate already parked the row as candidate — an
+  // unguarded UPDATE would then abort on the trigger and turn a recoverable
+  // error into an unhandled cron exception, and a "frozen" audit event would
+  // misdescribe a row that never froze.
   await getDb()
     .update(evaluationVersions)
     .set({ status: "frozen", updatedAt: new Date() })
     .where(
-      eq(evaluationVersions.id, evaluationVersionId),
+      and(
+        eq(evaluationVersions.id, evaluationVersionId),
+        inArray(evaluationVersions.status, ["draft", "active"]),
+      ),
     );
+  const [current] = await getDb()
+    .select({ status: evaluationVersions.status })
+    .from(evaluationVersions)
+    .where(eq(evaluationVersions.id, evaluationVersionId))
+    .limit(1);
+  if (current?.status !== "frozen") return;
   await appendAuditEvent({
     actorUserId: null,
     entityType: "evaluation-version",

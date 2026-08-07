@@ -69,7 +69,7 @@ export async function judgeRun(runId: string, stageVersion = "1") {
       // calibration cron freezes it.
       await appendAuditEvent({
         actorUserId: null,
-        entityType: "evaluation_version",
+        entityType: "evaluation-version",
         entityId: contract.evaluationVersionId,
         action: "judge.model_not_immutable",
         metadata: {

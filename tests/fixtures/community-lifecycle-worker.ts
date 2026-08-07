@@ -673,7 +673,6 @@ async function runSweeps() {
     firstTopTen,
     frozenTopTenRunStatus: frozenTopTenRun?.status,
     frozenTopTenShowcaseJudgeStatus: frozenTopTenShowcase?.judgeStatus,
-    moderationAlerts,
     secondDispute,
     secondTopTen,
   };
@@ -874,6 +873,7 @@ async function runJudgePolicy() {
     frozenAliasStatus: frozenAlias?.status,
     heldCandidateStatus: heldCandidate?.status,
     immutabilityAuditRecorded: immutabilityAudit?.action ?? null,
+    moderationAlerts,
     postCandidateCalibration,
     recoveryDraftStatus: recoveryDraft?.status,
     seededDraftStatus: seededDraft?.status,

@@ -40,9 +40,9 @@ export const EVALUATION_ENVIRONMENT_V1 = {
   baseImage:
     "e2bdev/base@sha256:4a369f01a820fe5e65f53c2c5727a78899daf86f0541b721097f289559c8b73f",
   runtime: "node-from-pinned-base-image",
-  browser: "playwright-1.55.0-bundled-chromium",
-  playwright: "1.55.0",
-  axeCore: "4.10.3",
+  browser: "playwright-1.62.0-bundled-chromium",
+  playwright: "1.62.0",
+  axeCore: "4.12.1",
   viewportPolicy: "benchmark-pinned",
   clockPolicy: "benchmark-pinned",
   randomPolicy: "benchmark-pinned",

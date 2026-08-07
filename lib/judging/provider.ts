@@ -5,6 +5,8 @@ export const JUDGE_PROVIDER_TIMEOUT_MS = 45_000;
 export const KIMI_K3_REASONING_EFFORT = "low" as const;
 export const MAX_JUDGE_PROVIDER_IMAGES = 16;
 
+export type JudgeProviderId = "moonshot" | "openai-compatible";
+
 const providerResponseSchema = z
   .object({
     choices: z
@@ -64,10 +66,11 @@ export function buildJudgeMessageContent(
 }
 
 export function buildPinnedJudgeRequest(input: PinnedJudgeInput) {
+  const provider = normalizeJudgeProvider(input.provider);
   const content = buildJudgeMessageContent(
     input.prompt,
     input.images,
-    input.provider,
+    provider,
   );
   const request = {
     model: input.model,
@@ -75,20 +78,35 @@ export function buildPinnedJudgeRequest(input: PinnedJudgeInput) {
     max_completion_tokens: input.maxTokens,
     response_format: { type: "json_object" },
   };
-  if (isMoonshotProvider(input.provider)) {
-    if (input.model !== "kimi-k3") {
-      throw new JudgeConfigurationError("judgeModelVersion");
-    }
+  if (provider === "moonshot") {
     return { ...request, reasoning_effort: KIMI_K3_REASONING_EFFORT };
   }
   return { ...request, temperature: 0 };
+}
+
+export function normalizeJudgeProvider(provider: string): JudgeProviderId {
+  const normalized = provider.trim().toLowerCase();
+  if (normalized === "moonshot" || normalized === "openai-compatible") {
+    return normalized;
+  }
+  throw new JudgeConfigurationError("judgeProvider");
 }
 
 export function hasImmutableJudgeModelVersion(
   provider: string,
   modelVersion: string,
 ) {
-  return !(isMoonshotProvider(provider) && modelVersion === "kimi-k3");
+  normalizeJudgeProvider(provider);
+  return modelVersion.trim().toLowerCase() !== "kimi-k3";
+}
+
+export function assertLiveJudgeModelIsImmutable(
+  provider: string,
+  modelVersion: string,
+) {
+  if (!hasImmutableJudgeModelVersion(provider, modelVersion)) {
+    throw new JudgeConfigurationError("judgeModelVersion");
+  }
 }
 
 export function judgeCalibrationDisposition(input: {
@@ -105,7 +123,7 @@ export function judgeCalibrationDisposition(input: {
 }
 
 function isMoonshotProvider(provider: string) {
-  return provider.trim().toLowerCase() === "moonshot";
+  return normalizeJudgeProvider(provider) === "moonshot";
 }
 
 export async function callPinnedJudge(

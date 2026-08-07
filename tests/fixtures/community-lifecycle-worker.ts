@@ -211,7 +211,7 @@ async function seedDatabase() {
     db.insert(evaluationVersions).values({
       id: EVALUATION_ID,
       version: 1,
-      judgeProvider: "lifecycle-provider",
+      judgeProvider: "openai-compatible",
       judgeModel: "lifecycle-judge",
       judgeModelVersion: "judge-snapshot-v1",
       endpointOrigin: "https://judge.example.test",
@@ -415,7 +415,7 @@ async function seedSweepFixtures() {
   await db.insert(evaluationVersions).values({
     id: "sweep-frozen-eval",
     version: 2,
-    judgeProvider: "lifecycle-provider",
+    judgeProvider: "openai-compatible",
     judgeModel: "lifecycle-judge",
     judgeModelVersion: "judge-snapshot-v1",
     endpointOrigin: "https://judge.example.test",

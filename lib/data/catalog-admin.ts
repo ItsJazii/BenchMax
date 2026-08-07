@@ -19,6 +19,7 @@ import {
 } from "@/lib/domain/ranked-catalog";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
 import { assertSafeProviderOrigin } from "@/lib/security/run-policy";
+import { normalizeJudgeProvider } from "@/lib/judging/provider";
 
 const MODEL_FAMILIES = [
   ["openai", "OpenAI", "GPT"],
@@ -51,7 +52,9 @@ export class CatalogConfigurationError extends Error {
 export async function seedRankedCatalog() {
   const now = new Date();
   const db = getDb();
-  const judgeProvider = requiredRuntimeValue("JUDGE_PROVIDER");
+  const judgeProvider = normalizeJudgeProvider(
+    requiredRuntimeValue("JUDGE_PROVIDER"),
+  );
   const judgeModel = requiredRuntimeValue("JUDGE_MODEL");
   const judgeModelVersion = requiredRuntimeValue("JUDGE_MODEL_VERSION");
   const judgeEndpointOrigin = requiredHttpsOrigin("JUDGE_API_ORIGIN");

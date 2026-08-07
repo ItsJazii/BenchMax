@@ -30,7 +30,10 @@ import {
   planJudgeMedia,
   type PlannedJudgeImage,
 } from "./media-evidence";
-import { callPinnedJudge } from "./provider";
+import {
+  assertLiveJudgeModelIsImmutable,
+  callPinnedJudge,
+} from "./provider";
 import {
   buildJudgePromptPayload,
   createJudgeOutputSchema,
@@ -53,6 +56,10 @@ export async function judgeRun(runId: string, stageVersion = "1") {
   if (contract.evaluationStatus !== "active") {
     throw new JudgeContractError("evaluation_not_active");
   }
+  assertLiveJudgeModelIsImmutable(
+    contract.judgeProvider,
+    contract.judgeModelVersion,
+  );
   if (contract.runStatus === "evaluating") {
     await transitionRun({ id: runId, from: "evaluating", to: "judging" });
   } else if (

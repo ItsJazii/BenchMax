@@ -28,13 +28,16 @@ import {
   type JudgeMediaArtifact,
 } from "../lib/judging/media-evidence";
 import {
+  assertLiveJudgeModelIsImmutable,
   buildJudgeMessageContent,
   buildPinnedJudgeRequest,
   callPinnedJudge,
   hasImmutableJudgeModelVersion,
   judgeCalibrationDisposition,
+  JudgeConfigurationError,
   JudgeProviderTimeoutError,
   KIMI_K3_REASONING_EFFORT,
+  normalizeJudgeProvider,
 } from "../lib/judging/provider";
 import { requiresJudgeSource } from "../lib/judging/rubric-draft";
 import {
@@ -566,10 +569,45 @@ test("Kimi K3 uses its fixed request policy and remains calibration-only", () =>
     reasoning_effort: KIMI_K3_REASONING_EFFORT,
     response_format: { type: "json_object" },
   });
+  const pinnedRequest = buildPinnedJudgeRequest({
+    endpointOrigin: "https://api.moonshot.ai",
+    images: [],
+    maxTokens: 1_000,
+    model: "kimi-k3-2026-08-07",
+    prompt: "Return JSON.",
+    provider: "Moonshot",
+  });
+  assert.equal(pinnedRequest.model, "kimi-k3-2026-08-07");
+  assert.equal(
+    "reasoning_effort" in pinnedRequest
+      ? pinnedRequest.reasoning_effort
+      : null,
+    KIMI_K3_REASONING_EFFORT,
+  );
+  assert.equal("temperature" in pinnedRequest, false);
+  assert.equal(normalizeJudgeProvider(" Moonshot "), "moonshot");
+  assert.throws(
+    () => normalizeJudgeProvider("moonshot-ai"),
+    (error: unknown) =>
+      error instanceof JudgeConfigurationError && error.key === "judgeProvider",
+  );
   assert.equal(hasImmutableJudgeModelVersion("moonshot", "kimi-k3"), false);
   assert.equal(
-    hasImmutableJudgeModelVersion("anthropic", "claude-sonnet-snapshot"),
+    hasImmutableJudgeModelVersion("openai-compatible", " KIMI-K3 "),
+    false,
+  );
+  assert.equal(
+    hasImmutableJudgeModelVersion("moonshot", "kimi-k3-2026-08-07"),
     true,
+  );
+  assert.throws(
+    () => assertLiveJudgeModelIsImmutable("moonshot", "kimi-k3"),
+    (error: unknown) =>
+      error instanceof JudgeConfigurationError &&
+      error.key === "judgeModelVersion",
+  );
+  assert.doesNotThrow(() =>
+    assertLiveJudgeModelIsImmutable("moonshot", "kimi-k3-2026-08-07"),
   );
   assert.equal(
     judgeCalibrationDisposition({
@@ -589,8 +627,8 @@ test("Kimi K3 uses its fixed request policy and remains calibration-only", () =>
   );
   assert.equal(
     judgeCalibrationDisposition({
-      modelVersion: "claude-sonnet-snapshot",
-      provider: "anthropic",
+      modelVersion: "generic-immutable-snapshot",
+      provider: "openai-compatible",
       status: "draft",
     }),
     "activate",

@@ -35,6 +35,7 @@ import {
   selectDesignatedBenchmarkVersions,
 } from "../lib/ranking/aggregate-math";
 import { allBenchmarks } from "../benchmarks";
+import { EVALUATION_ENVIRONMENT_V1 } from "../lib/domain/ranked-catalog";
 import { readFileSync } from "node:fs";
 import {
   buildUsercontentHeaders,
@@ -1069,6 +1070,27 @@ test("aggregate rankings use exactly one designated benchmark version", () => {
     ["snapshot-a-v2", "snapshot-b-v1"],
   );
   assert.equal(buildAggregateEntries(rows, "frontend")[0].scoreBps, 8_000);
+});
+
+test("browser evaluator packages match the frozen environment descriptor", () => {
+  const packageJson = JSON.parse(
+    readFileSync(
+      new URL("../sandbox/browser-web-v1/package.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { dependencies?: Record<string, string> };
+  assert.equal(
+    packageJson.dependencies?.playwright,
+    EVALUATION_ENVIRONMENT_V1.playwright,
+  );
+  assert.equal(
+    packageJson.dependencies?.["axe-core"],
+    EVALUATION_ENVIRONMENT_V1.axeCore,
+  );
+  assert.equal(
+    EVALUATION_ENVIRONMENT_V1.browser,
+    `playwright-${EVALUATION_ENVIRONMENT_V1.playwright}-bundled-chromium`,
+  );
 });
 
 test("every seeded evaluator template freezes pass@1-compatible checks and rubric", () => {

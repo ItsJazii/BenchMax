@@ -13,7 +13,10 @@ does not contain credentials, tokens, private keys, or database exports.
   `b3947917-6bd5-4a92-a0ec-40f583acdb08` in region EEUR.
 - Staging D1 `benchmax-staging-d1` exists with ID
   `b5f6150a-7160-4ce7-bd87-2a9038683019` in region EEUR, matching production
-  so Phase 3 latency and behavior measurements use the intended placement.
+  so Phase 3 latency and behavior measurements use the intended placement. The
+  previous empty APAC staging database (`490090cb-d8c1-42b2-8c6a-90651c20c44f`)
+  was deleted on 2026-08-07 before migrations or application data; it was
+  recreated in EEUR specifically for production-region parity.
 - Queues `benchmax-evaluate`, `benchmax-judge`, and
   `benchmax-pipeline-dlq` exist.
 - Staging queues `benchmax-staging-evaluate`, `benchmax-staging-judge`, and
@@ -35,6 +38,16 @@ does not contain credentials, tokens, private keys, or database exports.
   2026-08-05 dry-run measured the main Worker at 750.52 KiB gzip and the
   user-content Worker at 7.48 KiB gzip, both below the Free-plan bundle limit;
   runtime CPU remains a staging measurement.
+
+## Dependency maintenance notes
+
+- The `postcss` override was raised to `8.5.23` in PR #11 to close
+  GHSA-fxqj-rqcc-2cmp and restore the gating production dependency audit; it is
+  not a styling-toolchain feature upgrade.
+- Remove the `undici8` override after E2B ships a release whose optional Undici
+  8 dependency is `>=8.9.0`. Until then it intentionally replaces E2B's exact
+  vulnerable `8.8.0` pin; removal requires a clean install, full suite, and
+  `npm audit --omit=dev --audit-level=high` to remain green.
 
 ## Secure order of operations
 

@@ -90,13 +90,23 @@ export function buildPinnedChatCompletionRequest(input: {
   const request = {
     model: input.model,
     messages: input.messages,
-    max_completion_tokens: input.maxTokens,
     response_format: { type: "json_object" },
   };
   if (provider === "moonshot") {
-    return { ...request, reasoning_effort: KIMI_K3_REASONING_EFFORT };
+    // Moonshot's OpenAI-compatible surface documents max_tokens (not the
+    // newer max_completion_tokens); an unrecognized cap param could leave
+    // calibration samples unbounded or fail the request outright.
+    return {
+      ...request,
+      max_tokens: input.maxTokens,
+      reasoning_effort: KIMI_K3_REASONING_EFFORT,
+    };
   }
-  return { ...request, temperature: 0 };
+  return {
+    ...request,
+    max_completion_tokens: input.maxTokens,
+    temperature: 0,
+  };
 }
 
 export function normalizeJudgeProvider(provider: string): JudgeProviderId {

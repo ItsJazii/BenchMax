@@ -412,10 +412,13 @@ export async function seedRankedCatalog() {
     db.select({ value: sql<number>`count(*)` }).from(models),
     db.select({ value: sql<number>`count(*)` }).from(harnesses),
   ]);
+  // Report the newest evaluation version: seeding mints numbered follow-up
+  // versions, so a hard-coded first-version lookup would describe a stale
+  // (possibly frozen) row instead of the configuration this run seeded.
   const [evaluation] = await db
     .select({ status: evaluationVersions.status })
     .from(evaluationVersions)
-    .where(eq(evaluationVersions.id, "evaluation-version-1"))
+    .orderBy(desc(evaluationVersions.version))
     .limit(1);
   return {
     benchmarkCount: Number(benchmarkCount?.value ?? 0),

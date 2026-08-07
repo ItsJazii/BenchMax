@@ -555,7 +555,7 @@ test("Kimi K3 uses its fixed request policy and remains calibration-only", () =>
     provider: "moonshot",
   });
   assert.deepEqual(request, {
-    max_completion_tokens: 1_000,
+    max_tokens: 1_000,
     messages: [
       {
         role: "user",

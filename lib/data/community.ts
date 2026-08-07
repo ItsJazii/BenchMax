@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   abuseReports,
@@ -432,7 +432,20 @@ export async function listModerationQueue() {
         updatedAt: evaluationVersions.updatedAt,
       })
       .from(evaluationVersions)
-      .where(eq(evaluationVersions.status, "frozen"))
+      .where(
+        and(
+          eq(evaluationVersions.status, "frozen"),
+          // A frozen version with a NEWER non-frozen successor was superseded
+          // in the ordinary course (activation freezes the prior active row);
+          // listing those forever would bury genuine calibration failures
+          // under permanent false criticals.
+          sql`NOT EXISTS (
+            SELECT 1 FROM evaluation_versions AS successor
+            WHERE successor.version > ${evaluationVersions.version}
+              AND successor.status != 'frozen'
+          )`,
+        ),
+      )
       .orderBy(desc(evaluationVersions.updatedAt))
       .limit(100),
   ]);

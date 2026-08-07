@@ -2,6 +2,7 @@ import { z } from "zod";
 import { assertSafeProviderOrigin } from "@/lib/security/run-policy";
 
 export const JUDGE_PROVIDER_TIMEOUT_MS = 45_000;
+export const KIMI_K3_REASONING_EFFORT = "low" as const;
 export const MAX_JUDGE_PROVIDER_IMAGES = 16;
 
 const providerResponseSchema = z
@@ -28,6 +29,7 @@ export type PinnedJudgeInput = {
   maxTokens: number;
   model: string;
   prompt: string;
+  provider: string;
 };
 
 type ProviderDependencies = {
@@ -39,6 +41,7 @@ type ProviderDependencies = {
 export function buildJudgeMessageContent(
   prompt: string,
   images: readonly string[],
+  provider = "openai-compatible",
 ) {
   if (images.length > MAX_JUDGE_PROVIDER_IMAGES) {
     throw new JudgeProviderContractError("judge_image_count_exceeded");
@@ -52,10 +55,57 @@ export function buildJudgeMessageContent(
     }
     content.push({
       type: "image_url",
-      image_url: { url: image, detail: "high" },
+      image_url: isMoonshotProvider(provider)
+        ? { url: image }
+        : { url: image, detail: "high" },
     });
   }
   return content;
+}
+
+export function buildPinnedJudgeRequest(input: PinnedJudgeInput) {
+  const content = buildJudgeMessageContent(
+    input.prompt,
+    input.images,
+    input.provider,
+  );
+  const request = {
+    model: input.model,
+    messages: [{ role: "user", content }],
+    max_completion_tokens: input.maxTokens,
+    response_format: { type: "json_object" },
+  };
+  if (isMoonshotProvider(input.provider)) {
+    if (input.model !== "kimi-k3") {
+      throw new JudgeConfigurationError("judgeModelVersion");
+    }
+    return { ...request, reasoning_effort: KIMI_K3_REASONING_EFFORT };
+  }
+  return { ...request, temperature: 0 };
+}
+
+export function hasImmutableJudgeModelVersion(
+  provider: string,
+  modelVersion: string,
+) {
+  return !(isMoonshotProvider(provider) && modelVersion === "kimi-k3");
+}
+
+export function judgeCalibrationDisposition(input: {
+  modelVersion: string;
+  provider: string;
+  status: "active" | "draft";
+}) {
+  const immutable = hasImmutableJudgeModelVersion(
+    input.provider,
+    input.modelVersion,
+  );
+  if (input.status === "active") return immutable ? "pass" : "freeze";
+  return immutable ? "activate" : "candidate-only";
+}
+
+function isMoonshotProvider(provider: string) {
+  return provider.trim().toLowerCase() === "moonshot";
 }
 
 export async function callPinnedJudge(
@@ -73,7 +123,7 @@ export async function callPinnedJudge(
     throw new JudgeConfigurationError("judgeProviderTimeoutMs");
   }
   const endpoint = new URL("/v1/chat/completions", origin);
-  const content = buildJudgeMessageContent(input.prompt, input.images);
+  const request = buildPinnedJudgeRequest(input);
   const signal = AbortSignal.timeout(timeoutMs);
   let response: Response;
   try {
@@ -83,13 +133,7 @@ export async function callPinnedJudge(
         Authorization: `Bearer ${dependencies.apiKey ?? requiredSecret("JUDGE_API_KEY")}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: input.model,
-        messages: [{ role: "user", content }],
-        max_completion_tokens: input.maxTokens,
-        temperature: 0,
-        response_format: { type: "json_object" },
-      }),
+      body: JSON.stringify(request),
       signal,
     });
   } catch (error) {

@@ -56,9 +56,12 @@ the cap decision, and the explicitly deferred launch polish listed below.
    a `*.workers.dev` subdomain is acceptable for the usercontent origin at launch).
 3. **[You]** Clerk app (free tier): enable Google, GitHub, email-code; add production
    domain; collect publishable + secret keys.
-4. **[You]** Anthropic API key (judge). **[You + Claude]** near launch: compare
-   current Sonnet-class snapshots on the calibration set, pin the winner
-   (recommendation: current Sonnet snapshot; never an alias).
+4. **[You]** Kimi K3 API access is available for staging calibration.
+   **[You + Devin]** may measure the moving `kimi-k3` alias at pinned `low`
+   reasoning effort as a candidate; a passing candidate is held inactive after
+   calibration and cannot rank. Launch still requires either an
+   immutable Moonshot K3 model ID or a calibrated pinned snapshot from another
+   provider; never activate a moving alias.
 5. **[You]** E2B account; **[Codex]** build `sandbox/browser-web-v1` as a template,
    record immutable template ID + build hash.
 6. **[Devin]** Keep the provisioned buckets private, deploy both Workers with
@@ -145,7 +148,7 @@ An empty community site launches dead. Before telling anyone:
 | Submission vs judging cap ratio | Phase 0 exit | Lower publishes to ~8/day at launch |
 | Domain name(s) | Phase 2 | One .dev/.com + workers.dev for usercontent |
 | Workers Paid upgrade | Phase 3–4 | Stay Free for staging; upgrade only if measured limits block reliability |
-| Judge snapshot to pin | Phase 3 | Current Sonnet snapshot, chosen via calibration set |
+| Judge snapshot to pin | Phase 3 | Calibrate Kimi K3 as candidate; activate only an immutable Moonshot ID or another pinned snapshot |
 | Budget caps (from measurement) | Phase 3 | Set from calibration cost × expected volume |
 | Seed tests + rubrics | Phase 5 | 6–10, you author them |
 | Moderators | Phase 5–6 | Optional at launch |

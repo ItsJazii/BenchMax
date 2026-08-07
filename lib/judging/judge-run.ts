@@ -195,6 +195,7 @@ export async function judgeRun(runId: string, stageVersion = "1") {
         maxTokens: contract.maxTokensPerSample,
         model: contract.judgeModelVersion,
         prompt: `${contract.promptTemplate}\n\n${prompt}`,
+        provider: contract.judgeProvider,
         images: mediaEvidence.images,
       });
     } catch (error) {
@@ -466,6 +467,7 @@ async function loadJudgeContract(runId: string) {
       evaluationVersionId: evaluationVersions.id,
       judgeEndpointOrigin: evaluationVersions.endpointOrigin,
       judgeModelVersion: evaluationVersions.judgeModelVersion,
+      judgeProvider: evaluationVersions.judgeProvider,
       judgeWeightBps: benchmarkVersions.judgeWeightBps,
       maxTokensPerSample: evaluationVersions.maxTokensPerSample,
       objectiveWeightBps: benchmarkVersions.objectiveWeightBps,

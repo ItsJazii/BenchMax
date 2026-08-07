@@ -18,7 +18,7 @@ const environments = {
     databaseName: "benchmax-staging-d1",
     // Provisioned resource IDs are pinned (non-secret; see docs/phase-2-provisioning.md)
     // so a staging<->production ID swap cannot pass on matching names alone.
-    databaseId: "5d44e60d-bff8-4036-9c4d-383464230670",
+    databaseId: "490090cb-d8c1-42b2-8c6a-90651c20c44f",
     bucketName: "benchmax-uploads-staging",
     queuePrefix: "benchmax-staging-",
   },
@@ -28,7 +28,7 @@ const environments = {
     mainName: "benchmax",
     usercontentName: "benchmax-usercontent",
     databaseName: "benchmax-d1",
-    databaseId: "1b90635c-2906-472f-a0d1-242cbceee802",
+    databaseId: "b3947917-6bd5-4a92-a0ec-40f583acdb08",
     bucketName: "benchmax-uploads",
     queuePrefix: "benchmax-",
   },

@@ -40,15 +40,15 @@ the cap decision, and the explicitly deferred launch polish listed below.
 
 **Exit criteria:** code on GitHub, CI green on a machine that isn't yours.
 
-## Phase 2 — Accounts and services (in progress 2026-08-01; mostly [You])
+## Phase 2 — Accounts and services (in progress 2026-08-05; mostly [You])
 
-1. **[Codex/You]** Cloudflare account access is confirmed. Production D1
-   `benchmax-d1` and queues `benchmax-evaluate`, `benchmax-judge`, and
-   `benchmax-pipeline-dlq` are provisioned. Isolated staging D1
-   `benchmax-staging-d1` and staging queues are also provisioned. R2 is not
-   enabled yet; account 2FA enforcement is also still off. The owner must enable
-   2FA after enrolling, then enable R2 and the Workers Paid capability before
-   staging data or deployments.
+1. **[Devin/You]** Replacement Cloudflare account access is confirmed through
+   Wrangler OAuth and the Workers Bindings MCP. Production and staging D1,
+   their six disjoint queues, and private R2 buckets `benchmax-uploads` and
+   `benchmax-uploads-staging` are provisioned. The owner login has 2FA; verify
+   account-level enforcement. Staging deliberately starts on Workers Free, with
+   a Paid upgrade deferred until measured CPU, bundle-size, queue-volume, or
+   retention limits require owner-approved billing.
 2. **[You]** Domain(s): one main domain (e.g. benchmax.dev) and one SEPARATE domain
    or distinct registrable origin for user content (cookieless isolation per PLAN §3;
    a `*.workers.dev` subdomain is acceptable for the usercontent origin at launch).
@@ -59,9 +59,8 @@ the cap decision, and the explicitly deferred launch polish listed below.
    (recommendation: current Sonnet snapshot; never an alias).
 5. **[You]** E2B account; **[Codex]** build `sandbox/browser-web-v1` as a template,
    record immutable template ID + build hash.
-6. **[Codex]** After R2 is enabled, create separate private
-   `benchmax-uploads-staging` and `benchmax-uploads` buckets, deploy both Workers
-   with isolated staging/production environments, attach only the selected HTTPS
+6. **[Devin]** Keep the provisioned buckets private, deploy both Workers with
+   isolated staging/production environments, attach only the selected HTTPS
    origins, and configure the disjoint queue consumers/crons. All secrets go via
    `wrangler secret put` (Clerk, judge key/origin/model, provenance key, calibration
    hash/key, owner subjects) — never in files.
@@ -143,13 +142,16 @@ An empty community site launches dead. Before telling anyone:
 |---|---|---|
 | Submission vs judging cap ratio | Phase 0 exit | Lower publishes to ~8/day at launch |
 | Domain name(s) | Phase 2 | One .dev/.com + workers.dev for usercontent |
+| Workers Paid upgrade | Phase 3–4 | Stay Free for staging; upgrade only if measured limits block reliability |
 | Judge snapshot to pin | Phase 3 | Current Sonnet snapshot, chosen via calibration set |
 | Budget caps (from measurement) | Phase 3 | Set from calibration cost × expected volume |
 | Seed tests + rubrics | Phase 5 | 6–10, you author them |
 | Moderators | Phase 5–6 | Optional at launch |
 
-## Cost picture (unchanged from PLAN §7)
+## Cost picture
 
-Fixed: ~$5–10/mo (Workers Paid, R2, Clerk free tier, domain amortized). Variable:
-judge spend only — measured in Phase 3, capped by budget; sandbox time is pennies.
-No generation costs, no BYOK — the judge key is the only provider credential.
+Prelaunch Cloudflare infrastructure stays within Workers, Queues, and R2 free
+allowances while staging measurements pass. Public-launch fixed cost may become
+~$5–10/mo after an owner-approved Workers Paid upgrade plus domain amortization;
+variable judge spend is measured in Phase 3 and capped by budget. Sandbox time is
+pennies. No generation costs, no BYOK — the judge key is the only provider credential.

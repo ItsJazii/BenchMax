@@ -80,7 +80,7 @@
         {
           "binding": "DB",
           "database_name": "benchmax-staging-d1",
-          "database_id": "5d44e60d-bff8-4036-9c4d-383464230670",
+          "database_id": "490090cb-d8c1-42b2-8c6a-90651c20c44f",
           "migrations_dir": "drizzle"
         }
       ],
@@ -138,7 +138,7 @@
         {
           "binding": "DB",
           "database_name": "benchmax-d1",
-          "database_id": "1b90635c-2906-472f-a0d1-242cbceee802",
+          "database_id": "b3947917-6bd5-4a92-a0ec-40f583acdb08",
           "migrations_dir": "drizzle"
         }
       ],

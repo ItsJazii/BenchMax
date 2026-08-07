@@ -135,6 +135,7 @@ export async function createCommunityTest(
       judgeModelVersion: evaluationVersions.judgeModelVersion,
       maxTokensPerSample: evaluationVersions.maxTokensPerSample,
       promptTemplateHash: evaluationVersions.promptTemplateHash,
+      provider: evaluationVersions.judgeProvider,
       version: evaluationVersions.version,
     })
     .from(evaluationVersions)
@@ -150,6 +151,7 @@ export async function createCommunityTest(
     maxTokens: evaluation.maxTokensPerSample,
     model: evaluation.judgeModelVersion,
     prompt: parsed.prompt,
+    provider: evaluation.provider,
     successCriteria: parsed.successCriteria,
   });
   const rubric = rubricDraftSchema.parse(draft.rubric).dimensions;
@@ -268,6 +270,7 @@ export async function createCommunityTestVersion(
       judgeModelVersion: evaluationVersions.judgeModelVersion,
       maxTokensPerSample: evaluationVersions.maxTokensPerSample,
       promptTemplateHash: evaluationVersions.promptTemplateHash,
+      provider: evaluationVersions.judgeProvider,
       version: evaluationVersions.version,
     })
     .from(evaluationVersions)
@@ -283,6 +286,7 @@ export async function createCommunityTestVersion(
     maxTokens: evaluation.maxTokensPerSample,
     model: evaluation.judgeModelVersion,
     prompt: parsed.prompt,
+    provider: evaluation.provider,
     successCriteria: parsed.successCriteria,
   });
   const rubric = rubricDraftSchema.parse(drafted.rubric).dimensions;

@@ -72,9 +72,24 @@ export function buildPinnedJudgeRequest(input: PinnedJudgeInput) {
     input.images,
     provider,
   );
+  return buildPinnedChatCompletionRequest({
+    maxTokens: input.maxTokens,
+    messages: [{ role: "user", content }],
+    model: input.model,
+    provider,
+  });
+}
+
+export function buildPinnedChatCompletionRequest(input: {
+  maxTokens: number;
+  messages: readonly Record<string, unknown>[];
+  model: string;
+  provider: string;
+}) {
+  const provider = normalizeJudgeProvider(input.provider);
   const request = {
     model: input.model,
-    messages: [{ role: "user", content }],
+    messages: input.messages,
     max_completion_tokens: input.maxTokens,
     response_format: { type: "json_object" },
   };

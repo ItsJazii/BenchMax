@@ -59,6 +59,7 @@ export async function runJudgeCalibration() {
   if (evaluation.status !== "draft" && evaluation.status !== "active") {
     return { status: "no-active-evaluation" as const };
   }
+  try {
   const disposition = judgeCalibrationDisposition({
     modelVersion: evaluation.judgeModelVersion,
     provider: evaluation.judgeProvider,
@@ -71,7 +72,6 @@ export async function runJudgeCalibration() {
     });
     return { status: "frozen" as const, reason: "mutable_model_alias" as const };
   }
-  try {
   const objectKey = requiredValue("JUDGE_CALIBRATION_SET_OBJECT_KEY");
   const object = await env.UPLOADS.get(objectKey);
   if (!object) throw new CalibrationConfigurationError("set_missing");
@@ -207,7 +207,7 @@ async function holdCalibratedCandidate(evaluationVersionId: string) {
   const db = getDb();
   await db
     .update(evaluationVersions)
-    .set({ status: "frozen", updatedAt: new Date() })
+    .set({ status: "retired", updatedAt: new Date() })
     .where(
       and(
         eq(evaluationVersions.id, evaluationVersionId),
@@ -219,7 +219,7 @@ async function holdCalibratedCandidate(evaluationVersionId: string) {
     .from(evaluationVersions)
     .where(eq(evaluationVersions.id, evaluationVersionId))
     .limit(1);
-  if (held?.status !== "frozen") {
+  if (held?.status !== "retired") {
     throw new CalibrationConfigurationError("candidate_hold_race");
   }
 }

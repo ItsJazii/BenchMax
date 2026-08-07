@@ -1,37 +1,52 @@
 # Phase 2 provisioning and security handoff
 
-Status: infrastructure foundation in progress, 2026-08-01.
+Status: replacement-account resources provisioned, 2026-08-05.
 
 This runbook records the external prerequisites for staging. It deliberately
 does not contain credentials, tokens, private keys, or database exports.
 
 ## Current Cloudflare evidence
 
-- Account access is available through the Cloudflare MCP.
+- Account access is available through the least-privilege Cloudflare Workers
+  Bindings MCP and Wrangler OAuth.
 - D1 `benchmax-d1` exists with ID
-  `1b90635c-2906-472f-a0d1-242cbceee802`. The current API response reports
-  `jurisdiction: null`; do not treat the database as APAC-specific until the
-  Cloudflare account reports an explicit jurisdiction.
+  `b3947917-6bd5-4a92-a0ec-40f583acdb08` in region EEUR.
 - Staging D1 `benchmax-staging-d1` exists with ID
-  `5d44e60d-bff8-4036-9c4d-383464230670`, with read replication disabled.
+  `b5f6150a-7160-4ce7-bd87-2a9038683019` in region EEUR, matching production
+  so Phase 3 latency and behavior measurements use the intended placement.
 - Queues `benchmax-evaluate`, `benchmax-judge`, and
   `benchmax-pipeline-dlq` exist.
 - Staging queues `benchmax-staging-evaluate`, `benchmax-staging-judge`, and
   `benchmax-staging-pipeline-dlq` also exist; staging and production queues are
   intentionally disjoint.
-- R2 is not enabled yet, so `benchmax-uploads` cannot be created.
-- No BenchMax Workers or custom domains exist yet.
-- Account-level two-factor enforcement is currently off.
+- R2 is enabled. Private buckets `benchmax-uploads` and
+  `benchmax-uploads-staging` exist with public access disabled by default.
+- No BenchMax Workers or custom domains exist yet, and no remote migrations
+  have been applied.
+- The owner login has two-factor authentication. Account-level enforcement
+  still needs dashboard verification.
+- Staging starts on Workers Free. Its 10 ms CPU, 3 MB Worker, five-cron,
+  10,000-queue-operation/day, and 24-hour queue-retention limits are release
+  measurements; upgrade to Workers Paid only after owner approval if a limit
+  blocks staging or launch reliability. Free-plan staging is attended only:
+  inspect the DLQ after every lifecycle batch and at least every 12 hours, and
+  triage any message before its 24-hour expiry. Unattended beta or an inability
+  to meet that rule requires the Paid retention upgrade before proceeding. The
+  2026-08-05 dry-run measured the main Worker at 750.52 KiB gzip and the
+  user-content Worker at 7.48 KiB gzip, both below the Free-plan bundle limit;
+  runtime CPU remains a staging measurement.
 
 ## Secure order of operations
 
-1. The account owner enables two-factor authentication on their own Cloudflare
-   identity first, then enables account-level enforcement. Do not enforce it
-   before every member has enrolled or access can be lost.
-2. Enable R2 and the Workers Paid capability in the Cloudflare Dashboard. Do
-   not bypass billing or use a temporary preview account for staging data.
-3. Create the private `benchmax-uploads` bucket. Keep public access disabled;
-   evidence is served only through the separate user-content Worker.
+1. Verify account-level two-factor enforcement now that the owner identity has
+   enrolled. Do not enforce it before every future member has enrolled or
+   access can be lost.
+2. Keep staging on Workers Free while its CPU, bundle-size, cron, queue-volume,
+   and retention limits pass. Workers Paid is an owner-approved launch upgrade,
+   not a staging prerequisite; do not bypass billing or use a temporary preview
+   account for staging data.
+3. Keep both provisioned R2 buckets private; evidence is served only through
+   the separate user-content Worker.
 4. Choose a main HTTPS domain and a separate HTTPS user-content origin. The
    origins must not share application cookies. A workers.dev hostname is an
    acceptable temporary user-content origin.

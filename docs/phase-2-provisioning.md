@@ -12,7 +12,8 @@ does not contain credentials, tokens, private keys, or database exports.
 - D1 `benchmax-d1` exists with ID
   `b3947917-6bd5-4a92-a0ec-40f583acdb08` in region EEUR.
 - Staging D1 `benchmax-staging-d1` exists with ID
-  `490090cb-d8c1-42b2-8c6a-90651c20c44f` in region APAC.
+  `b5f6150a-7160-4ce7-bd87-2a9038683019` in region EEUR, matching production
+  so Phase 3 latency and behavior measurements use the intended placement.
 - Queues `benchmax-evaluate`, `benchmax-judge`, and
   `benchmax-pipeline-dlq` exist.
 - Staging queues `benchmax-staging-evaluate`, `benchmax-staging-judge`, and
@@ -27,9 +28,13 @@ does not contain credentials, tokens, private keys, or database exports.
 - Staging starts on Workers Free. Its 10 ms CPU, 3 MB Worker, five-cron,
   10,000-queue-operation/day, and 24-hour queue-retention limits are release
   measurements; upgrade to Workers Paid only after owner approval if a limit
-  blocks staging or launch reliability. The 2026-08-05 dry-run measured the main
-  Worker at 750.52 KiB gzip and the user-content Worker at 7.48 KiB gzip, both
-  below the Free-plan bundle limit; runtime CPU remains a staging measurement.
+  blocks staging or launch reliability. Free-plan staging is attended only:
+  inspect the DLQ after every lifecycle batch and at least every 12 hours, and
+  triage any message before its 24-hour expiry. Unattended beta or an inability
+  to meet that rule requires the Paid retention upgrade before proceeding. The
+  2026-08-05 dry-run measured the main Worker at 750.52 KiB gzip and the
+  user-content Worker at 7.48 KiB gzip, both below the Free-plan bundle limit;
+  runtime CPU remains a staging measurement.
 
 ## Secure order of operations
 

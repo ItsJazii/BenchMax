@@ -46,9 +46,11 @@ the cap decision, and the explicitly deferred launch polish listed below.
    Wrangler OAuth and the Workers Bindings MCP. Production and staging D1,
    their six disjoint queues, and private R2 buckets `benchmax-uploads` and
    `benchmax-uploads-staging` are provisioned. The owner login has 2FA; verify
-   account-level enforcement. Staging deliberately starts on Workers Free, with
-   a Paid upgrade deferred until measured CPU, bundle-size, queue-volume, or
-   retention limits require owner-approved billing.
+   account-level enforcement. Staging deliberately starts on Workers Free in
+   attended mode, with the DLQ checked after every lifecycle batch and at least
+   every 12 hours. A Paid upgrade is deferred until measured CPU, bundle-size,
+   queue-volume, retention, or unattended-operation needs require owner-approved
+   billing.
 2. **[You]** Domain(s): one main domain (e.g. benchmax.dev) and one SEPARATE domain
    or distinct registrable origin for user content (cookieless isolation per PLAN §3;
    a `*.workers.dev` subdomain is acceptable for the usercontent origin at launch).

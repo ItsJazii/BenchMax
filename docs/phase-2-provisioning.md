@@ -75,9 +75,10 @@ does not contain credentials, tokens, private keys, or database exports.
    Configure exact authorized parties and production origins; do not use a
    wildcard origin.
 6. Clerk, Kimi, and E2B accounts exist. Kimi K3 is calibration-only while its
-   API exposes only the moving `kimi-k3` ID. A passing candidate is retired so
-   it cannot rank or repeatedly recalibrate; a future immutable model uses a new
-   evaluation version. Do not activate rankings until Moonshot exposes an
+   API exposes only the moving `kimi-k3` ID. A passing candidate is held in the
+   terminal `candidate` status so it cannot rank or repeatedly recalibrate; a
+   future immutable model uses a new evaluation version. Do not activate
+   rankings until Moonshot exposes an
    immutable ID or a pinned OpenAI snapshot passes calibration. Pin the
    evaluator template/build hash only after its build.
 7. Build the main application before deployment. Then run

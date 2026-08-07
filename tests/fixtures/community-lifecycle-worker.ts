@@ -22,15 +22,19 @@ import {
   resultLeaderboardSnapshots,
   resultLeaderboardEntries,
   disputes,
+  auditEvents,
 } from "../../db/schema";
 import { createShowcaseDraft } from "../../lib/data/showcases";
 import { publishShowcase } from "../../lib/data/showcases";
 import { queuePublishedResult } from "../../lib/data/results";
-import { judgeRun } from "../../lib/judging/judge-run";
+import { judgeRun, JudgeContractError } from "../../lib/judging/judge-run";
 import { resolveCatalogRequest } from "../../lib/data/catalog-requests";
+import { seedRankedCatalog } from "../../lib/data/catalog-admin";
+import { runJudgeCalibration } from "../../lib/judging/calibration";
+import { JUDGE_PROTOCOL_TEMPLATE_V1 } from "../../lib/domain/ranked-catalog";
 import { repairBudgetPendingEscalations } from "../../lib/ranking/result-snapshots";
 import { repairDeferredDisputeRejudgments } from "../../lib/data/dispute-rejudge";
-import { canonicalJson } from "../../lib/security/canonical";
+import { canonicalJson, canonicalSha256 } from "../../lib/security/canonical";
 import { sha256Hex } from "../../lib/security/policy";
 
 const CONTRIBUTOR_ID = "lifecycle-contributor";
@@ -82,6 +86,24 @@ const judgeOutput = JSON.stringify({
 
 const originalFetch = globalThis.fetch;
 
+const calibrationJudgeOutput = JSON.stringify({
+  evidence_sufficient: true,
+  evidence_sufficiency_reason:
+    "The calibration evidence directly supports the expected scores.",
+  dimensions: [
+    {
+      key: "cal-a",
+      score_bps: 9_000,
+      reasoning: "Matches the calibration expectation for cal-a.",
+    },
+    {
+      key: "cal-b",
+      score_bps: 8_000,
+      reasoning: "Matches the calibration expectation for cal-b.",
+    },
+  ],
+});
+
 function installJudgeStub() {
   globalThis.fetch = (async (input, init) => {
     const url = new URL(String(input));
@@ -90,7 +112,19 @@ function installJudgeStub() {
         model?: string;
         messages?: unknown[];
       };
-      if (request.model !== "judge-snapshot-2026-08-07" || !request.messages?.length) {
+      if (!request.messages?.length) {
+        return new Response("unexpected judge request", { status: 400 });
+      }
+      if (request.model === "kimi-k3") {
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: calibrationJudgeOutput } }],
+            usage: { prompt_tokens: 12, completion_tokens: 24 },
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (request.model !== "judge-snapshot-2026-08-07") {
         return new Response("unexpected judge request", { status: 400 });
       }
       return new Response(
@@ -643,15 +677,239 @@ async function runSweeps() {
   };
 }
 
+async function insertAliasEvaluationVersion(input: {
+  calibrationSetHash: string;
+  id: string;
+  status: "draft" | "active";
+  version: number;
+}) {
+  const now = new Date("2026-08-07T02:00:00.000Z");
+  await getDb().insert(evaluationVersions).values({
+    id: input.id,
+    version: input.version,
+    judgeProvider: "moonshot",
+    judgeModel: "kimi",
+    judgeModelVersion: "kimi-k3",
+    endpointOrigin: "https://judge.example.test",
+    promptTemplate: JUDGE_PROTOCOL_TEMPLATE_V1,
+    promptTemplateHash: await canonicalSha256(JUDGE_PROTOCOL_TEMPLATE_V1),
+    rubricProtocolVersion: "benchmax-community-rubric-v1",
+    sampleCount: 3,
+    maxTokensPerSample: 4096,
+    calibrationSetHash: input.calibrationSetHash,
+    driftThresholdBps: 750,
+    status: input.status,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+async function runJudgePolicy() {
+  installJudgeStub();
+  const db = getDb();
+
+  const calibrationSet = {
+    version: 1,
+    items: [
+      {
+        id: "calibration-item-1",
+        benchmark:
+          "Build a responsive dashboard fixture used only for calibration.",
+        rubric: [
+          {
+            key: "cal-a",
+            description: "Calibration dimension A expectation.",
+            expectedScoreBps: 9_000,
+          },
+          {
+            key: "cal-b",
+            description: "Calibration dimension B expectation.",
+            expectedScoreBps: 8_000,
+          },
+        ],
+        evidence: "Calibration evidence body for the fixture item.",
+      },
+    ],
+  };
+  const setBytes = new TextEncoder().encode(JSON.stringify(calibrationSet));
+  const setHash = await sha256Hex(setBytes.slice().buffer);
+  await env.UPLOADS.put("calibration/policy-set.json", setBytes, {
+    httpMetadata: { contentType: "application/json" },
+  });
+  process.env.JUDGE_PROVIDER = "moonshot";
+  process.env.JUDGE_MODEL = "kimi";
+  process.env.JUDGE_MODEL_VERSION = "kimi-k3";
+  process.env.JUDGE_API_ORIGIN = "https://judge.example.test";
+  process.env.JUDGE_CALIBRATION_SET_OBJECT_KEY = "calibration/policy-set.json";
+  process.env.JUDGE_CALIBRATION_SET_HASH = setHash;
+  process.env.E2B_TEMPLATE_ID = "policy-template";
+  process.env.E2B_TEMPLATE_BUILD_HASH = "a".repeat(64);
+
+  const maxVersionBefore = await latestEvaluationVersionNumber();
+  await seedRankedCatalog();
+  const seededDraft = await evaluationByVersion(maxVersionBefore + 1);
+  await seedRankedCatalog();
+  const versionAfterReseed = await latestEvaluationVersionNumber();
+
+  const candidateCalibration = await runJudgeCalibration();
+  const heldCandidate = await evaluationByVersion(maxVersionBefore + 1);
+
+  // The candidate sink must be excluded from the next selection: the sweep
+  // falls through to the older ACTIVE lifecycle version, whose stored
+  // calibration hash no longer matches the uploaded set, so it freezes —
+  // proving the candidate was not re-selected (no repeated candidate spend).
+  const postCandidateCalibration = await runJudgeCalibration();
+  const candidateAfterSecondSweep = await evaluationByVersion(
+    maxVersionBefore + 1,
+  );
+
+  await insertAliasEvaluationVersion({
+    calibrationSetHash: setHash,
+    id: "policy-active-alias",
+    status: "active",
+    version: 50,
+  });
+  const aliasCalibration = await runJudgeCalibration();
+  const [frozenAlias] = await db
+    .select({ status: evaluationVersions.status })
+    .from(evaluationVersions)
+    .where(eq(evaluationVersions.id, "policy-active-alias"));
+
+  // Frozen-latest recovery: re-seeding the identical config must mint a new
+  // draft instead of silently deduping against the frozen row.
+  await seedRankedCatalog();
+  const recoveryDraft = await evaluationByVersion(51);
+
+  await insertAliasEvaluationVersion({
+    calibrationSetHash: setHash,
+    id: "policy-terminal-alias",
+    status: "active",
+    version: 60,
+  });
+  await db.insert(resultConfigurations).values({
+    id: "policy-result-config",
+    modelVersionId: JUDGE_MODEL_VERSION_ID,
+    harnessId: HARNESS_ID,
+    modelLabel: "Policy Model",
+    modelVersionLabel: "policy-v1",
+    harnessLabel: "Lifecycle Harness v1",
+    reasoningRaw: "medium",
+    reasoningNormalized: "medium",
+    declaredSettingsJson: "{}",
+    metadataHash: "policy-result-config-hash",
+    catalogStatus: "pending",
+    createdAt: new Date("2026-08-07T02:00:01.000Z"),
+    updatedAt: new Date("2026-08-07T02:00:01.000Z"),
+  });
+  const policyNow = new Date("2026-08-07T02:00:02.000Z");
+  await db.insert(showcases).values({
+    id: "policy-showcase",
+    slug: "policy-showcase",
+    ownerId: CONTRIBUTOR_ID,
+    title: "Policy terminal fixture",
+    summary: "A fixture result proving alias judging fails terminally.",
+    category: "frontend",
+    benchmarkVersionId: BENCHMARK_VERSION_ID,
+    resultConfigurationId: "policy-result-config",
+    modelLabel: "Policy Model",
+    harness: "Lifecycle Harness v1",
+    reasoningLevel: "medium",
+    prompt: "Build the exact lifecycle fixture.",
+    sourceVisibility: "public",
+    rightsAttestedAt: policyNow,
+    status: "published",
+    safetyStatus: "approved",
+    judgeStatus: "judging",
+    rankingStatus: "pending",
+    publishedAt: policyNow,
+    createdAt: policyNow,
+    updatedAt: policyNow,
+  });
+  await db.insert(runs).values({
+    id: "policy-run",
+    publicSlug: "policy-run",
+    contributorId: CONTRIBUTOR_ID,
+    benchmarkVersionId: BENCHMARK_VERSION_ID,
+    configurationId: CONFIGURATION_ID,
+    evaluationVersionId: "policy-terminal-alias",
+    showcaseId: "policy-showcase",
+    credentialMode: "community-submission",
+    status: "judging",
+    attemptIndex: 1,
+    environmentHash: "lifecycle-environment",
+    harnessContractHash: "lifecycle-harness-contract",
+    rankEligible: false,
+    injectionFlag: false,
+    postPublicationMarker: false,
+    playableEnabled: false,
+    createdAt: policyNow,
+    updatedAt: policyNow,
+  });
+  let terminalErrorCode: string | null = null;
+  try {
+    await judgeRun("policy-run");
+  } catch (error) {
+    terminalErrorCode =
+      error instanceof JudgeContractError ? error.code : String(error);
+  }
+  const [immutabilityAudit] = await db
+    .select({ action: auditEvents.action })
+    .from(auditEvents)
+    .where(eq(auditEvents.action, "judge.model_not_immutable"));
+
+  return {
+    aliasCalibration,
+    candidateAfterSecondSweep: candidateAfterSecondSweep?.status,
+    candidateCalibration,
+    frozenAliasStatus: frozenAlias?.status,
+    heldCandidateStatus: heldCandidate?.status,
+    immutabilityAuditRecorded: immutabilityAudit?.action ?? null,
+    postCandidateCalibration,
+    recoveryDraftStatus: recoveryDraft?.status,
+    seededDraftStatus: seededDraft?.status,
+    seededDraftModelVersion: seededDraft?.judgeModelVersion,
+    terminalErrorCode,
+    versionAfterFirstSeed: maxVersionBefore + 1,
+    versionAfterReseed,
+  };
+}
+
+async function latestEvaluationVersionNumber() {
+  const [row] = await getDb()
+    .select({ version: evaluationVersions.version })
+    .from(evaluationVersions)
+    .orderBy(sql`${evaluationVersions.version} DESC`)
+    .limit(1);
+  return row?.version ?? 0;
+}
+
+async function evaluationByVersion(version: number) {
+  const [row] = await getDb()
+    .select({
+      judgeModelVersion: evaluationVersions.judgeModelVersion,
+      status: evaluationVersions.status,
+    })
+    .from(evaluationVersions)
+    .where(eq(evaluationVersions.version, version));
+  return row;
+}
+
 const lifecycleWorker = {
   async fetch(request: Request) {
     const pathname = new URL(request.url).pathname;
-    if (pathname !== "/lifecycle" && pathname !== "/sweeps") {
+    if (
+      pathname !== "/lifecycle" &&
+      pathname !== "/sweeps" &&
+      pathname !== "/judge-policy"
+    ) {
       return new Response("Not found", { status: 404 });
     }
     try {
       if (pathname === "/sweeps") {
         return Response.json(await runSweeps());
+      }
+      if (pathname === "/judge-policy") {
+        return Response.json(await runJudgePolicy());
       }
       return Response.json(await runLifecycle());
     } catch (error) {

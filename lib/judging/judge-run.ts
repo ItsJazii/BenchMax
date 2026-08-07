@@ -64,6 +64,28 @@ export async function judgeRun(runId: string, stageVersion = "1") {
     );
   } catch (error) {
     if (error instanceof JudgeConfigurationError) {
+      // Immediate signal: without this, a wrongly-activated mutable alias
+      // surfaces only as per-run terminal failures until the Monday
+      // calibration cron freezes it.
+      await appendAuditEvent({
+        actorUserId: null,
+        entityType: "evaluation_version",
+        entityId: contract.evaluationVersionId,
+        action: "judge.model_not_immutable",
+        metadata: {
+          judgeModelVersion: contract.judgeModelVersion,
+          judgeProvider: contract.judgeProvider,
+          runId,
+        },
+      });
+      console.error(
+        canonicalJson({
+          alert: "judge_model_not_immutable",
+          evaluationVersionId: contract.evaluationVersionId,
+          runId,
+          severity: "critical",
+        }),
+      );
       throw new JudgeContractError("judge_model_not_immutable");
     }
     throw error;

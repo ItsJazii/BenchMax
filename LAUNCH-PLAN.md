@@ -60,9 +60,10 @@ the cap decision, and the explicitly deferred launch polish listed below.
    **[You + Devin]** may measure the moving `kimi-k3` alias at pinned `low`
    reasoning effort as a candidate. Kimi's sampling parameters are vendor-fixed,
    so Phase 3 must verify that the three-sample median and drift threshold absorb
-   observed variance. A passing candidate is retired after
-   calibration and cannot rank or recalibrate. A future immutable ID creates a
-   new evaluation version rather than mutating this measured candidate. Launch
+   observed variance. A passing candidate is held in the terminal `candidate`
+   status after calibration and cannot rank or recalibrate. A future immutable
+   ID creates a new evaluation version rather than mutating this measured
+   candidate. Launch
    still requires either an immutable Moonshot K3 model ID or a calibrated
    pinned OpenAI snapshot; never activate a moving alias.
 5. **[You]** E2B account; **[Codex]** build `sandbox/browser-web-v1` as a template,

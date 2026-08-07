@@ -63,6 +63,8 @@ try {
     "0018_catalog_configuration_canonicalization.sql",
     "0019_catalog_request_fk_legacy_run_seal.sql",
     "0020_restore_catalog_request_delete_seal.sql",
+    "0021_fearless_scourge.sql",
+    "0022_evaluation_status_transitions.sql",
   ]) {
     assert.match(migrationOutput, new RegExp(migration.replaceAll(".", "\\.")));
   }
@@ -224,6 +226,58 @@ try {
   assert.match(
     blockedEvaluationMutation,
     /evaluation version contract is frozen/i,
+  );
+  const blockedActiveDemotion = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE evaluation_versions SET status = 'draft' WHERE id = 'freeze-evaluation';",
+    ],
+    false,
+  );
+  assert.match(
+    blockedActiveDemotion,
+    /illegal evaluation version status transition/i,
+  );
+  const blockedVersionRenumber = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE evaluation_versions SET version = 42 WHERE id = 'freeze-evaluation';",
+    ],
+    false,
+  );
+  assert.match(
+    blockedVersionRenumber,
+    /evaluation version numbering is immutable/i,
+  );
+  wrangler([
+    "d1",
+    "execute",
+    "DB",
+    "--command",
+    [
+      "INSERT INTO evaluation_versions (id, version, judge_provider, judge_model, judge_model_version, endpoint_origin, prompt_template, prompt_template_hash, rubric_protocol_version, sample_count, max_tokens_per_sample, calibration_set_hash, drift_threshold_bps, status, created_at, updated_at) VALUES ('transition-eval', 98, 'provider', 'model', 'kimi-k3', 'https://judge.example', 'prompt', 'transition-prompt-hash', 'rubric-v1', 3, 1000, 'transition-calibration-hash', 100, 'draft', 1, 1);",
+      "UPDATE evaluation_versions SET status = 'candidate' WHERE id = 'transition-eval';",
+    ].join(" "),
+  ]);
+  const blockedCandidatePromotion = wrangler(
+    [
+      "d1",
+      "execute",
+      "DB",
+      "--command",
+      "UPDATE evaluation_versions SET status = 'active' WHERE id = 'transition-eval';",
+    ],
+    false,
+  );
+  assert.match(
+    blockedCandidatePromotion,
+    /illegal evaluation version status transition/i,
   );
   const blockedPublishedVersionMutation = wrangler(
     [
@@ -595,6 +649,8 @@ try {
     "benchmark_versions_frozen_after_publish_update",
     "benchmark_versions_frozen_after_publish_delete",
     "evaluation_versions_frozen_after_run",
+    "evaluation_versions_status_transitions",
+    "evaluation_versions_version_frozen",
     "rubric_dimensions_frozen_after_run_update",
     "rubric_dimensions_frozen_after_run_delete",
     "rubric_dimensions_frozen_after_run_insert",

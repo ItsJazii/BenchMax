@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   benchmarkVersions,
@@ -261,13 +261,20 @@ export async function seedRankedCatalog() {
       maxTokensPerSample: evaluationVersions.maxTokensPerSample,
       promptTemplateHash: evaluationVersions.promptTemplateHash,
       rubricProtocolVersion: evaluationVersions.rubricProtocolVersion,
+      status: evaluationVersions.status,
       version: evaluationVersions.version,
     })
     .from(evaluationVersions)
     .orderBy(desc(evaluationVersions.version))
     .limit(1);
+  // A frozen latest version never dedupes: freezes can be transient (a single
+  // provider timeout during calibration freezes the draft), and matching the
+  // frozen row would make re-seeding the identical, still-correct config a
+  // permanent no-op. Re-seeding after a freeze mints a fresh draft instead.
   const evaluationUnchanged =
-    latestEvaluation?.judgeProvider === judgeProvider &&
+    latestEvaluation !== undefined &&
+    latestEvaluation.status !== "frozen" &&
+    latestEvaluation.judgeProvider === judgeProvider &&
     latestEvaluation.judgeModel === judgeModel &&
     latestEvaluation.judgeModelVersion === judgeModelVersion &&
     latestEvaluation.endpointOrigin === judgeEndpointOrigin &&
@@ -356,28 +363,47 @@ export async function seedRankedCatalog() {
           checks: definition.checks,
           steps: definition.interactionSteps,
         }),
-        publishedAt: now,
+        // Published only AFTER the rubric dimensions exist: the 0014 seal
+        // blocks rubric_dimensions inserts once a version is published, so
+        // seeding a pre-published version can never attach its rubric.
+        publishedAt: null,
         createdAt: now,
         updatedAt: now,
       })
       .onConflictDoNothing();
-    for (const [index, dimension] of definition.rubric.entries()) {
+    const [versionState] = await db
+      .select({ publishedAt: benchmarkVersions.publishedAt })
+      .from(benchmarkVersions)
+      .where(eq(benchmarkVersions.id, definition.id))
+      .limit(1);
+    if (versionState?.publishedAt === null) {
+      for (const [index, dimension] of definition.rubric.entries()) {
+        await db
+          .insert(rubricDimensions)
+          .values({
+            id: `${definition.id}:${dimension.key}`,
+            benchmarkVersionId: definition.id,
+            key: dimension.key,
+            title: dimension.title,
+            description: dimension.title,
+            mechanism: dimension.mechanism,
+            weightBps: dimension.weightBps,
+            judgeSourceRequired: dimension.judgeSourceRequired,
+            ordinal: index + 1,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing();
+      }
       await db
-        .insert(rubricDimensions)
-        .values({
-          id: `${definition.id}:${dimension.key}`,
-          benchmarkVersionId: definition.id,
-          key: dimension.key,
-          title: dimension.title,
-          description: dimension.title,
-          mechanism: dimension.mechanism,
-          weightBps: dimension.weightBps,
-          judgeSourceRequired: dimension.judgeSourceRequired,
-          ordinal: index + 1,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoNothing();
+        .update(benchmarkVersions)
+        .set({ publishedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(benchmarkVersions.id, definition.id),
+            isNull(benchmarkVersions.publishedAt),
+          ),
+        );
     }
   }
 

@@ -56,6 +56,8 @@ export async function runJudgeCalibration() {
     .orderBy(desc(evaluationVersions.version))
     .limit(1);
   if (!evaluation) return { status: "no-active-evaluation" as const };
+  // Redundant at runtime (the query filters status) but load-bearing for the
+  // type system: it narrows evaluation.status for judgeCalibrationDisposition.
   if (evaluation.status !== "draft" && evaluation.status !== "active") {
     return { status: "no-active-evaluation" as const };
   }

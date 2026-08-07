@@ -5,7 +5,7 @@ export const JUDGE_PROVIDER_TIMEOUT_MS = 45_000;
 export const KIMI_K3_REASONING_EFFORT = "low" as const;
 export const MAX_JUDGE_PROVIDER_IMAGES = 16;
 
-export type JudgeProviderId = "moonshot" | "openai-compatible";
+export type JudgeProviderId = "moonshot" | "openai";
 
 const providerResponseSchema = z
   .object({
@@ -43,7 +43,7 @@ type ProviderDependencies = {
 export function buildJudgeMessageContent(
   prompt: string,
   images: readonly string[],
-  provider = "openai-compatible",
+  provider = "openai",
 ) {
   if (images.length > MAX_JUDGE_PROVIDER_IMAGES) {
     throw new JudgeProviderContractError("judge_image_count_exceeded");
@@ -86,7 +86,7 @@ export function buildPinnedJudgeRequest(input: PinnedJudgeInput) {
 
 export function normalizeJudgeProvider(provider: string): JudgeProviderId {
   const normalized = provider.trim().toLowerCase();
-  if (normalized === "moonshot" || normalized === "openai-compatible") {
+  if (normalized === "moonshot" || normalized === "openai") {
     return normalized;
   }
   throw new JudgeConfigurationError("judgeProvider");
@@ -97,7 +97,11 @@ export function hasImmutableJudgeModelVersion(
   modelVersion: string,
 ) {
   normalizeJudgeProvider(provider);
-  return modelVersion.trim().toLowerCase() !== "kimi-k3";
+  const normalized = modelVersion.trim().toLowerCase();
+  if (/(?:^|[-_.])(?:auto|latest|preview)(?:$|[-_.])/.test(normalized)) {
+    return false;
+  }
+  return /(?:^|[-_.])(?:20\d{2}-\d{2}-\d{2}|20\d{6})$/.test(normalized);
 }
 
 export function assertLiveJudgeModelIsImmutable(

@@ -90,7 +90,7 @@ function installJudgeStub() {
         model?: string;
         messages?: unknown[];
       };
-      if (request.model !== "judge-snapshot-v1" || !request.messages?.length) {
+      if (request.model !== "judge-snapshot-2026-08-07" || !request.messages?.length) {
         return new Response("unexpected judge request", { status: 400 });
       }
       return new Response(
@@ -211,9 +211,9 @@ async function seedDatabase() {
     db.insert(evaluationVersions).values({
       id: EVALUATION_ID,
       version: 1,
-      judgeProvider: "openai-compatible",
+      judgeProvider: "openai",
       judgeModel: "lifecycle-judge",
-      judgeModelVersion: "judge-snapshot-v1",
+      judgeModelVersion: "judge-snapshot-2026-08-07",
       endpointOrigin: "https://judge.example.test",
       promptTemplate: "Judge the frozen evidence.",
       promptTemplateHash: "lifecycle-prompt-hash",
@@ -415,9 +415,9 @@ async function seedSweepFixtures() {
   await db.insert(evaluationVersions).values({
     id: "sweep-frozen-eval",
     version: 2,
-    judgeProvider: "openai-compatible",
+    judgeProvider: "openai",
     judgeModel: "lifecycle-judge",
-    judgeModelVersion: "judge-snapshot-v1",
+    judgeModelVersion: "judge-snapshot-2026-08-07",
     endpointOrigin: "https://judge.example.test",
     promptTemplate: "Judge the frozen evidence.",
     promptTemplateHash: "sweep-frozen-prompt-hash",

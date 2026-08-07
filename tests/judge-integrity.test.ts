@@ -586,19 +586,40 @@ test("Kimi K3 uses its fixed request policy and remains calibration-only", () =>
   );
   assert.equal("temperature" in pinnedRequest, false);
   assert.equal(normalizeJudgeProvider(" Moonshot "), "moonshot");
+  assert.equal(normalizeJudgeProvider(" OpenAI "), "openai");
+  for (const invalidProvider of ["moonshot-ai", "Moonshot AI"]) {
+    assert.throws(
+      () => normalizeJudgeProvider(invalidProvider),
+      (error: unknown) =>
+        error instanceof JudgeConfigurationError &&
+        error.key === "judgeProvider",
+    );
+  }
   assert.throws(
-    () => normalizeJudgeProvider("moonshot-ai"),
+    () => normalizeJudgeProvider(""),
     (error: unknown) =>
       error instanceof JudgeConfigurationError && error.key === "judgeProvider",
   );
   assert.equal(hasImmutableJudgeModelVersion("moonshot", "kimi-k3"), false);
   assert.equal(
-    hasImmutableJudgeModelVersion("openai-compatible", " KIMI-K3 "),
+    hasImmutableJudgeModelVersion("openai", " KIMI-K3 "),
     false,
   );
   assert.equal(
     hasImmutableJudgeModelVersion("moonshot", "kimi-k3-2026-08-07"),
     true,
+  );
+  assert.equal(
+    hasImmutableJudgeModelVersion("moonshot", "kimi-k3-latest"),
+    false,
+  );
+  assert.equal(
+    hasImmutableJudgeModelVersion("moonshot", "kimi-k3-2026-08-07-preview"),
+    false,
+  );
+  assert.equal(
+    hasImmutableJudgeModelVersion("openai", "generic-latest"),
+    false,
   );
   assert.throws(
     () => assertLiveJudgeModelIsImmutable("moonshot", "kimi-k3"),
@@ -627,8 +648,8 @@ test("Kimi K3 uses its fixed request policy and remains calibration-only", () =>
   );
   assert.equal(
     judgeCalibrationDisposition({
-      modelVersion: "generic-immutable-snapshot",
-      provider: "openai-compatible",
+      modelVersion: "generic-snapshot-2026-08-07",
+      provider: "openai",
       status: "draft",
     }),
     "activate",
@@ -643,7 +664,7 @@ test("generic pinned judges retain deterministic temperature and image detail", 
     maxTokens: 100,
     model: "immutable-snapshot",
     prompt: "Return JSON.",
-    provider: "openai-compatible",
+    provider: "openai",
   });
   assert.deepEqual(request, {
     max_completion_tokens: 100,
@@ -686,7 +707,7 @@ test("pinned judge provider timeout has a stable retryable pipeline code", async
         maxTokens: 100,
         model: "pinned-snapshot",
         prompt: "Return JSON.",
-        provider: "openai-compatible",
+        provider: "openai",
       },
       { apiKey: "test-key", fetchImpl: neverCompletes, timeoutMs: 5 },
     ),
@@ -717,7 +738,7 @@ test("pinned judge provider sends the immutable snapshot ID as the model", async
       maxTokens: 100,
       model: "immutable-snapshot-2026-07-31",
       prompt: "Return JSON.",
-      provider: "openai-compatible",
+      provider: "openai",
     },
     { apiKey: "test-key", fetchImpl, timeoutMs: 1000 },
   );

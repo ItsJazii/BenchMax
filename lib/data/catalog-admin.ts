@@ -19,7 +19,10 @@ import {
 } from "@/lib/domain/ranked-catalog";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
 import { assertSafeProviderOrigin } from "@/lib/security/run-policy";
-import { normalizeJudgeProvider } from "@/lib/judging/provider";
+import {
+  JudgeConfigurationError,
+  normalizeJudgeProvider,
+} from "@/lib/judging/provider";
 
 const MODEL_FAMILIES = [
   ["openai", "OpenAI", "GPT"],
@@ -52,9 +55,22 @@ export class CatalogConfigurationError extends Error {
 export async function seedRankedCatalog() {
   const now = new Date();
   const db = getDb();
-  const judgeProvider = normalizeJudgeProvider(
-    requiredRuntimeValue("JUDGE_PROVIDER"),
-  );
+  let judgeProvider: string;
+  try {
+    judgeProvider = normalizeJudgeProvider(
+      requiredRuntimeValue("JUDGE_PROVIDER"),
+    );
+  } catch (error) {
+    if (
+      error instanceof JudgeConfigurationError &&
+      error.key === "judgeProvider"
+    ) {
+      throw new CatalogConfigurationError(
+        "JUDGE_PROVIDER must be moonshot or openai.",
+      );
+    }
+    throw error;
+  }
   const judgeModel = requiredRuntimeValue("JUDGE_MODEL");
   const judgeModelVersion = requiredRuntimeValue("JUDGE_MODEL_VERSION");
   const judgeEndpointOrigin = requiredHttpsOrigin("JUDGE_API_ORIGIN");

@@ -432,17 +432,16 @@ export async function listModerationQueue() {
         updatedAt: evaluationVersions.updatedAt,
       })
       .from(evaluationVersions)
-      .orderBy(desc(evaluationVersions.version))
-      .limit(1),
+      .where(eq(evaluationVersions.status, "frozen"))
+      .orderBy(desc(evaluationVersions.updatedAt))
+      .limit(100),
   ]);
   return {
     reports,
     disputes: openDisputes,
     proposals,
     flaggedRuns,
-    calibrationAlerts: latestEvaluation.filter(
-      (evaluation) => evaluation.status === "frozen",
-    ),
+    calibrationAlerts: latestEvaluation,
   };
 }
 

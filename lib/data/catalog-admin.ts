@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   benchmarkVersions,
@@ -249,27 +249,57 @@ export async function seedRankedCatalog() {
     .onConflictDoNothing();
 
   const promptTemplateHash = await canonicalSha256(JUDGE_PROTOCOL_TEMPLATE_V1);
-  await db
-    .insert(evaluationVersions)
-    .values({
-      id: "evaluation-version-1",
-      version: 1,
-      judgeProvider,
-      judgeModel,
-      judgeModelVersion,
-      endpointOrigin: judgeEndpointOrigin,
-      promptTemplate: JUDGE_PROTOCOL_TEMPLATE_V1,
-      promptTemplateHash,
-      rubricProtocolVersion: "benchmax-community-rubric-v1",
-      sampleCount: 3,
-      maxTokensPerSample: 4096,
-      calibrationSetHash,
-      driftThresholdBps: 750,
-      status: "draft",
-      createdAt: now,
-      updatedAt: now,
+  const rubricProtocolVersion = "benchmax-community-rubric-v1";
+  const [latestEvaluation] = await db
+    .select({
+      calibrationSetHash: evaluationVersions.calibrationSetHash,
+      driftThresholdBps: evaluationVersions.driftThresholdBps,
+      endpointOrigin: evaluationVersions.endpointOrigin,
+      judgeModel: evaluationVersions.judgeModel,
+      judgeModelVersion: evaluationVersions.judgeModelVersion,
+      judgeProvider: evaluationVersions.judgeProvider,
+      maxTokensPerSample: evaluationVersions.maxTokensPerSample,
+      promptTemplateHash: evaluationVersions.promptTemplateHash,
+      rubricProtocolVersion: evaluationVersions.rubricProtocolVersion,
+      version: evaluationVersions.version,
     })
-    .onConflictDoNothing();
+    .from(evaluationVersions)
+    .orderBy(desc(evaluationVersions.version))
+    .limit(1);
+  const evaluationUnchanged =
+    latestEvaluation?.judgeProvider === judgeProvider &&
+    latestEvaluation.judgeModel === judgeModel &&
+    latestEvaluation.judgeModelVersion === judgeModelVersion &&
+    latestEvaluation.endpointOrigin === judgeEndpointOrigin &&
+    latestEvaluation.promptTemplateHash === promptTemplateHash &&
+    latestEvaluation.rubricProtocolVersion === rubricProtocolVersion &&
+    latestEvaluation.maxTokensPerSample === 4096 &&
+    latestEvaluation.calibrationSetHash === calibrationSetHash &&
+    latestEvaluation.driftThresholdBps === 750;
+  if (!evaluationUnchanged) {
+    const version = (latestEvaluation?.version ?? 0) + 1;
+    await db
+      .insert(evaluationVersions)
+      .values({
+        id: `evaluation-version-${version}`,
+        version,
+        judgeProvider,
+        judgeModel,
+        judgeModelVersion,
+        endpointOrigin: judgeEndpointOrigin,
+        promptTemplate: JUDGE_PROTOCOL_TEMPLATE_V1,
+        promptTemplateHash,
+        rubricProtocolVersion,
+        sampleCount: 3,
+        maxTokensPerSample: 4096,
+        calibrationSetHash,
+        driftThresholdBps: 750,
+        status: "draft",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing();
+  }
 
   const environmentHash = await canonicalSha256({
     evaluationPolicy: EVALUATION_ENVIRONMENT_V1,

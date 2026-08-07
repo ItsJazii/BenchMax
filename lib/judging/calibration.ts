@@ -207,7 +207,7 @@ async function holdCalibratedCandidate(evaluationVersionId: string) {
   const db = getDb();
   await db
     .update(evaluationVersions)
-    .set({ status: "retired", updatedAt: new Date() })
+    .set({ status: "candidate", updatedAt: new Date() })
     .where(
       and(
         eq(evaluationVersions.id, evaluationVersionId),
@@ -219,7 +219,7 @@ async function holdCalibratedCandidate(evaluationVersionId: string) {
     .from(evaluationVersions)
     .where(eq(evaluationVersions.id, evaluationVersionId))
     .limit(1);
-  if (held?.status !== "retired") {
+  if (held?.status !== "candidate") {
     throw new CalibrationConfigurationError("candidate_hold_race");
   }
 }

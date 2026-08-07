@@ -133,12 +133,14 @@ export function judgeCalibrationDisposition(input: {
   provider: string;
   status: "active" | "draft";
 }) {
-  const immutable = hasImmutableJudgeModelVersion(
-    input.provider,
-    input.modelVersion,
-  );
-  if (input.status === "active") return immutable ? "pass" : "freeze";
-  return immutable ? "activate" : "candidate-only";
+  const provider = normalizeJudgeProvider(input.provider);
+  const modelVersion = input.modelVersion.trim().toLowerCase();
+  const immutable = hasImmutableJudgeModelVersion(provider, modelVersion);
+  if (immutable) return input.status === "active" ? "pass" : "activate";
+  if (provider === "moonshot" && modelVersion === "kimi-k3") {
+    return input.status === "active" ? "freeze" : "candidate-only";
+  }
+  throw new JudgeConfigurationError("judgeModelVersion");
 }
 
 function isMoonshotProvider(provider: string) {

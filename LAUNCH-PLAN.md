@@ -58,10 +58,11 @@ the cap decision, and the explicitly deferred launch polish listed below.
    domain; collect publishable + secret keys.
 4. **[You]** Kimi K3 API access is available for staging calibration.
    **[You + Devin]** may measure the moving `kimi-k3` alias at pinned `low`
-   reasoning effort as a candidate; a passing candidate is held inactive after
-   calibration and cannot rank. Launch still requires either an
-   immutable Moonshot K3 model ID or a calibrated pinned snapshot from another
-   provider; never activate a moving alias.
+   reasoning effort as a candidate; a passing candidate is retired after
+   calibration and cannot rank or recalibrate. A future immutable ID creates a
+   new evaluation version rather than mutating this measured candidate. Launch
+   still requires either an immutable Moonshot K3 model ID or a calibrated
+   pinned OpenAI snapshot; never activate a moving alias.
 5. **[You]** E2B account; **[Codex]** build `sandbox/browser-web-v1` as a template,
    record immutable template ID + build hash.
 6. **[Devin]** Keep the provisioned buckets private, deploy both Workers with
@@ -148,7 +149,7 @@ An empty community site launches dead. Before telling anyone:
 | Submission vs judging cap ratio | Phase 0 exit | Lower publishes to ~8/day at launch |
 | Domain name(s) | Phase 2 | One .dev/.com + workers.dev for usercontent |
 | Workers Paid upgrade | Phase 3–4 | Stay Free for staging; upgrade only if measured limits block reliability |
-| Judge snapshot to pin | Phase 3 | Calibrate Kimi K3 as candidate; activate only an immutable Moonshot ID or another pinned snapshot |
+| Judge snapshot to pin | Phase 3 | Calibrate Kimi K3 as candidate; activate only an immutable Moonshot ID or pinned OpenAI snapshot |
 | Budget caps (from measurement) | Phase 3 | Set from calibration cost × expected volume |
 | Seed tests + rubrics | Phase 5 | 6–10, you author them |
 | Moderators | Phase 5–6 | Optional at launch |

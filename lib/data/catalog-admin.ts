@@ -20,6 +20,7 @@ import {
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
 import { assertSafeProviderOrigin } from "@/lib/security/run-policy";
 import {
+  judgeCalibrationDisposition,
   JudgeConfigurationError,
   normalizeJudgeProvider,
 } from "@/lib/judging/provider";
@@ -73,6 +74,23 @@ export async function seedRankedCatalog() {
   }
   const judgeModel = requiredRuntimeValue("JUDGE_MODEL");
   const judgeModelVersion = requiredRuntimeValue("JUDGE_MODEL_VERSION");
+  try {
+    judgeCalibrationDisposition({
+      modelVersion: judgeModelVersion,
+      provider: judgeProvider,
+      status: "draft",
+    });
+  } catch (error) {
+    if (
+      error instanceof JudgeConfigurationError &&
+      error.key === "judgeModelVersion"
+    ) {
+      throw new CatalogConfigurationError(
+        "JUDGE_MODEL_VERSION must be kimi-k3 for calibration or an immutable dated snapshot.",
+      );
+    }
+    throw error;
+  }
   const judgeEndpointOrigin = requiredHttpsOrigin("JUDGE_API_ORIGIN");
   const templateBuildHash = requiredSha256("E2B_TEMPLATE_BUILD_HASH");
   const calibrationSetHash = requiredSha256("JUDGE_CALIBRATION_SET_HASH");

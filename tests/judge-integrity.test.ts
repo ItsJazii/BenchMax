@@ -654,6 +654,17 @@ test("Kimi K3 uses its fixed request policy and remains calibration-only", () =>
     }),
     "activate",
   );
+  assert.throws(
+    () =>
+      judgeCalibrationDisposition({
+        modelVersion: "generic-latest",
+        provider: "openai",
+        status: "draft",
+      }),
+    (error: unknown) =>
+      error instanceof JudgeConfigurationError &&
+      error.key === "judgeModelVersion",
+  );
 });
 
 test("generic pinned judges retain deterministic temperature and image detail", () => {

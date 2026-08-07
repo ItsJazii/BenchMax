@@ -33,11 +33,19 @@ does not contain credentials, tokens, private keys, or database exports.
   measurements; upgrade to Workers Paid only after owner approval if a limit
   blocks staging or launch reliability. Free-plan staging is attended only:
   inspect the DLQ after every lifecycle batch and at least every 12 hours, and
-  triage any message before its 24-hour expiry. Unattended beta or an inability
-  to meet that rule requires the Paid retention upgrade before proceeding. The
-  2026-08-05 dry-run measured the main Worker at 750.52 KiB gzip and the
-  user-content Worker at 7.48 KiB gzip, both below the Free-plan bundle limit;
-  runtime CPU remains a staging measurement.
+  triage any message before its 24-hour expiry. The DLQ consumer normally drains
+  messages immediately and records each one as `run.pipeline_dead_lettered` or
+  `run.pipeline_dead_letter_ignored`. The two-minute cron separately samples
+  Cloudflare's realtime queue metrics to detect a stuck consumer: it records
+  `operations.pipeline_dlq_nonempty` when backlog opens or grows and every 12
+  hours while nonzero, plus `operations.pipeline_dlq_cleared` when it drains.
+  Cloudflare prices message writes, reads, and deletes as queue operations; the
+  metrics call is an observability read, but Free-plan usage is still reviewed
+  during staging. Unattended beta or an inability to meet the 12-hour rule
+  requires the Paid retention upgrade before proceeding. The 2026-08-05 dry-run
+  measured the main Worker at 750.52 KiB gzip and the user-content Worker at
+  7.48 KiB gzip, both below the Free-plan bundle limit; runtime CPU remains a
+  staging measurement.
 
 ## Dependency maintenance notes
 

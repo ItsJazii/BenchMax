@@ -15,6 +15,8 @@ import {
 } from "../lib/pipeline/recovery";
 import {
   isPipelineDeadLetterQueue,
+  PIPELINE_DLQ_AUDIT_INTERVAL_MS,
+  planPipelineDlqAudit,
   processPipelineDeadLetter,
 } from "../lib/pipeline/dead-letter";
 import { isAllowedRunTransition } from "../lib/security/run-policy";
@@ -41,6 +43,76 @@ test("dead-letter routing recognizes every environment's DLQ name", () => {
   assert.equal(isPipelineDeadLetterQueue("benchmax-staging-pipeline-dlq"), true);
   assert.equal(isPipelineDeadLetterQueue("benchmax-evaluate"), false);
   assert.equal(isPipelineDeadLetterQueue("benchmax-staging-judge"), false);
+});
+
+test("DLQ depth audits emit on open, growth, reminder, and clear transitions", () => {
+  const now = Date.parse("2026-08-07T00:00:00.000Z");
+  const oldestMessageTimestamp = new Date(now - 60_000);
+  assert.equal(
+    planPipelineDlqAudit({
+      metrics: { backlogBytes: 0, backlogCount: 0 },
+      now,
+      previous: null,
+    }),
+    null,
+  );
+  const opened = planPipelineDlqAudit({
+    metrics: { backlogBytes: 512, backlogCount: 2, oldestMessageTimestamp },
+    now,
+    previous: null,
+  });
+  assert.deepEqual(opened, {
+    action: "operations.pipeline_dlq_nonempty",
+    metadata: {
+      backlogBytes: 512,
+      backlogCount: 2,
+      oldestMessageTimestamp: oldestMessageTimestamp.toISOString(),
+      observedAt: new Date(now).toISOString(),
+      reason: "opened",
+    },
+  });
+  const previous = { backlogCount: 2, createdAt: now };
+  assert.equal(
+    planPipelineDlqAudit({
+      metrics: { backlogBytes: 512, backlogCount: 2, oldestMessageTimestamp },
+      now: now + PIPELINE_DLQ_AUDIT_INTERVAL_MS - 1,
+      previous,
+    }),
+    null,
+  );
+  assert.equal(
+    planPipelineDlqAudit({
+      metrics: { backlogBytes: 768, backlogCount: 3, oldestMessageTimestamp },
+      now: now + 1,
+      previous,
+    })?.metadata.reason,
+    "grew",
+  );
+  assert.equal(
+    planPipelineDlqAudit({
+      metrics: { backlogBytes: 512, backlogCount: 2, oldestMessageTimestamp },
+      now: now + PIPELINE_DLQ_AUDIT_INTERVAL_MS,
+      previous,
+    })?.metadata.reason,
+    "reminder",
+  );
+  assert.deepEqual(
+    planPipelineDlqAudit({
+      metrics: { backlogBytes: 0, backlogCount: 0 },
+      now: now + 1,
+      previous,
+    }),
+    {
+      action: "operations.pipeline_dlq_cleared",
+      metadata: {
+        backlogBytes: 0,
+        backlogCount: 0,
+        oldestMessageTimestamp: null,
+        observedAt: new Date(now + 1).toISOString(),
+        reason: "cleared",
+      },
+    },
+  );
 });
 
 test("pipeline stage versions accept bounded refresh idempotency tokens", () => {

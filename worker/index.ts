@@ -35,7 +35,9 @@ import {
 } from "../lib/pipeline/recovery";
 import {
   isPipelineDeadLetterQueue,
+  planPipelineDlqAudit,
   processPipelineDeadLetter,
+  type PipelineDlqAuditState,
 } from "../lib/pipeline/dead-letter";
 import { sweepExpiredUploadSessions } from "../lib/data/upload-maintenance";
 import {
@@ -136,6 +138,15 @@ const worker = {
         }),
       );
     }
+    if (controller.cron === "*/2 * * * *") {
+      jobs.push(
+        auditPipelineDlqDepth(env).catch((error) => {
+          console.error("Benchmax pipeline DLQ depth audit failed", {
+            name: error instanceof Error ? error.name : "UnknownError",
+          });
+        }),
+      );
+    }
     jobs.push(
       recoverPipelineRuns(env).catch((error) => {
         console.error("Benchmax pipeline recovery sweep failed", {
@@ -188,6 +199,59 @@ const worker = {
     ctx.waitUntil(Promise.all(jobs));
   },
 };
+
+async function auditPipelineDlqDepth(env: Env) {
+  const [metrics, previous] = await Promise.all([
+    env.PIPELINE_DLQ.metrics(),
+    readLatestPipelineDlqAuditState(env),
+  ]);
+  const event = planPipelineDlqAudit({
+    metrics,
+    now: Date.now(),
+    previous,
+  });
+  if (!event) return;
+  await appendAuditEvent({
+    actorUserId: null,
+    entityType: "queue",
+    entityId: "pipeline-dlq",
+    action: event.action,
+    metadata: event.metadata,
+  });
+}
+
+async function readLatestPipelineDlqAuditState(
+  env: Env,
+): Promise<PipelineDlqAuditState | null> {
+  const row = await env.DB.prepare(
+    `SELECT metadata_json, created_at
+     FROM audit_events
+     WHERE entity_type = 'queue'
+       AND entity_id = 'pipeline-dlq'
+       AND action IN ('operations.pipeline_dlq_nonempty', 'operations.pipeline_dlq_cleared')
+     ORDER BY created_at DESC
+     LIMIT 1`,
+  ).first<{ created_at: number; metadata_json: string }>();
+  if (!row) return null;
+  try {
+    const metadata: unknown = JSON.parse(row.metadata_json);
+    const backlogCount =
+      metadata &&
+      typeof metadata === "object" &&
+      "backlogCount" in metadata &&
+      typeof metadata.backlogCount === "number" &&
+      Number.isSafeInteger(metadata.backlogCount) &&
+      metadata.backlogCount >= 0
+        ? metadata.backlogCount
+        : null;
+    const createdAt = Number(row.created_at);
+    return backlogCount !== null && Number.isFinite(createdAt)
+      ? { backlogCount, createdAt }
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 async function recoverPipelineRuns(env: Env) {
   const messages = await recoverStalledPipelineRuns({

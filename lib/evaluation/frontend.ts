@@ -131,7 +131,7 @@ export async function evaluateFrontendRun(runId: string) {
       throw new EvaluationInfrastructureError("source_extract_failed");
     }
     const command = await sandbox.commands.run(
-      "node /opt/benchmax/evaluate.mjs",
+      "PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright node /opt/benchmax/evaluate.mjs",
       { timeoutMs: EVALUATION_ENVIRONMENT_V1.wallClockSeconds * 1000 },
     );
     if (command.exitCode !== 0) {

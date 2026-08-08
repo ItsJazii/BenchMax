@@ -6,6 +6,9 @@ WORKDIR /opt/benchmax
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
   && npx playwright install --with-deps chromium \
+  && CHROMIUM_PATH="$(find /opt/ms-playwright -type f -name chrome-headless-shell -print -quit)" \
+  && test -n "$CHROMIUM_PATH" \
+  && ln -s "$CHROMIUM_PATH" /usr/local/bin/benchmax-chromium \
   && FFMPEG_PATH="$(find /opt/ms-playwright -type f -name ffmpeg-linux -print -quit)" \
   && test -n "$FFMPEG_PATH" \
   && ln -s "$FFMPEG_PATH" /usr/local/bin/benchmax-ffmpeg \

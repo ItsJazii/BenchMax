@@ -16,6 +16,11 @@ const videoPath = `${outputDir}/milestone.webm`;
 const rawVideoPath = `${outputDir}/milestone.raw.webm`;
 const serverPort = parseServerPort(process.env.BENCHMAX_EVALUATOR_PORT);
 const serverOrigin = `http://127.0.0.1:${serverPort}`;
+const chromiumExecutablePath =
+  process.env.BENCHMAX_CHROMIUM_EXECUTABLE_PATH ||
+  ((await stat("/usr/local/bin/benchmax-chromium").catch(() => null))?.isFile()
+    ? "/usr/local/bin/benchmax-chromium"
+    : undefined);
 const spec = JSON.parse(await readFile(`${inputDir}/spec.json`, "utf8"));
 const templateBuildHash = await readTemplateBuildHash();
 const server = spawn(
@@ -53,7 +58,7 @@ let videoDurationMs = null;
 try {
   await waitForServer();
   browser = await chromium.launch({
-    executablePath: process.env.BENCHMAX_CHROMIUM_EXECUTABLE_PATH || undefined,
+    executablePath: chromiumExecutablePath,
     headless: true,
   });
   context = await browser.newContext({

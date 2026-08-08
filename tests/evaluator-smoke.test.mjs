@@ -18,7 +18,35 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const projectRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const evaluatorDir = path.join(projectRoot, "sandbox", "browser-web-v1");
 const evaluatorPath = path.join(evaluatorDir, "evaluate.mjs");
+const evaluatorWorkerPath = path.join(
+  projectRoot,
+  "lib",
+  "evaluation",
+  "frontend.ts",
+);
 const fixtureDir = path.join(projectRoot, "tests", "fixtures", "evaluator-project");
+
+test("the E2B runtime exposes Playwright's pinned browser and FFmpeg paths", async () => {
+  const [dockerfile, evaluator, evaluatorWorker] = await Promise.all([
+    readFile(path.join(evaluatorDir, "e2b.Dockerfile"), "utf8"),
+    readFile(evaluatorPath, "utf8"),
+    readFile(evaluatorWorkerPath, "utf8"),
+  ]);
+
+  assert.match(
+    dockerfile,
+    /ln -s "\$CHROMIUM_PATH" \/usr\/local\/bin\/benchmax-chromium/,
+  );
+  assert.match(
+    dockerfile,
+    /ln -s "\$FFMPEG_PATH" \/usr\/local\/bin\/benchmax-ffmpeg/,
+  );
+  assert.match(evaluator, /"\/usr\/local\/bin\/benchmax-chromium"/);
+  assert.match(
+    evaluatorWorker,
+    /"PLAYWRIGHT_BROWSERS_PATH=\/opt\/ms-playwright node \/opt\/benchmax\/evaluate\.mjs"/,
+  );
+});
 
 test("the frozen browser evaluator executes a fixture project end to end", async (t) => {
   const prerequisites = await resolveEvaluatorPrerequisites();

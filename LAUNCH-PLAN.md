@@ -56,16 +56,15 @@ the cap decision, and the explicitly deferred launch polish listed below.
    a `*.workers.dev` subdomain is acceptable for the usercontent origin at launch).
 3. **[You]** Clerk app (free tier): enable Google, GitHub, email-code; add production
    domain; collect publishable + secret keys.
-4. **[You]** Kimi K3 API access is available for staging calibration.
-   **[You + Devin]** may measure the moving `kimi-k3` alias at pinned `low`
-   reasoning effort as a candidate. Kimi's sampling parameters are vendor-fixed,
-   so Phase 3 must verify that the three-sample median and drift threshold absorb
-   observed variance. A passing candidate is held in the terminal `candidate`
-   status after calibration and cannot rank or recalibrate. A future immutable
-   ID creates a new evaluation version rather than mutating this measured
-   candidate. Launch
-   still requires either an immutable Moonshot K3 model ID or a calibrated
-   pinned OpenAI snapshot; never activate a moving alias.
+4. **[You]** Kimi API access is available for staging calibration.
+   **[You + Devin]** may measure the moving `kimi-k2.7-code` alias as a
+   candidate. Kimi's sampling parameters are vendor-fixed, so Phase 3 must
+   verify that the three-sample median and drift threshold absorb observed
+   variance. A passing candidate is held in the terminal `candidate` status
+   after calibration and cannot rank or recalibrate. A future immutable ID
+   creates a new evaluation version rather than mutating this measured
+   candidate. Launch still requires either an immutable Moonshot model ID or a
+   calibrated pinned OpenAI snapshot; never activate a moving alias.
 5. **[You]** E2B account; **[Codex]** build `sandbox/browser-web-v1` as a template,
    record immutable template ID + build hash.
 6. **[Devin]** Keep the provisioned buckets private, deploy both Workers with

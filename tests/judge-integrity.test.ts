@@ -585,6 +585,17 @@ test("Moonshot aliases use the fixed request policy and remain calibration-only"
     KIMI_K3_REASONING_EFFORT,
   );
   assert.equal("temperature" in pinnedRequest, false);
+  const k2Request = buildPinnedJudgeRequest({
+    endpointOrigin: "https://api.moonshot.ai",
+    images: [],
+    maxTokens: 1_000,
+    model: "kimi-k2.7-code",
+    prompt: "Return JSON.",
+    provider: "moonshot",
+  });
+  assert.equal(k2Request.model, "kimi-k2.7-code");
+  assert.equal("reasoning_effort" in k2Request, false);
+  assert.equal("temperature" in k2Request, false);
   assert.equal(normalizeJudgeProvider(" Moonshot "), "moonshot");
   assert.equal(normalizeJudgeProvider(" OpenAI "), "openai");
   for (const invalidProvider of ["moonshot-ai", "Moonshot AI"]) {

@@ -101,11 +101,16 @@ export function buildPinnedChatCompletionRequest(input: {
     // Moonshot's OpenAI-compatible surface documents max_tokens (not the
     // newer max_completion_tokens); an unrecognized cap param could leave
     // calibration samples unbounded or fail the request outright.
-    return {
+    const moonshotRequest = {
       ...request,
       max_tokens: input.maxTokens,
-      reasoning_effort: KIMI_K3_REASONING_EFFORT,
     };
+    return /^kimi-k3(?:$|[-_.])/i.test(input.model.trim())
+      ? {
+          ...moonshotRequest,
+          reasoning_effort: KIMI_K3_REASONING_EFFORT,
+        }
+      : moonshotRequest;
   }
   return {
     ...request,

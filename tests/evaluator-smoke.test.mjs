@@ -20,6 +20,23 @@ const evaluatorDir = path.join(projectRoot, "sandbox", "browser-web-v1");
 const evaluatorPath = path.join(evaluatorDir, "evaluate.mjs");
 const fixtureDir = path.join(projectRoot, "tests", "fixtures", "evaluator-project");
 
+test("the E2B image exposes stable browser and FFmpeg paths", async () => {
+  const [dockerfile, evaluator] = await Promise.all([
+    readFile(path.join(evaluatorDir, "e2b.Dockerfile"), "utf8"),
+    readFile(evaluatorPath, "utf8"),
+  ]);
+
+  assert.match(
+    dockerfile,
+    /ln -s "\$CHROMIUM_PATH" \/usr\/local\/bin\/benchmax-chromium/,
+  );
+  assert.match(
+    dockerfile,
+    /ln -s "\$FFMPEG_PATH" \/usr\/local\/bin\/benchmax-ffmpeg/,
+  );
+  assert.match(evaluator, /"\/usr\/local\/bin\/benchmax-chromium"/);
+});
+
 test("the frozen browser evaluator executes a fixture project end to end", async (t) => {
   const prerequisites = await resolveEvaluatorPrerequisites();
   if (!prerequisites.ok) {

@@ -26,6 +26,13 @@ does not contain credentials, tokens, private keys, or database exports.
   `benchmax-uploads-staging` exist with public access disabled by default.
 - No BenchMax Workers or custom domains exist yet, and no remote migrations
   have been applied.
+- E2B template `benchmax-browser-web-v1` exists with immutable template ID
+  `tfxu74tqc8onnhmerpqc`, build ID
+  `80d3072e-a046-42d1-a0a3-3a06b9b93ae9`, and evaluator build hash
+  `98d6e9590a2600bc5506e655300d6d70589796e697c8d2eacabcba9b821b3463`.
+  It was built with 2 vCPU and 2048 MB RAM. A live secured-sandbox smoke test
+  launched Chromium 151.0.7922.34, invoked the pinned Playwright FFmpeg build,
+  and reproduced the build hash from the three pinned input files.
 - The owner login has two-factor authentication. Account-level enforcement
   still needs dashboard verification.
 - Staging starts on Workers Free. Its 10 ms CPU, 3 MB Worker, five-cron,

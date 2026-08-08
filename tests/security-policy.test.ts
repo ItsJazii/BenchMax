@@ -90,8 +90,18 @@ test("manual judge calibration stays owner-only, bounded, and reachable from ope
   assert.match(routeSource, /requireRole\(user, \["owner"\]\)/);
   assert.match(routeSource, /action: "judge-calibration-manual"/);
   assert.match(routeSource, /limit: 3/);
+  assert.match(routeSource, /getRequestExecutionContext\(\)/);
+  assert.match(routeSource, /executionContext\.waitUntil\(/);
+  const requestHandlerSource = routeSource.split(
+    "async function runManualCalibration",
+  )[0];
+  assert.doesNotMatch(requestHandlerSource, /await runJudgeCalibration\(\)/);
+  assert.match(routeSource, /status: 202/);
   assert.match(operationsSource, /"\/api\/admin\/catalog\/seed"/);
   assert.match(operationsSource, /"\/api\/admin\/judge\/calibrate"/);
+  assert.match(operationsSource, /catalogSeedResponseSchema\.safeParse/);
+  assert.doesNotMatch(operationsSource, /evaluationVersion:/);
+  assert.doesNotMatch(operationsSource, /evaluationStatus:/);
 });
 
 test("public result provenance explicitly marks every declared field unverified", () => {

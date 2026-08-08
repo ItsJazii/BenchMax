@@ -766,6 +766,52 @@ async function runJudgePolicy() {
     maxVersionBefore + 1,
   );
 
+  // Force the post-hold audit write to fail after this draft has already
+  // entered the terminal candidate sink. The calibration catch path must not
+  // loosen that state transition, but it must still leave an honest operator
+  // audit and critical alert instead of silently returning.
+  await insertAliasEvaluationVersion({
+    calibrationSetHash: setHash,
+    id: "policy-candidate-error",
+    status: "draft",
+    version: 49,
+  });
+  await env.DB.prepare(
+    `CREATE TRIGGER policy_fail_candidate_pass_audit
+     BEFORE INSERT ON audit_events
+     WHEN NEW.action = 'judge.calibration_candidate_passed'
+     BEGIN
+       SELECT RAISE(ABORT, 'forced candidate audit failure');
+     END`,
+  ).run();
+  const candidateErrorAlerts: string[] = [];
+  const originalConsoleError = console.error;
+  let candidateErrorCalibration: Awaited<
+    ReturnType<typeof runJudgeCalibration>
+  >;
+  try {
+    console.error = (...values: unknown[]) => {
+      candidateErrorAlerts.push(values.map(String).join(" "));
+    };
+    candidateErrorCalibration = await runJudgeCalibration();
+  } finally {
+    console.error = originalConsoleError;
+    await env.DB.prepare("DROP TRIGGER policy_fail_candidate_pass_audit").run();
+  }
+  const [candidateErrorEvaluation] = await db
+    .select({ status: evaluationVersions.status })
+    .from(evaluationVersions)
+    .where(eq(evaluationVersions.id, "policy-candidate-error"));
+  const [candidateErrorAudit] = await db
+    .select({
+      action: auditEvents.action,
+      metadataJson: auditEvents.metadataJson,
+    })
+    .from(auditEvents)
+    .where(eq(auditEvents.entityId, "policy-candidate-error"))
+    .orderBy(sql`${auditEvents.createdAt} DESC`)
+    .limit(1);
+
   await insertAliasEvaluationVersion({
     calibrationSetHash: setHash,
     id: "policy-active-alias",
@@ -919,6 +965,15 @@ async function runJudgePolicy() {
     aliasCalibration,
     candidateAfterSecondSweep: candidateAfterSecondSweep?.status,
     candidateCalibration,
+    candidateErrorAuditAction: candidateErrorAudit?.action ?? null,
+    candidateErrorAuditMetadata: candidateErrorAudit
+      ? JSON.parse(candidateErrorAudit.metadataJson)
+      : null,
+    candidateErrorCalibration,
+    candidateErrorCriticalAlertRecorded: candidateErrorAlerts.some((value) =>
+      value.includes('"alert":"judge_calibration_failed_unfrozen"'),
+    ),
+    candidateErrorStatus: candidateErrorEvaluation?.status,
     frozenAliasStatus: frozenAlias?.status,
     heldCandidateStatus: heldCandidate?.status,
     immutabilityAuditRecorded: immutabilityAudit?.action ?? null,

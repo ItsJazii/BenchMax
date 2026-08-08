@@ -151,6 +151,54 @@ function ConfiguredOperationsDashboard() {
     }
   }
 
+  async function seedCatalog() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await authorizedFetch("/api/admin/catalog/seed", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as {
+        catalog?: { evaluationVersion: number; evaluationStatus: string };
+        error?: string;
+      };
+      if (!response.ok || !payload.catalog) {
+        throw new Error(payload.error ?? "Could not seed the catalog.");
+      }
+      await refresh();
+      setError(
+        `Catalog seeded: evaluation v${payload.catalog.evaluationVersion} (${payload.catalog.evaluationStatus}).`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Request failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runCalibration() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await authorizedFetch("/api/admin/judge/calibrate", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as {
+        calibration?: { status: string };
+        error?: string;
+      };
+      if (!response.ok || !payload.calibration) {
+        throw new Error(payload.error ?? "Could not run judge calibration.");
+      }
+      await refresh();
+      setError(`Judge calibration finished: ${payload.calibration.status}.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Request failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function resolveCatalogRequest(
     requestId: string,
     action: "approve" | "reject",
@@ -201,6 +249,12 @@ function ConfiguredOperationsDashboard() {
         <p>Snapshot {data.generatedAt}</p>
         <button className="button button-secondary" onClick={() => void refresh()} type="button">
           Refresh
+        </button>
+        <button className="button button-secondary" disabled={busy} onClick={() => void seedCatalog()} type="button">
+          Seed catalog
+        </button>
+        <button className="button button-secondary" disabled={busy} onClick={() => void runCalibration()} type="button">
+          Run calibration
         </button>
         <button className="button button-primary" disabled={busy} onClick={() => void createManifest()} type="button">
           {busy ? "Writing…" : "Write backup manifest"}

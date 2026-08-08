@@ -681,6 +681,8 @@ async function runSweeps() {
 async function insertAliasEvaluationVersion(input: {
   calibrationSetHash: string;
   id: string;
+  judgeModelVersion?: string;
+  judgeProvider?: string;
   status: "draft" | "active";
   version: number;
 }) {
@@ -688,9 +690,9 @@ async function insertAliasEvaluationVersion(input: {
   await getDb().insert(evaluationVersions).values({
     id: input.id,
     version: input.version,
-    judgeProvider: "moonshot",
+    judgeProvider: input.judgeProvider ?? "moonshot",
     judgeModel: "kimi",
-    judgeModelVersion: "kimi-k3",
+    judgeModelVersion: input.judgeModelVersion ?? "kimi-k3",
     endpointOrigin: "https://judge.example.test",
     promptTemplate: JUDGE_PROTOCOL_TEMPLATE_V1,
     promptTemplateHash: await canonicalSha256(JUDGE_PROTOCOL_TEMPLATE_V1),
@@ -866,6 +868,53 @@ async function runJudgePolicy() {
     .from(auditEvents)
     .where(eq(auditEvents.action, "judge.model_not_immutable"));
 
+  await insertAliasEvaluationVersion({
+    calibrationSetHash: setHash,
+    id: "policy-unsupported-provider",
+    judgeModelVersion: "judge-snapshot-2026-08-07",
+    judgeProvider: "unsupported",
+    status: "active",
+    version: 61,
+  });
+  await db.insert(runs).values({
+    id: "policy-provider-run",
+    publicSlug: "policy-provider-run",
+    contributorId: CONTRIBUTOR_ID,
+    benchmarkVersionId: BENCHMARK_VERSION_ID,
+    configurationId: CONFIGURATION_ID,
+    evaluationVersionId: "policy-unsupported-provider",
+    showcaseId: null,
+    credentialMode: "community-submission",
+    status: "judging",
+    attemptIndex: 1,
+    environmentHash: "lifecycle-environment",
+    harnessContractHash: "lifecycle-harness-contract",
+    rankEligible: false,
+    injectionFlag: false,
+    postPublicationMarker: false,
+    playableEnabled: false,
+    createdAt: policyNow,
+    updatedAt: policyNow,
+  });
+  let providerErrorCode: string | null = null;
+  let providerErrorTerminal = false;
+  try {
+    await judgeRun("policy-provider-run");
+  } catch (error) {
+    providerErrorCode =
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : String(error);
+    providerErrorTerminal = error instanceof JudgeContractError;
+  }
+  const [providerAudit] = await db
+    .select({ action: auditEvents.action })
+    .from(auditEvents)
+    .where(eq(auditEvents.action, "judge.provider_not_supported"));
+
   return {
     aliasCalibration,
     candidateAfterSecondSweep: candidateAfterSecondSweep?.status,
@@ -875,6 +924,9 @@ async function runJudgePolicy() {
     immutabilityAuditRecorded: immutabilityAudit?.action ?? null,
     moderationAlerts,
     postCandidateCalibration,
+    providerAuditRecorded: providerAudit?.action ?? null,
+    providerErrorCode,
+    providerErrorTerminal,
     recoveryDraftStatus: recoveryDraft?.status,
     seededDraftStatus: seededDraft?.status,
     seededDraftModelVersion: seededDraft?.judgeModelVersion,

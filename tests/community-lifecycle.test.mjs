@@ -178,6 +178,19 @@ test(
       );
       assert.equal(policy.terminalErrorCode, "judge_model_not_immutable");
       assert.equal(policy.immutabilityAuditRecorded, "judge.model_not_immutable");
+      assert.equal(
+        policy.providerErrorCode,
+        "judge_provider_not_supported",
+      );
+      assert.equal(
+        policy.providerErrorTerminal,
+        false,
+        "unsupported providers must pause for retry instead of failing terminally",
+      );
+      assert.equal(
+        policy.providerAuditRecorded,
+        "judge.provider_not_supported",
+      );
       assert.deepEqual(
         policy.moderationAlerts,
         ["policy-active-alias"],

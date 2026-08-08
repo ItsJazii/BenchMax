@@ -64,14 +64,22 @@ export async function judgeRun(runId: string, stageVersion = "1") {
     );
   } catch (error) {
     if (error instanceof JudgeConfigurationError) {
-      // Immediate signal: without this, a wrongly-activated mutable alias
-      // surfaces only as per-run terminal failures until the Monday
-      // calibration cron freezes it.
+      const mutableModelAlias = error.key === "judgeModelVersion";
+      const unsupportedProvider = error.key === "judgeProvider";
+      if (!mutableModelAlias && !unsupportedProvider) throw error;
+      const auditAction = mutableModelAlias
+        ? "judge.model_not_immutable"
+        : "judge.provider_not_supported";
+      const errorCode = mutableModelAlias
+        ? "judge_model_not_immutable"
+        : "judge_provider_not_supported";
+      // Immediate signal: without this, a wrongly-activated judge contract
+      // surfaces only as per-run failures until the Monday calibration cron.
       await appendAuditEvent({
         actorUserId: null,
         entityType: "evaluation-version",
         entityId: contract.evaluationVersionId,
-        action: "judge.model_not_immutable",
+        action: auditAction,
         metadata: {
           judgeModelVersion: contract.judgeModelVersion,
           judgeProvider: contract.judgeProvider,
@@ -80,13 +88,16 @@ export async function judgeRun(runId: string, stageVersion = "1") {
       });
       console.error(
         canonicalJson({
-          alert: "judge_model_not_immutable",
+          alert: errorCode,
           evaluationVersionId: contract.evaluationVersionId,
           runId,
           severity: "critical",
         }),
       );
-      throw new JudgeContractError("judge_model_not_immutable");
+      if (mutableModelAlias) {
+        throw new JudgeContractError(errorCode);
+      }
+      throw new JudgeProviderConfigurationError();
     }
     throw error;
   }
@@ -763,5 +774,14 @@ export class JudgeContractError extends Error {
   constructor(readonly code: string) {
     super("The pinned judge contract is unavailable.");
     this.name = "JudgeContractError";
+  }
+}
+
+export class JudgeProviderConfigurationError extends Error {
+  readonly code = "judge_provider_not_supported";
+
+  constructor() {
+    super("The configured judge provider is unsupported.");
+    this.name = "JudgeProviderConfigurationError";
   }
 }

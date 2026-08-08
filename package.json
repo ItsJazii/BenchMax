@@ -55,7 +55,7 @@
     "tsx": "^4.23.7",
     "typescript": "5.9.3",
     "vinext": "0.0.50",
-    "vite": "^8.1.5",
+    "vite": "^8.2.0",
     "wrangler": "^4.115.0"
   },
   "type": "module"

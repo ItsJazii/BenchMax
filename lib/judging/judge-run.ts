@@ -30,7 +30,11 @@ import {
   planJudgeMedia,
   type PlannedJudgeImage,
 } from "./media-evidence";
-import { callPinnedJudge } from "./provider";
+import {
+  assertLiveJudgeModelIsImmutable,
+  callPinnedJudge,
+  JudgeConfigurationError,
+} from "./provider";
 import {
   buildJudgePromptPayload,
   createJudgeOutputSchema,
@@ -52,6 +56,50 @@ export async function judgeRun(runId: string, stageVersion = "1") {
   if (!contract) throw new JudgeContractError("missing_contract");
   if (contract.evaluationStatus !== "active") {
     throw new JudgeContractError("evaluation_not_active");
+  }
+  try {
+    assertLiveJudgeModelIsImmutable(
+      contract.judgeProvider,
+      contract.judgeModelVersion,
+    );
+  } catch (error) {
+    if (error instanceof JudgeConfigurationError) {
+      const mutableModelAlias = error.key === "judgeModelVersion";
+      const unsupportedProvider = error.key === "judgeProvider";
+      if (!mutableModelAlias && !unsupportedProvider) throw error;
+      const auditAction = mutableModelAlias
+        ? "judge.model_not_immutable"
+        : "judge.provider_not_supported";
+      const errorCode = mutableModelAlias
+        ? "judge_model_not_immutable"
+        : "judge_provider_not_supported";
+      // Immediate signal: without this, a wrongly-activated judge contract
+      // surfaces only as per-run failures until the Monday calibration cron.
+      await appendAuditEvent({
+        actorUserId: null,
+        entityType: "evaluation-version",
+        entityId: contract.evaluationVersionId,
+        action: auditAction,
+        metadata: {
+          judgeModelVersion: contract.judgeModelVersion,
+          judgeProvider: contract.judgeProvider,
+          runId,
+        },
+      });
+      console.error(
+        canonicalJson({
+          alert: errorCode,
+          evaluationVersionId: contract.evaluationVersionId,
+          runId,
+          severity: "critical",
+        }),
+      );
+      if (mutableModelAlias) {
+        throw new JudgeContractError(errorCode);
+      }
+      throw new JudgeProviderConfigurationError();
+    }
+    throw error;
   }
   if (contract.runStatus === "evaluating") {
     await transitionRun({ id: runId, from: "evaluating", to: "judging" });
@@ -195,6 +243,7 @@ export async function judgeRun(runId: string, stageVersion = "1") {
         maxTokens: contract.maxTokensPerSample,
         model: contract.judgeModelVersion,
         prompt: `${contract.promptTemplate}\n\n${prompt}`,
+        provider: contract.judgeProvider,
         images: mediaEvidence.images,
       });
     } catch (error) {
@@ -466,6 +515,7 @@ async function loadJudgeContract(runId: string) {
       evaluationVersionId: evaluationVersions.id,
       judgeEndpointOrigin: evaluationVersions.endpointOrigin,
       judgeModelVersion: evaluationVersions.judgeModelVersion,
+      judgeProvider: evaluationVersions.judgeProvider,
       judgeWeightBps: benchmarkVersions.judgeWeightBps,
       maxTokensPerSample: evaluationVersions.maxTokensPerSample,
       objectiveWeightBps: benchmarkVersions.objectiveWeightBps,
@@ -724,5 +774,14 @@ export class JudgeContractError extends Error {
   constructor(readonly code: string) {
     super("The pinned judge contract is unavailable.");
     this.name = "JudgeContractError";
+  }
+}
+
+export class JudgeProviderConfigurationError extends Error {
+  readonly code = "judge_provider_not_supported";
+
+  constructor() {
+    super("The configured judge provider is unsupported.");
+    this.name = "JudgeProviderConfigurationError";
   }
 }

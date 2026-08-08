@@ -148,6 +148,20 @@
    "when": 1785613847958,
    "tag": "0020_restore_catalog_request_delete_seal",
    "breakpoints": true
+  },
+  {
+   "idx": 21,
+   "version": "6",
+   "when": 1786132477169,
+   "tag": "0021_fearless_scourge",
+   "breakpoints": true
+  },
+  {
+   "idx": 22,
+   "version": "6",
+   "when": 1786135406035,
+   "tag": "0022_evaluation_status_transitions",
+   "breakpoints": true
   }
  ]
 }

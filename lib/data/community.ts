@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   abuseReports,
@@ -432,17 +432,31 @@ export async function listModerationQueue() {
         updatedAt: evaluationVersions.updatedAt,
       })
       .from(evaluationVersions)
-      .orderBy(desc(evaluationVersions.version))
-      .limit(1),
+      .where(
+        and(
+          eq(evaluationVersions.status, "frozen"),
+          // Only a newer ACTIVE version supersedes a freeze (activation
+          // freezes the prior active row in the ordinary course). A newer
+          // candidate or draft must NOT suppress the alert: a candidate can
+          // never judge, so a frozen live version beneath one is a real
+          // outage. Among unsuperseded freezes, only the newest alerts, so
+          // historical failures cannot bury the current one.
+          sql`NOT EXISTS (
+            SELECT 1 FROM evaluation_versions AS successor
+            WHERE successor.version > ${evaluationVersions.version}
+              AND successor.status IN ('active', 'frozen')
+          )`,
+        ),
+      )
+      .orderBy(desc(evaluationVersions.updatedAt))
+      .limit(100),
   ]);
   return {
     reports,
     disputes: openDisputes,
     proposals,
     flaggedRuns,
-    calibrationAlerts: latestEvaluation.filter(
-      (evaluation) => evaluation.status === "frozen",
-    ),
+    calibrationAlerts: latestEvaluation,
   };
 }
 

@@ -6,7 +6,10 @@ import { evaluationVersions } from "@/db/schema";
 import { appendAuditEvent } from "@/lib/data/audit";
 import { sha256Hex } from "@/lib/security/policy";
 import { canonicalJson } from "@/lib/security/canonical";
-import { callPinnedJudge } from "./provider";
+import {
+  callPinnedJudge,
+  judgeCalibrationDisposition,
+} from "./provider";
 import {
   createJudgeOutputSchema,
   evidenceSufficiencyConsensus,
@@ -53,7 +56,24 @@ export async function runJudgeCalibration() {
     .orderBy(desc(evaluationVersions.version))
     .limit(1);
   if (!evaluation) return { status: "no-active-evaluation" as const };
+  // Redundant at runtime (the query filters status) but load-bearing for the
+  // type system: it narrows evaluation.status for judgeCalibrationDisposition.
+  if (evaluation.status !== "draft" && evaluation.status !== "active") {
+    return { status: "no-active-evaluation" as const };
+  }
   try {
+  const disposition = judgeCalibrationDisposition({
+    modelVersion: evaluation.judgeModelVersion,
+    provider: evaluation.judgeProvider,
+    status: evaluation.status,
+  });
+  if (disposition === "freeze") {
+    await freezeEvaluation(evaluation.id, "mutable_model_alias", {
+      judgeModelVersion: evaluation.judgeModelVersion,
+      judgeProvider: evaluation.judgeProvider,
+    });
+    return { status: "frozen" as const, reason: "mutable_model_alias" as const };
+  }
   const objectKey = requiredValue("JUDGE_CALIBRATION_SET_OBJECT_KEY");
   const object = await env.UPLOADS.get(objectKey);
   if (!object) throw new CalibrationConfigurationError("set_missing");
@@ -96,6 +116,7 @@ export async function runJudgeCalibration() {
         maxTokens: evaluation.maxTokensPerSample,
         model: evaluation.judgeModelVersion,
         prompt,
+        provider: evaluation.judgeProvider,
         images: [],
       });
       outputs.push(outputSchema.parse(JSON.parse(response.content)));
@@ -137,19 +158,30 @@ export async function runJudgeCalibration() {
       meanAbsoluteDriftBps: driftBps,
     };
   }
-  const priorActiveIds =
-    evaluation.status === "draft"
-      ? await activateCalibratedDraft(evaluation.id)
-      : [];
+  const shouldActivate = disposition === "activate";
+  const priorActiveIds = shouldActivate
+    ? await activateCalibratedDraft(evaluation.id)
+    : [];
+  if (disposition === "candidate-only") {
+    await holdCalibratedCandidate(evaluation.id);
+  }
+  let action = "judge.calibration_candidate_passed";
+  let status: "activated" | "candidate-passed" | "passed" = "candidate-passed";
+  if (evaluation.status === "active") {
+    action = "judge.calibration_passed";
+    status = "passed";
+  } else if (shouldActivate) {
+    action = "judge.calibration_activated";
+    status = "activated";
+  }
   await appendAuditEvent({
     actorUserId: null,
     entityType: "evaluation-version",
     entityId: evaluation.id,
-    action:
-      evaluation.status === "draft"
-        ? "judge.calibration_activated"
-        : "judge.calibration_passed",
+    action,
     metadata: {
+      activationBlockedReason:
+        disposition === "candidate-only" ? "mutable_model_alias" : null,
       itemCount: set.items.length,
       meanAbsoluteDriftBps: driftBps,
       priorActiveIds,
@@ -157,7 +189,7 @@ export async function runJudgeCalibration() {
     },
   });
   return {
-    status: evaluation.status === "draft" ? ("activated" as const) : ("passed" as const),
+    status,
     meanAbsoluteDriftBps: driftBps,
   };
   } catch (error) {
@@ -170,6 +202,27 @@ export async function runJudgeCalibration() {
       status: "frozen" as const,
       reason: "calibration_execution_failed" as const,
     };
+  }
+}
+
+async function holdCalibratedCandidate(evaluationVersionId: string) {
+  const db = getDb();
+  await db
+    .update(evaluationVersions)
+    .set({ status: "candidate", updatedAt: new Date() })
+    .where(
+      and(
+        eq(evaluationVersions.id, evaluationVersionId),
+        eq(evaluationVersions.status, "draft"),
+      ),
+    );
+  const [held] = await db
+    .select({ status: evaluationVersions.status })
+    .from(evaluationVersions)
+    .where(eq(evaluationVersions.id, evaluationVersionId))
+    .limit(1);
+  if (held?.status !== "candidate") {
+    throw new CalibrationConfigurationError("candidate_hold_race");
   }
 }
 
@@ -221,12 +274,27 @@ async function freezeEvaluation(
   reason: string,
   metadata: Record<string, unknown>,
 ) {
+  // Only draft/active rows can freeze (the 0022 status-transition trigger
+  // makes candidate a terminal sink). The catch-all caller can reach this
+  // after holdCalibratedCandidate already parked the row as candidate — an
+  // unguarded UPDATE would then abort on the trigger and turn a recoverable
+  // error into an unhandled cron exception, and a "frozen" audit event would
+  // misdescribe a row that never froze.
   await getDb()
     .update(evaluationVersions)
     .set({ status: "frozen", updatedAt: new Date() })
     .where(
-      eq(evaluationVersions.id, evaluationVersionId),
+      and(
+        eq(evaluationVersions.id, evaluationVersionId),
+        inArray(evaluationVersions.status, ["draft", "active"]),
+      ),
     );
+  const [current] = await getDb()
+    .select({ status: evaluationVersions.status })
+    .from(evaluationVersions)
+    .where(eq(evaluationVersions.id, evaluationVersionId))
+    .limit(1);
+  if (current?.status !== "frozen") return;
   await appendAuditEvent({
     actorUserId: null,
     entityType: "evaluation-version",

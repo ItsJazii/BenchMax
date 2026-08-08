@@ -773,14 +773,16 @@ export const evaluationVersions = sqliteTable(
     maxTokensPerSample: integer("max_tokens_per_sample").notNull(),
     calibrationSetHash: text("calibration_set_hash").notNull(),
     driftThresholdBps: integer("drift_threshold_bps").notNull(),
-    status: text("status", { enum: ["draft", "active", "frozen", "retired"] })
+    status: text("status", {
+      enum: ["draft", "candidate", "active", "frozen", "retired"],
+    })
       .notNull()
       .default("draft"),
     ...timestamps,
   },
   (table) => [
     uniqueIndex("evaluation_versions_version_uidx").on(table.version),
-    uniqueIndex("evaluation_versions_prompt_hash_uidx").on(
+    index("evaluation_versions_prompt_hash_idx").on(
       table.promptTemplateHash,
       table.rubricProtocolVersion,
     ),
@@ -798,7 +800,7 @@ export const evaluationVersions = sqliteTable(
     ),
     check(
       "evaluation_versions_status_allowed",
-      sql`${table.status} IN ('draft', 'active', 'frozen', 'retired')`,
+      sql`${table.status} IN ('draft', 'candidate', 'active', 'frozen', 'retired')`,
     ),
   ],
 );

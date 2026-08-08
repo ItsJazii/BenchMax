@@ -142,6 +142,60 @@ test(
       );
       assert.equal(sweeps.disputeShowcaseJudgeStatus, "failed");
       assert.equal(sweeps.disputeRunStatus, "evaluation_failed");
+
+      // Judge-policy state machine against the same migrated database:
+      // candidate hold, candidate-sink exclusion, active-alias freeze,
+      // frozen-latest seed recovery, and the terminal immutability path.
+      const policyResponse = await worker.fetch(
+        "http://lifecycle.test/judge-policy",
+      );
+      const policy = await policyResponse.json();
+      assert.equal(policyResponse.status, 200, JSON.stringify(policy));
+      assert.equal(policy.seededDraftStatus, "draft");
+      assert.equal(policy.seededDraftModelVersion, "kimi-k3");
+      assert.equal(
+        policy.versionAfterReseed,
+        policy.versionAfterFirstSeed,
+        "identical non-frozen config re-seed must not mint a new version",
+      );
+      assert.equal(policy.candidateCalibration.status, "candidate-passed");
+      assert.equal(policy.heldCandidateStatus, "candidate");
+      assert.equal(
+        policy.postCandidateCalibration.status,
+        "frozen",
+        "second sweep must fall through to the older active version, not the candidate",
+      );
+      assert.equal(policy.candidateAfterSecondSweep, "candidate");
+      assert.deepEqual(policy.aliasCalibration, {
+        status: "frozen",
+        reason: "mutable_model_alias",
+      });
+      assert.equal(policy.frozenAliasStatus, "frozen");
+      assert.equal(
+        policy.recoveryDraftStatus,
+        "draft",
+        "re-seeding an identical config over a frozen latest version must mint a fresh draft",
+      );
+      assert.equal(policy.terminalErrorCode, "judge_model_not_immutable");
+      assert.equal(policy.immutabilityAuditRecorded, "judge.model_not_immutable");
+      assert.equal(
+        policy.providerErrorCode,
+        "judge_provider_not_supported",
+      );
+      assert.equal(
+        policy.providerErrorTerminal,
+        false,
+        "unsupported providers must pause for retry instead of failing terminally",
+      );
+      assert.equal(
+        policy.providerAuditRecorded,
+        "judge.provider_not_supported",
+      );
+      assert.deepEqual(
+        policy.moderationAlerts,
+        ["policy-active-alias"],
+        "the newest unsuperseded freeze must be the single calibration alert — not suppressed by newer candidates, not buried by older freezes",
+      );
     } finally {
       if (worker) await worker.stop();
       try {

@@ -2,7 +2,10 @@ import { z } from "zod";
 import { assertSafeProviderOrigin } from "@/lib/security/run-policy";
 
 export const JUDGE_PROVIDER_TIMEOUT_MS = 45_000;
+export const KIMI_K3_REASONING_EFFORT = "low" as const;
 export const MAX_JUDGE_PROVIDER_IMAGES = 16;
+
+export type JudgeProviderId = "moonshot" | "openai";
 
 const providerResponseSchema = z
   .object({
@@ -28,6 +31,7 @@ export type PinnedJudgeInput = {
   maxTokens: number;
   model: string;
   prompt: string;
+  provider: string;
 };
 
 type ProviderDependencies = {
@@ -39,6 +43,7 @@ type ProviderDependencies = {
 export function buildJudgeMessageContent(
   prompt: string,
   images: readonly string[],
+  provider = "openai",
 ) {
   if (images.length > MAX_JUDGE_PROVIDER_IMAGES) {
     throw new JudgeProviderContractError("judge_image_count_exceeded");
@@ -52,10 +57,104 @@ export function buildJudgeMessageContent(
     }
     content.push({
       type: "image_url",
-      image_url: { url: image, detail: "high" },
+      image_url: isMoonshotProvider(provider)
+        ? { url: image }
+        : { url: image, detail: "high" },
     });
   }
   return content;
+}
+
+export function buildPinnedJudgeRequest(input: PinnedJudgeInput) {
+  const provider = normalizeJudgeProvider(input.provider);
+  const content = buildJudgeMessageContent(
+    input.prompt,
+    input.images,
+    provider,
+  );
+  return buildPinnedChatCompletionRequest({
+    maxTokens: input.maxTokens,
+    messages: [{ role: "user", content }],
+    model: input.model,
+    provider,
+  });
+}
+
+export function buildPinnedChatCompletionRequest(input: {
+  maxTokens: number;
+  messages: readonly Record<string, unknown>[];
+  model: string;
+  provider: string;
+}) {
+  const provider = normalizeJudgeProvider(input.provider);
+  const request = {
+    model: input.model,
+    messages: input.messages,
+    response_format: { type: "json_object" },
+  };
+  if (provider === "moonshot") {
+    // Moonshot's OpenAI-compatible surface documents max_tokens (not the
+    // newer max_completion_tokens); an unrecognized cap param could leave
+    // calibration samples unbounded or fail the request outright.
+    return {
+      ...request,
+      max_tokens: input.maxTokens,
+      reasoning_effort: KIMI_K3_REASONING_EFFORT,
+    };
+  }
+  return {
+    ...request,
+    max_completion_tokens: input.maxTokens,
+    temperature: 0,
+  };
+}
+
+export function normalizeJudgeProvider(provider: string): JudgeProviderId {
+  const normalized = provider.trim().toLowerCase();
+  if (normalized === "moonshot" || normalized === "openai") {
+    return normalized;
+  }
+  throw new JudgeConfigurationError("judgeProvider");
+}
+
+export function hasImmutableJudgeModelVersion(
+  provider: string,
+  modelVersion: string,
+) {
+  normalizeJudgeProvider(provider);
+  const normalized = modelVersion.trim().toLowerCase();
+  if (/(?:^|[-_.])(?:auto|latest|preview)(?:$|[-_.])/.test(normalized)) {
+    return false;
+  }
+  return /(?:^|[-_.])(?:20\d{2}-\d{2}-\d{2}|20\d{6})$/.test(normalized);
+}
+
+export function assertLiveJudgeModelIsImmutable(
+  provider: string,
+  modelVersion: string,
+) {
+  if (!hasImmutableJudgeModelVersion(provider, modelVersion)) {
+    throw new JudgeConfigurationError("judgeModelVersion");
+  }
+}
+
+export function judgeCalibrationDisposition(input: {
+  modelVersion: string;
+  provider: string;
+  status: "active" | "draft";
+}) {
+  const provider = normalizeJudgeProvider(input.provider);
+  const modelVersion = input.modelVersion.trim().toLowerCase();
+  const immutable = hasImmutableJudgeModelVersion(provider, modelVersion);
+  if (immutable) return input.status === "active" ? "pass" : "activate";
+  if (provider === "moonshot" && modelVersion === "kimi-k3") {
+    return input.status === "active" ? "freeze" : "candidate-only";
+  }
+  throw new JudgeConfigurationError("judgeModelVersion");
+}
+
+function isMoonshotProvider(provider: string) {
+  return normalizeJudgeProvider(provider) === "moonshot";
 }
 
 export async function callPinnedJudge(
@@ -73,7 +172,7 @@ export async function callPinnedJudge(
     throw new JudgeConfigurationError("judgeProviderTimeoutMs");
   }
   const endpoint = new URL("/v1/chat/completions", origin);
-  const content = buildJudgeMessageContent(input.prompt, input.images);
+  const request = buildPinnedJudgeRequest(input);
   const signal = AbortSignal.timeout(timeoutMs);
   let response: Response;
   try {
@@ -83,13 +182,7 @@ export async function callPinnedJudge(
         Authorization: `Bearer ${dependencies.apiKey ?? requiredSecret("JUDGE_API_KEY")}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: input.model,
-        messages: [{ role: "user", content }],
-        max_completion_tokens: input.maxTokens,
-        temperature: 0,
-        response_format: { type: "json_object" },
-      }),
+      body: JSON.stringify(request),
       signal,
     });
   } catch (error) {

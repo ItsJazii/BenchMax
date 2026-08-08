@@ -28,9 +28,16 @@ import {
   type JudgeMediaArtifact,
 } from "../lib/judging/media-evidence";
 import {
+  assertLiveJudgeModelIsImmutable,
   buildJudgeMessageContent,
+  buildPinnedJudgeRequest,
   callPinnedJudge,
+  hasImmutableJudgeModelVersion,
+  judgeCalibrationDisposition,
+  JudgeConfigurationError,
   JudgeProviderTimeoutError,
+  KIMI_K3_REASONING_EFFORT,
+  normalizeJudgeProvider,
 } from "../lib/judging/provider";
 import { requiresJudgeSource } from "../lib/judging/rubric-draft";
 import {
@@ -537,6 +544,159 @@ test("judge media bounds video count and bytes before opening the sandbox", () =
   assert.equal(plan.manifest.omitted[0]?.reason, "count_limit");
 });
 
+test("Kimi K3 uses its fixed request policy and remains calibration-only", () => {
+  const image = "data:image/png;base64,AA==";
+  const request = buildPinnedJudgeRequest({
+    endpointOrigin: "https://api.moonshot.ai",
+    images: [image],
+    maxTokens: 1_000,
+    model: "kimi-k3",
+    prompt: "Return JSON.",
+    provider: "moonshot",
+  });
+  assert.deepEqual(request, {
+    max_tokens: 1_000,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Return JSON." },
+          { type: "image_url", image_url: { url: image } },
+        ],
+      },
+    ],
+    model: "kimi-k3",
+    reasoning_effort: KIMI_K3_REASONING_EFFORT,
+    response_format: { type: "json_object" },
+  });
+  const pinnedRequest = buildPinnedJudgeRequest({
+    endpointOrigin: "https://api.moonshot.ai",
+    images: [],
+    maxTokens: 1_000,
+    model: "kimi-k3-2026-08-07",
+    prompt: "Return JSON.",
+    provider: "Moonshot",
+  });
+  assert.equal(pinnedRequest.model, "kimi-k3-2026-08-07");
+  assert.equal(
+    "reasoning_effort" in pinnedRequest
+      ? pinnedRequest.reasoning_effort
+      : null,
+    KIMI_K3_REASONING_EFFORT,
+  );
+  assert.equal("temperature" in pinnedRequest, false);
+  assert.equal(normalizeJudgeProvider(" Moonshot "), "moonshot");
+  assert.equal(normalizeJudgeProvider(" OpenAI "), "openai");
+  for (const invalidProvider of ["moonshot-ai", "Moonshot AI"]) {
+    assert.throws(
+      () => normalizeJudgeProvider(invalidProvider),
+      (error: unknown) =>
+        error instanceof JudgeConfigurationError &&
+        error.key === "judgeProvider",
+    );
+  }
+  assert.throws(
+    () => normalizeJudgeProvider(""),
+    (error: unknown) =>
+      error instanceof JudgeConfigurationError && error.key === "judgeProvider",
+  );
+  assert.equal(hasImmutableJudgeModelVersion("moonshot", "kimi-k3"), false);
+  assert.equal(
+    hasImmutableJudgeModelVersion("openai", " KIMI-K3 "),
+    false,
+  );
+  assert.equal(
+    hasImmutableJudgeModelVersion("moonshot", "kimi-k3-2026-08-07"),
+    true,
+  );
+  assert.equal(
+    hasImmutableJudgeModelVersion("moonshot", "kimi-k3-latest"),
+    false,
+  );
+  assert.equal(
+    hasImmutableJudgeModelVersion("moonshot", "kimi-k3-2026-08-07-preview"),
+    false,
+  );
+  assert.equal(
+    hasImmutableJudgeModelVersion("openai", "generic-latest"),
+    false,
+  );
+  assert.throws(
+    () => assertLiveJudgeModelIsImmutable("moonshot", "kimi-k3"),
+    (error: unknown) =>
+      error instanceof JudgeConfigurationError &&
+      error.key === "judgeModelVersion",
+  );
+  assert.doesNotThrow(() =>
+    assertLiveJudgeModelIsImmutable("moonshot", "kimi-k3-2026-08-07"),
+  );
+  assert.equal(
+    judgeCalibrationDisposition({
+      modelVersion: "kimi-k3",
+      provider: "moonshot",
+      status: "draft",
+    }),
+    "candidate-only",
+  );
+  assert.equal(
+    judgeCalibrationDisposition({
+      modelVersion: "kimi-k3",
+      provider: "moonshot",
+      status: "active",
+    }),
+    "freeze",
+  );
+  assert.equal(
+    judgeCalibrationDisposition({
+      modelVersion: "generic-snapshot-2026-08-07",
+      provider: "openai",
+      status: "draft",
+    }),
+    "activate",
+  );
+  assert.throws(
+    () =>
+      judgeCalibrationDisposition({
+        modelVersion: "generic-latest",
+        provider: "openai",
+        status: "draft",
+      }),
+    (error: unknown) =>
+      error instanceof JudgeConfigurationError &&
+      error.key === "judgeModelVersion",
+  );
+});
+
+test("generic pinned judges retain deterministic temperature and image detail", () => {
+  const image = "data:image/png;base64,AA==";
+  const request = buildPinnedJudgeRequest({
+    endpointOrigin: "https://judge.example.com",
+    images: [image],
+    maxTokens: 100,
+    model: "immutable-snapshot",
+    prompt: "Return JSON.",
+    provider: "openai",
+  });
+  assert.deepEqual(request, {
+    max_completion_tokens: 100,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Return JSON." },
+          {
+            type: "image_url",
+            image_url: { url: image, detail: "high" },
+          },
+        ],
+      },
+    ],
+    model: "immutable-snapshot",
+    response_format: { type: "json_object" },
+    temperature: 0,
+  });
+});
+
 test("pinned judge provider timeout has a stable retryable pipeline code", async () => {
   const neverCompletes = (async (_input, init) =>
     new Promise<Response>((_resolve, reject) => {
@@ -558,6 +718,7 @@ test("pinned judge provider timeout has a stable retryable pipeline code", async
         maxTokens: 100,
         model: "pinned-snapshot",
         prompt: "Return JSON.",
+        provider: "openai",
       },
       { apiKey: "test-key", fetchImpl: neverCompletes, timeoutMs: 5 },
     ),
@@ -588,6 +749,7 @@ test("pinned judge provider sends the immutable snapshot ID as the model", async
       maxTokens: 100,
       model: "immutable-snapshot-2026-07-31",
       prompt: "Return JSON.",
+      provider: "openai",
     },
     { apiKey: "test-key", fetchImpl, timeoutMs: 1000 },
   );

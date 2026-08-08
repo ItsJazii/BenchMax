@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   benchmarkVersions,
@@ -19,6 +19,11 @@ import {
 } from "@/lib/domain/ranked-catalog";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
 import { assertSafeProviderOrigin } from "@/lib/security/run-policy";
+import {
+  judgeCalibrationDisposition,
+  JudgeConfigurationError,
+  normalizeJudgeProvider,
+} from "@/lib/judging/provider";
 
 const MODEL_FAMILIES = [
   ["openai", "OpenAI", "GPT"],
@@ -51,9 +56,41 @@ export class CatalogConfigurationError extends Error {
 export async function seedRankedCatalog() {
   const now = new Date();
   const db = getDb();
-  const judgeProvider = requiredRuntimeValue("JUDGE_PROVIDER");
+  let judgeProvider: string;
+  try {
+    judgeProvider = normalizeJudgeProvider(
+      requiredRuntimeValue("JUDGE_PROVIDER"),
+    );
+  } catch (error) {
+    if (
+      error instanceof JudgeConfigurationError &&
+      error.key === "judgeProvider"
+    ) {
+      throw new CatalogConfigurationError(
+        "JUDGE_PROVIDER must be moonshot or openai.",
+      );
+    }
+    throw error;
+  }
   const judgeModel = requiredRuntimeValue("JUDGE_MODEL");
   const judgeModelVersion = requiredRuntimeValue("JUDGE_MODEL_VERSION");
+  try {
+    judgeCalibrationDisposition({
+      modelVersion: judgeModelVersion,
+      provider: judgeProvider,
+      status: "draft",
+    });
+  } catch (error) {
+    if (
+      error instanceof JudgeConfigurationError &&
+      error.key === "judgeModelVersion"
+    ) {
+      throw new CatalogConfigurationError(
+        "JUDGE_MODEL_VERSION must be kimi-k3 for calibration or an immutable dated snapshot.",
+      );
+    }
+    throw error;
+  }
   const judgeEndpointOrigin = requiredHttpsOrigin("JUDGE_API_ORIGIN");
   const templateBuildHash = requiredSha256("E2B_TEMPLATE_BUILD_HASH");
   const calibrationSetHash = requiredSha256("JUDGE_CALIBRATION_SET_HASH");
@@ -212,27 +249,64 @@ export async function seedRankedCatalog() {
     .onConflictDoNothing();
 
   const promptTemplateHash = await canonicalSha256(JUDGE_PROTOCOL_TEMPLATE_V1);
-  await db
-    .insert(evaluationVersions)
-    .values({
-      id: "evaluation-version-1",
-      version: 1,
-      judgeProvider,
-      judgeModel,
-      judgeModelVersion,
-      endpointOrigin: judgeEndpointOrigin,
-      promptTemplate: JUDGE_PROTOCOL_TEMPLATE_V1,
-      promptTemplateHash,
-      rubricProtocolVersion: "benchmax-community-rubric-v1",
-      sampleCount: 3,
-      maxTokensPerSample: 4096,
-      calibrationSetHash,
-      driftThresholdBps: 750,
-      status: "draft",
-      createdAt: now,
-      updatedAt: now,
+  const rubricProtocolVersion = "benchmax-community-rubric-v1";
+  const [latestEvaluation] = await db
+    .select({
+      calibrationSetHash: evaluationVersions.calibrationSetHash,
+      driftThresholdBps: evaluationVersions.driftThresholdBps,
+      endpointOrigin: evaluationVersions.endpointOrigin,
+      judgeModel: evaluationVersions.judgeModel,
+      judgeModelVersion: evaluationVersions.judgeModelVersion,
+      judgeProvider: evaluationVersions.judgeProvider,
+      maxTokensPerSample: evaluationVersions.maxTokensPerSample,
+      promptTemplateHash: evaluationVersions.promptTemplateHash,
+      rubricProtocolVersion: evaluationVersions.rubricProtocolVersion,
+      status: evaluationVersions.status,
+      version: evaluationVersions.version,
     })
-    .onConflictDoNothing();
+    .from(evaluationVersions)
+    .orderBy(desc(evaluationVersions.version))
+    .limit(1);
+  // A frozen latest version never dedupes: freezes can be transient (a single
+  // provider timeout during calibration freezes the draft), and matching the
+  // frozen row would make re-seeding the identical, still-correct config a
+  // permanent no-op. Re-seeding after a freeze mints a fresh draft instead.
+  const evaluationUnchanged =
+    latestEvaluation !== undefined &&
+    latestEvaluation.status !== "frozen" &&
+    latestEvaluation.judgeProvider === judgeProvider &&
+    latestEvaluation.judgeModel === judgeModel &&
+    latestEvaluation.judgeModelVersion === judgeModelVersion &&
+    latestEvaluation.endpointOrigin === judgeEndpointOrigin &&
+    latestEvaluation.promptTemplateHash === promptTemplateHash &&
+    latestEvaluation.rubricProtocolVersion === rubricProtocolVersion &&
+    latestEvaluation.maxTokensPerSample === 4096 &&
+    latestEvaluation.calibrationSetHash === calibrationSetHash &&
+    latestEvaluation.driftThresholdBps === 750;
+  if (!evaluationUnchanged) {
+    const version = (latestEvaluation?.version ?? 0) + 1;
+    await db
+      .insert(evaluationVersions)
+      .values({
+        id: `evaluation-version-${version}`,
+        version,
+        judgeProvider,
+        judgeModel,
+        judgeModelVersion,
+        endpointOrigin: judgeEndpointOrigin,
+        promptTemplate: JUDGE_PROTOCOL_TEMPLATE_V1,
+        promptTemplateHash,
+        rubricProtocolVersion,
+        sampleCount: 3,
+        maxTokensPerSample: 4096,
+        calibrationSetHash,
+        driftThresholdBps: 750,
+        status: "draft",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing();
+  }
 
   const environmentHash = await canonicalSha256({
     evaluationPolicy: EVALUATION_ENVIRONMENT_V1,
@@ -289,28 +363,47 @@ export async function seedRankedCatalog() {
           checks: definition.checks,
           steps: definition.interactionSteps,
         }),
-        publishedAt: now,
+        // Published only AFTER the rubric dimensions exist: the 0014 seal
+        // blocks rubric_dimensions inserts once a version is published, so
+        // seeding a pre-published version can never attach its rubric.
+        publishedAt: null,
         createdAt: now,
         updatedAt: now,
       })
       .onConflictDoNothing();
-    for (const [index, dimension] of definition.rubric.entries()) {
+    const [versionState] = await db
+      .select({ publishedAt: benchmarkVersions.publishedAt })
+      .from(benchmarkVersions)
+      .where(eq(benchmarkVersions.id, definition.id))
+      .limit(1);
+    if (versionState?.publishedAt === null) {
+      for (const [index, dimension] of definition.rubric.entries()) {
+        await db
+          .insert(rubricDimensions)
+          .values({
+            id: `${definition.id}:${dimension.key}`,
+            benchmarkVersionId: definition.id,
+            key: dimension.key,
+            title: dimension.title,
+            description: dimension.title,
+            mechanism: dimension.mechanism,
+            weightBps: dimension.weightBps,
+            judgeSourceRequired: dimension.judgeSourceRequired,
+            ordinal: index + 1,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing();
+      }
       await db
-        .insert(rubricDimensions)
-        .values({
-          id: `${definition.id}:${dimension.key}`,
-          benchmarkVersionId: definition.id,
-          key: dimension.key,
-          title: dimension.title,
-          description: dimension.title,
-          mechanism: dimension.mechanism,
-          weightBps: dimension.weightBps,
-          judgeSourceRequired: dimension.judgeSourceRequired,
-          ordinal: index + 1,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoNothing();
+        .update(benchmarkVersions)
+        .set({ publishedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(benchmarkVersions.id, definition.id),
+            isNull(benchmarkVersions.publishedAt),
+          ),
+        );
     }
   }
 
@@ -319,10 +412,13 @@ export async function seedRankedCatalog() {
     db.select({ value: sql<number>`count(*)` }).from(models),
     db.select({ value: sql<number>`count(*)` }).from(harnesses),
   ]);
+  // Report the newest evaluation version: seeding mints numbered follow-up
+  // versions, so a hard-coded first-version lookup would describe a stale
+  // (possibly frozen) row instead of the configuration this run seeded.
   const [evaluation] = await db
     .select({ status: evaluationVersions.status })
     .from(evaluationVersions)
-    .where(eq(evaluationVersions.id, "evaluation-version-1"))
+    .orderBy(desc(evaluationVersions.version))
     .limit(1);
   return {
     benchmarkCount: Number(benchmarkCount?.value ?? 0),

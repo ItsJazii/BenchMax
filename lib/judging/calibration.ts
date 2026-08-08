@@ -193,11 +193,18 @@ export async function runJudgeCalibration() {
     meanAbsoluteDriftBps: driftBps,
   };
   } catch (error) {
-    await freezeEvaluation(
+    const freezeResult = await freezeEvaluation(
       evaluation.id,
       "calibration_execution_failed",
       { errorCode: calibrationErrorCode(error) },
     );
+    if (freezeResult.status === "failed-unfrozen") {
+      return {
+        status: "failed-unfrozen" as const,
+        reason: "calibration_execution_failed" as const,
+        evaluationStatus: freezeResult.evaluationStatus,
+      };
+    }
     return {
       status: "frozen" as const,
       reason: "calibration_execution_failed" as const,
@@ -294,7 +301,30 @@ async function freezeEvaluation(
     .from(evaluationVersions)
     .where(eq(evaluationVersions.id, evaluationVersionId))
     .limit(1);
-  if (current?.status !== "frozen") return;
+  if (current?.status !== "frozen") {
+    const unfrozenMetadata = {
+      reason,
+      ...metadata,
+      evaluationStatus: current?.status ?? "missing",
+    };
+    await appendAuditEvent({
+      actorUserId: null,
+      entityType: "evaluation-version",
+      entityId: evaluationVersionId,
+      action: "judge.calibration_failed_unfrozen",
+      metadata: unfrozenMetadata,
+    });
+    emitCriticalCalibrationAlert({
+      alert: "judge_calibration_failed_unfrozen",
+      evaluationVersionId,
+      metadata: unfrozenMetadata,
+      reason,
+    });
+    return {
+      status: "failed-unfrozen" as const,
+      evaluationStatus: current?.status ?? "missing",
+    };
+  }
   await appendAuditEvent({
     actorUserId: null,
     entityType: "evaluation-version",
@@ -303,13 +333,16 @@ async function freezeEvaluation(
     metadata: { reason, ...metadata },
   });
   emitCriticalCalibrationAlert({
+    alert: "judge_calibration_frozen",
     evaluationVersionId,
     metadata,
     reason,
   });
+  return { status: "frozen" as const };
 }
 
 function emitCriticalCalibrationAlert(input: {
+  alert: "judge_calibration_failed_unfrozen" | "judge_calibration_frozen";
   evaluationVersionId: string;
   metadata: Record<string, unknown>;
   reason: string;
@@ -319,7 +352,7 @@ function emitCriticalCalibrationAlert(input: {
   // alerting can route it without exposing judge or calibration material.
   console.error(
     canonicalJson({
-      alert: "judge_calibration_frozen",
+      alert: input.alert,
       evaluationVersionId: input.evaluationVersionId,
       metadata: input.metadata,
       reason: input.reason,

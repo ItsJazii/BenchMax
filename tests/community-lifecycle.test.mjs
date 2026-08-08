@@ -166,6 +166,25 @@ test(
         "second sweep must fall through to the older active version, not the candidate",
       );
       assert.equal(policy.candidateAfterSecondSweep, "candidate");
+      assert.deepEqual(policy.candidateErrorCalibration, {
+        status: "failed-unfrozen",
+        reason: "calibration_execution_failed",
+        evaluationStatus: "candidate",
+      });
+      assert.equal(policy.candidateErrorStatus, "candidate");
+      assert.equal(
+        policy.candidateErrorAuditAction,
+        "judge.calibration_failed_unfrozen",
+      );
+      assert.equal(
+        policy.candidateErrorAuditMetadata.evaluationStatus,
+        "candidate",
+      );
+      assert.equal(
+        policy.candidateErrorAuditMetadata.reason,
+        "calibration_execution_failed",
+      );
+      assert.equal(policy.candidateErrorCriticalAlertRecorded, true);
       assert.deepEqual(policy.aliasCalibration, {
         status: "frozen",
         reason: "mutable_model_alias",

@@ -2,6 +2,25 @@
 
 import { SignInButton, useAuth } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
+import { z } from "zod";
+
+const catalogSeedResponseSchema = z.object({
+  catalog: z
+    .object({
+      benchmarkCount: z.number().int().nonnegative(),
+      configurationCount: z.number().int().nonnegative(),
+      evaluationVersionStatus: z.string().min(1),
+      harnessCount: z.number().int().nonnegative(),
+      modelCount: z.number().int().nonnegative(),
+    })
+    .optional(),
+  error: z.string().optional(),
+});
+
+const calibrationStartResponseSchema = z.object({
+  calibration: z.object({ status: z.literal("started") }).optional(),
+  error: z.string().optional(),
+});
 
 type Operations = {
   generatedAt: string;
@@ -151,6 +170,67 @@ function ConfiguredOperationsDashboard() {
     }
   }
 
+  async function seedCatalog() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await authorizedFetch("/api/admin/catalog/seed", {
+        method: "POST",
+      });
+      const parsed = catalogSeedResponseSchema.safeParse(await response.json());
+      if (!response.ok) {
+        throw new Error(
+          parsed.success
+            ? parsed.data.error ?? "Could not seed the catalog."
+            : "Could not seed the catalog.",
+        );
+      }
+      if (!parsed.success || !parsed.data.catalog) {
+        throw new Error("The catalog seed response was invalid.");
+      }
+      await refresh();
+      const catalog = parsed.data.catalog;
+      setError(
+        `Catalog seeded: ${catalog.benchmarkCount} benchmarks, ${catalog.modelCount} models, ${catalog.harnessCount} harnesses, ${catalog.configurationCount} configurations; judge evaluation ${catalog.evaluationVersionStatus}.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Request failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runCalibration() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await authorizedFetch("/api/admin/judge/calibrate", {
+        method: "POST",
+      });
+      const parsed = calibrationStartResponseSchema.safeParse(
+        await response.json(),
+      );
+      if (!response.ok) {
+        throw new Error(
+          parsed.success
+            ? parsed.data.error ?? "Could not start judge calibration."
+            : "Could not start judge calibration.",
+        );
+      }
+      if (!parsed.success || !parsed.data.calibration) {
+        throw new Error("The judge calibration response was invalid.");
+      }
+      await refresh();
+      setError(
+        "Judge calibration started. Refresh to see its outcome in the audit trail and calibration alerts.",
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Request failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function resolveCatalogRequest(
     requestId: string,
     action: "approve" | "reject",
@@ -201,6 +281,12 @@ function ConfiguredOperationsDashboard() {
         <p>Snapshot {data.generatedAt}</p>
         <button className="button button-secondary" onClick={() => void refresh()} type="button">
           Refresh
+        </button>
+        <button className="button button-secondary" disabled={busy} onClick={() => void seedCatalog()} type="button">
+          Seed catalog
+        </button>
+        <button className="button button-secondary" disabled={busy} onClick={() => void runCalibration()} type="button">
+          Run calibration
         </button>
         <button className="button button-primary" disabled={busy} onClick={() => void createManifest()} type="button">
           {busy ? "Writing…" : "Write backup manifest"}

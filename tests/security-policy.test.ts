@@ -77,6 +77,33 @@ import {
 import { planLatestResultSupersession } from "../lib/ranking/result-supersession";
 import { declaredResultProvenance } from "../lib/domain/result-provenance";
 
+test("manual judge calibration stays owner-only, bounded, and reachable from operations", () => {
+  const routeSource = readFileSync(
+    new URL("../app/api/admin/judge/calibrate/route.ts", import.meta.url),
+    "utf8",
+  );
+  const operationsSource = readFileSync(
+    new URL("../app/operations/OperationsDashboard.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(routeSource, /requireAuthorizedUser\(request\)/);
+  assert.match(routeSource, /requireRole\(user, \["owner"\]\)/);
+  assert.match(routeSource, /action: "judge-calibration-manual"/);
+  assert.match(routeSource, /limit: 3/);
+  assert.match(routeSource, /getRequestExecutionContext\(\)/);
+  assert.match(routeSource, /executionContext\.waitUntil\(/);
+  const requestHandlerSource = routeSource.split(
+    "async function runManualCalibration",
+  )[0];
+  assert.doesNotMatch(requestHandlerSource, /await runJudgeCalibration\(\)/);
+  assert.match(routeSource, /status: 202/);
+  assert.match(operationsSource, /"\/api\/admin\/catalog\/seed"/);
+  assert.match(operationsSource, /"\/api\/admin\/judge\/calibrate"/);
+  assert.match(operationsSource, /catalogSeedResponseSchema\.safeParse/);
+  assert.doesNotMatch(operationsSource, /evaluationVersion:/);
+  assert.doesNotMatch(operationsSource, /evaluationStatus:/);
+});
+
 test("public result provenance explicitly marks every declared field unverified", () => {
   assert.deepEqual(declaredResultProvenance, {
     label: "Declared, unverified",

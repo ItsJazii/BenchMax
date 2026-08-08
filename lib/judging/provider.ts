@@ -5,6 +5,11 @@ export const JUDGE_PROVIDER_TIMEOUT_MS = 45_000;
 export const KIMI_K3_REASONING_EFFORT = "low" as const;
 export const MAX_JUDGE_PROVIDER_IMAGES = 16;
 
+const MOONSHOT_CALIBRATION_ONLY_MODEL_ALIASES = new Set([
+  "kimi-k2.7-code",
+  "kimi-k3",
+]);
+
 export type JudgeProviderId = "moonshot" | "openai";
 
 const providerResponseSchema = z
@@ -96,11 +101,16 @@ export function buildPinnedChatCompletionRequest(input: {
     // Moonshot's OpenAI-compatible surface documents max_tokens (not the
     // newer max_completion_tokens); an unrecognized cap param could leave
     // calibration samples unbounded or fail the request outright.
-    return {
+    const moonshotRequest = {
       ...request,
       max_tokens: input.maxTokens,
-      reasoning_effort: KIMI_K3_REASONING_EFFORT,
     };
+    return /^kimi-k3(?:$|[-_.])/i.test(input.model.trim())
+      ? {
+          ...moonshotRequest,
+          reasoning_effort: KIMI_K3_REASONING_EFFORT,
+        }
+      : moonshotRequest;
   }
   return {
     ...request,
@@ -147,7 +157,10 @@ export function judgeCalibrationDisposition(input: {
   const modelVersion = input.modelVersion.trim().toLowerCase();
   const immutable = hasImmutableJudgeModelVersion(provider, modelVersion);
   if (immutable) return input.status === "active" ? "pass" : "activate";
-  if (provider === "moonshot" && modelVersion === "kimi-k3") {
+  if (
+    provider === "moonshot" &&
+    MOONSHOT_CALIBRATION_ONLY_MODEL_ALIASES.has(modelVersion)
+  ) {
     return input.status === "active" ? "freeze" : "candidate-only";
   }
   throw new JudgeConfigurationError("judgeModelVersion");

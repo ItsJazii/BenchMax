@@ -86,7 +86,7 @@ export async function seedRankedCatalog() {
       error.key === "judgeModelVersion"
     ) {
       throw new CatalogConfigurationError(
-        "JUDGE_MODEL_VERSION must be kimi-k3 for calibration or an immutable dated snapshot.",
+        "JUDGE_MODEL_VERSION must be a supported Moonshot calibration alias (kimi-k2.7-code or kimi-k3) or an immutable dated snapshot.",
       );
     }
     throw error;

@@ -544,7 +544,7 @@ test("judge media bounds video count and bytes before opening the sandbox", () =
   assert.equal(plan.manifest.omitted[0]?.reason, "count_limit");
 });
 
-test("Kimi K3 uses its fixed request policy and remains calibration-only", () => {
+test("Moonshot aliases use the fixed request policy and remain calibration-only", () => {
   const image = "data:image/png;base64,AA==";
   const request = buildPinnedJudgeRequest({
     endpointOrigin: "https://api.moonshot.ai",
@@ -585,6 +585,17 @@ test("Kimi K3 uses its fixed request policy and remains calibration-only", () =>
     KIMI_K3_REASONING_EFFORT,
   );
   assert.equal("temperature" in pinnedRequest, false);
+  const k2Request = buildPinnedJudgeRequest({
+    endpointOrigin: "https://api.moonshot.ai",
+    images: [],
+    maxTokens: 1_000,
+    model: "kimi-k2.7-code",
+    prompt: "Return JSON.",
+    provider: "moonshot",
+  });
+  assert.equal(k2Request.model, "kimi-k2.7-code");
+  assert.equal("reasoning_effort" in k2Request, false);
+  assert.equal("temperature" in k2Request, false);
   assert.equal(normalizeJudgeProvider(" Moonshot "), "moonshot");
   assert.equal(normalizeJudgeProvider(" OpenAI "), "openai");
   for (const invalidProvider of ["moonshot-ai", "Moonshot AI"]) {
@@ -601,6 +612,10 @@ test("Kimi K3 uses its fixed request policy and remains calibration-only", () =>
       error instanceof JudgeConfigurationError && error.key === "judgeProvider",
   );
   assert.equal(hasImmutableJudgeModelVersion("moonshot", "kimi-k3"), false);
+  assert.equal(
+    hasImmutableJudgeModelVersion("moonshot", "kimi-k2.7-code"),
+    false,
+  );
   assert.equal(
     hasImmutableJudgeModelVersion("openai", " KIMI-K3 "),
     false,
@@ -629,6 +644,22 @@ test("Kimi K3 uses its fixed request policy and remains calibration-only", () =>
   );
   assert.doesNotThrow(() =>
     assertLiveJudgeModelIsImmutable("moonshot", "kimi-k3-2026-08-07"),
+  );
+  assert.equal(
+    judgeCalibrationDisposition({
+      modelVersion: "kimi-k2.7-code",
+      provider: "moonshot",
+      status: "draft",
+    }),
+    "candidate-only",
+  );
+  assert.equal(
+    judgeCalibrationDisposition({
+      modelVersion: "kimi-k2.7-code",
+      provider: "moonshot",
+      status: "active",
+    }),
+    "freeze",
   );
   assert.equal(
     judgeCalibrationDisposition({

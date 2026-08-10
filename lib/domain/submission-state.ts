@@ -11,17 +11,19 @@ export type SubmissionStateInput = {
 
 export type SubmissionState = {
   code:
-    | "draft"
-    | "safety_review"
-    | "blocked"
-    | "public_pending_review"
-    | "public_review_delayed"
-    | "public_review_failed"
-    | "public_ranked"
-    | "public_not_ranked"
-    | "rejected"
-    | "removed";
-  label: string;
+    | "processing"
+    | "processing_failed"
+    | "awaiting_review"
+    | "reviewed"
+    | "ranked"
+    | "blocked";
+  label:
+    | "Processing"
+    | "Processing failed"
+    | "Awaiting review"
+    | "Reviewed"
+    | "Ranked"
+    | "Blocked";
   detail: string;
   tone: "approved" | "blocked" | "neutral" | "pending";
   publicVisible: boolean;
@@ -29,142 +31,90 @@ export type SubmissionState = {
   blockedReason: string | null;
 };
 
-const rankingReasons: Record<string, string> = {
-  catalog_pending:
-    "The declared model, model version, or harness is still waiting for catalog review.",
-  insufficient_evidence:
-    "The uploaded evidence is public, but it is not sufficient for the AI judge to rank reliably.",
-  moderation_hold:
-    "A moderation review is open. The result stays public but is excluded from rankings.",
-  superseded:
-    "A newer eligible submission for the same test and configuration is used in rankings.",
-  ineligible:
-    "This result does not meet the published ranking eligibility rules.",
-  pending:
-    "The AI review finished, but the leaderboard snapshot has not included this result yet.",
-};
-
 export function computeSubmissionState(
   input: SubmissionStateInput,
 ): SubmissionState {
   if (input.showcaseStatus === "removed") {
     return state(
-      "removed",
-      "Removed",
-      "This submission is no longer public.",
+      "blocked",
+      "Blocked",
+      "This Test is no longer public.",
       "blocked",
       false,
       false,
-      "The submission was removed by moderation.",
+      "The Test was removed by moderation.",
     );
   }
   if (input.showcaseStatus === "rejected") {
     return state(
-      "rejected",
-      "Rejected",
-      "This submission was not published.",
+      "blocked",
+      "Blocked",
+      "This Test was not published.",
       "blocked",
       false,
       false,
-      "The submission did not pass publication review.",
+      "The Test did not pass publication review.",
     );
   }
   if (input.showcaseStatus === "draft") {
     if (input.safetyStatus === "blocked") {
       return state(
         "blocked",
-        "Blocked before publication",
-        "The evidence did not pass the safety scan.",
+        "Blocked",
+        "This Test is private because its evidence did not pass the safety scan.",
         "blocked",
         false,
         false,
         "At least one uploaded artifact was blocked by the safety scan.",
       );
     }
-    if (input.safetyStatus === "pending" || input.safetyStatus === "scanning") {
+    if (input.failureCode || input.failureSummary) {
       return state(
-        "safety_review",
-        "Draft — checking evidence",
-        "Uploads must pass the safety scan before this result can be published.",
-        "pending",
+        "processing_failed",
+        "Processing failed",
+        "Evidence processing did not finish. Retry the failed processing step.",
+        "blocked",
         false,
         false,
-        null,
+        processingFailureReason(input),
       );
     }
     return state(
-      "draft",
-      "Draft — ready to publish",
-      "The evidence is approved. Publish when the submission details are ready.",
-      "neutral",
+      "processing",
+      "Processing",
+      input.safetyStatus === "approved"
+        ? "Evidence is approved and publication is finishing."
+        : "Evidence is being checked before this Test becomes public.",
+      "pending",
       false,
       false,
       null,
     );
   }
 
-  const publicVisible = input.showcaseStatus === "published";
-  if (!publicVisible || input.safetyStatus !== "approved") {
+  const publicVisible =
+    input.showcaseStatus === "published" && input.safetyStatus === "approved";
+  if (!publicVisible) {
     return state(
       "blocked",
-      "Publication blocked",
-      "This result cannot be shown until its publication and safety gates agree.",
+      "Blocked",
+      "This Test cannot be shown because its publication and safety states disagree.",
       "blocked",
       false,
       false,
-      "The result is not both published and safety-approved.",
+      "The Test is not both published and safety-approved.",
     );
   }
 
   if (input.rank !== null && input.rank > 0) {
     return state(
-      "public_ranked",
-      `Public — ranked #${input.rank}`,
-      "The result is included in the current published leaderboard snapshot.",
+      "ranked",
+      "Ranked",
+      `This Test is ranked #${input.rank} in the current leaderboard.`,
       "approved",
       true,
       true,
       null,
-    );
-  }
-
-  if (input.runStatus === "disqualified") {
-    return state(
-      "public_not_ranked",
-      "Public — not ranked",
-      "The evidence remains visible, but this run was disqualified from rankings.",
-      "blocked",
-      true,
-      false,
-      "The AI-review run was disqualified from rankings.",
-    );
-  }
-
-  if (
-    input.judgeStatus === "failed" ||
-    input.runStatus === "evaluation_failed"
-  ) {
-    const reason = reviewFailureReason(input);
-    return state(
-      "public_review_failed",
-      "Public — AI review failed",
-      "The submitted evidence remains visible. Operations can retry the AI review.",
-      "blocked",
-      true,
-      false,
-      reason,
-    );
-  }
-
-  if (input.judgeStatus === "overdue") {
-    return state(
-      "public_review_delayed",
-      "Public — AI review delayed",
-      "The result remains visible while review continues beyond the 24-hour target.",
-      "pending",
-      true,
-      false,
-      "The AI review has exceeded the 24-hour target and has not produced a rank yet.",
     );
   }
 
@@ -174,39 +124,34 @@ export function computeSubmissionState(
     input.runStatus === "scored" ||
     input.runStatus === "published"
   ) {
-    const reason =
-      rankingReasons[input.rankingStatus] ??
-      "The result was scored but is not present in the current published leaderboard snapshot.";
     return state(
-      "public_not_ranked",
-      "Public — scored, not ranked",
-      reason,
-      input.rankingStatus === "pending" ? "pending" : "neutral",
+      "reviewed",
+      "Reviewed",
+      "This Test has a completed review but is not currently ranked.",
+      "neutral",
       true,
       false,
-      reason,
+      null,
     );
   }
 
   return state(
-    "public_pending_review",
-    "Public — pending AI review",
-    "The result is already visible. AI judging and ranking may take up to 24 hours.",
+    "awaiting_review",
+    "Awaiting review",
+    "This Test is safe and public. Reviews and ranking can be added later.",
     "pending",
     true,
     false,
-    input.judgeStatus === "not_queued"
-      ? "The result is waiting for available AI-review capacity."
-      : null,
+    null,
   );
 }
 
-function reviewFailureReason(input: SubmissionStateInput) {
+function processingFailureReason(input: SubmissionStateInput) {
   if (input.failureSummary?.trim()) return input.failureSummary.trim();
   if (input.failureCode?.trim()) {
-    return `The AI review stopped with ${humanize(input.failureCode)}.`;
+    return `Processing stopped with ${humanize(input.failureCode)}.`;
   }
-  return "The AI review did not complete successfully.";
+  return "Evidence processing did not complete successfully.";
 }
 
 function humanize(value: string) {
@@ -215,7 +160,7 @@ function humanize(value: string) {
 
 function state(
   code: SubmissionState["code"],
-  label: string,
+  label: SubmissionState["label"],
   detail: string,
   tone: SubmissionState["tone"],
   publicVisible: boolean,

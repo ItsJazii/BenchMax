@@ -42,7 +42,6 @@ import {
 import { publicResultStatus } from "@/lib/domain/result-status";
 import { hasApprovedPublicResultEvidence } from "@/lib/domain/result-evidence";
 import { declaredResultProvenance } from "@/lib/domain/result-provenance";
-import { assertSubmissionUsesFrozenTestPrompt } from "@/lib/domain/community-test-versioning";
 import { getCurrentPublishedResultEvaluation } from "@/lib/data/results";
 import { buildResultArtifactUrl } from "@/lib/security/usercontent";
 
@@ -59,12 +58,16 @@ export class SensitiveContentError extends Error {
 
 export async function createShowcaseDraft(
   ownerId: string,
-  input: z.infer<typeof showcaseDraftSchema>,
+  input: z.input<typeof showcaseDraftSchema>,
 ) {
   const parsed = showcaseDraftSchema.parse(input);
+  const title = parsed.title ?? `${parsed.modelLabel} model test`;
+  const summary =
+    parsed.summary ??
+    "A contributor-submitted test with no additional notes.";
   const combinedText = [
-    parsed.title,
-    parsed.summary,
+    title,
+    summary,
     parsed.prompt,
     parsed.systemPrompt,
   ].join("\n");
@@ -76,26 +79,8 @@ export async function createShowcaseDraft(
 
   const now = new Date();
   const id = crypto.randomUUID();
-  const slug = `${slugify(parsed.title)}-${id.slice(0, 8)}`;
-  const [benchmarkVersion, modelVersion, harness] = await Promise.all([
-    getDb()
-      .select({
-        id: benchmarkVersions.id,
-        category: benchmarkVersions.category,
-        canonicalPrompt: benchmarkVersions.canonicalPrompt,
-      })
-      .from(benchmarkVersions)
-      .innerJoin(
-        benchmarks,
-        eq(benchmarks.id, benchmarkVersions.benchmarkId),
-      )
-      .where(
-        and(
-          eq(benchmarkVersions.id, parsed.benchmarkVersionId),
-          sql`${benchmarkVersions.publishedAt} IS NOT NULL`,
-        ),
-      )
-      .limit(1),
+  const slug = `${slugify(title)}-${id.slice(0, 8)}`;
+  const [modelVersion, harness] = await Promise.all([
     parsed.modelVersionId
       ? getDb()
           .select({
@@ -120,13 +105,6 @@ export async function createShowcaseDraft(
           .limit(1)
       : Promise.resolve([]),
   ]);
-  if (!benchmarkVersion[0]) {
-    throw new ShowcaseNotPublishableError("Choose a published test version.");
-  }
-  assertSubmissionUsesFrozenTestPrompt(
-    parsed.prompt,
-    benchmarkVersion[0].canonicalPrompt,
-  );
   const canonicalModelVersion =
     modelVersion[0]?.versionLabel !== "Unspecified" &&
     modelVersion[0]?.versionLabel === parsed.modelVersionLabel &&
@@ -246,11 +224,12 @@ export async function createShowcaseDraft(
       id,
       ownerId,
       slug,
-      title: parsed.title,
-      summary: parsed.summary,
-      category: benchmarkVersion[0].category,
-      benchmarkVersionId: benchmarkVersion[0].id,
+      title,
+      summary,
+      category: parsed.category,
+      benchmarkVersionId: null,
       resultConfigurationId: configurationId,
+      modelVersionId: canonicalModelVersion?.id ?? null,
       modelLabel: parsed.modelLabel,
       harness: harnessLabel,
       reasoningLevel: parsed.reasoningLevel,
@@ -272,15 +251,23 @@ export async function createShowcaseDraft(
   return showcase;
 }
 
-type PublicShowcasePageOptions = {
+export type PublicShowcasePageOptions = {
   category?: string;
   contributor?: string;
+  harness?: string;
   limit?: number;
   model?: string;
+  modelExact?: string;
   offset?: number;
   q?: string;
   reasoning?: string;
-  status?: "delayed" | "not-ranked" | "pending" | "ranked";
+  status?:
+    | "awaiting-review"
+    | "delayed"
+    | "not-ranked"
+    | "pending"
+    | "ranked"
+    | "reviewed";
 };
 
 export async function listPublicShowcasesPage(
@@ -304,7 +291,9 @@ export async function listPublicShowcasesPage(
   ];
   const category = options.category?.trim();
   const contributor = containsNeedle(options.contributor);
+  const harness = containsNeedle(options.harness);
   const model = containsNeedle(options.model);
+  const modelExact = options.modelExact?.trim().toLowerCase();
   const query = containsNeedle(options.q);
   const reasoning = options.reasoning?.trim().toLowerCase();
   if (category) conditions.push(sql`${showcases.category} = ${category}`);
@@ -316,6 +305,12 @@ export async function listPublicShowcasesPage(
       instr(lower(${showcases.modelLabel}), ${model}) > 0
       OR instr(lower(${resultConfigurations.modelVersionLabel}), ${model}) > 0
     )`);
+  }
+  if (modelExact) {
+    conditions.push(sql`lower(${showcases.modelLabel}) = ${modelExact}`);
+  }
+  if (harness) {
+    conditions.push(sql`instr(lower(${showcases.harness}), ${harness}) > 0`);
   }
   if (reasoning) {
     conditions.push(sql`lower(${showcases.reasoningLevel}) = ${reasoning}`);
@@ -332,12 +327,11 @@ export async function listPublicShowcasesPage(
   }
   if (options.status === "ranked") {
     conditions.push(publishedRankExists);
-  } else if (options.status === "delayed") {
-    conditions.push(
-      sql`NOT ${publishedRankExists}`,
-      eq(showcases.judgeStatus, "overdue"),
-    );
-  } else if (options.status === "pending") {
+  } else if (
+    options.status === "awaiting-review" ||
+    options.status === "delayed" ||
+    options.status === "pending"
+  ) {
     conditions.push(
       sql`NOT ${publishedRankExists}`,
       inArray(showcases.judgeStatus, [
@@ -345,12 +339,17 @@ export async function listPublicShowcasesPage(
         "queued",
         "evaluating",
         "judging",
+        "overdue",
+        "failed",
       ]),
     );
-  } else if (options.status === "not-ranked") {
+  } else if (
+    options.status === "not-ranked" ||
+    options.status === "reviewed"
+  ) {
     conditions.push(
       sql`NOT ${publishedRankExists}`,
-      inArray(showcases.judgeStatus, ["scored", "unranked", "failed"]),
+      inArray(showcases.judgeStatus, ["scored", "unranked"]),
     );
   }
   const rows = await getDb()
@@ -393,7 +392,7 @@ export async function listPublicShowcasesPage(
     })
     .from(showcases)
     .innerJoin(users, eq(showcases.ownerId, users.id))
-    .innerJoin(
+    .leftJoin(
       resultConfigurations,
       eq(resultConfigurations.id, showcases.resultConfigurationId),
     )
@@ -418,7 +417,7 @@ export async function listPublicShowcasesPage(
         currentEvaluationVersion: currentEvaluation?.version ?? null,
         provenance: declaredResultProvenance,
         statusLabel: historicalEvaluation
-          ? "Scored — not ranked (historical evaluation)"
+          ? "Reviewed"
           : publicResultStatus(row),
       };
     }),
@@ -487,6 +486,28 @@ export async function listPublicShowcaseCards(limit = 24) {
   return page.items;
 }
 
+export async function listPublicDeclaredModels() {
+  const rows = await getDb()
+    .select({
+      label: showcases.modelLabel,
+      testCount: sql<number>`count(*)`,
+      latestPublishedAt: sql<Date | null>`max(${showcases.publishedAt})`,
+    })
+    .from(showcases)
+    .where(
+      and(
+        eq(showcases.status, "published"),
+        eq(showcases.safetyStatus, "approved"),
+      ),
+    )
+    .groupBy(showcases.modelLabel)
+    .orderBy(desc(sql`count(*)`), showcases.modelLabel);
+  return rows.map((row) => ({
+    ...row,
+    testCount: Number(row.testCount),
+  }));
+}
+
 function containsNeedle(value: string | undefined) {
   const normalized = value?.trim().toLowerCase();
   return normalized || null;
@@ -544,15 +565,15 @@ export async function getPublicShowcaseBySlug(slug: string) {
     })
     .from(showcases)
     .innerJoin(users, eq(showcases.ownerId, users.id))
-    .innerJoin(
+    .leftJoin(
       resultConfigurations,
       eq(resultConfigurations.id, showcases.resultConfigurationId),
     )
-    .innerJoin(
+    .leftJoin(
       benchmarkVersions,
       eq(benchmarkVersions.id, showcases.benchmarkVersionId),
     )
-    .innerJoin(benchmarks, eq(benchmarks.id, benchmarkVersions.benchmarkId))
+    .leftJoin(benchmarks, eq(benchmarks.id, benchmarkVersions.benchmarkId))
     .leftJoin(runs, eq(runs.showcaseId, showcases.id))
     .leftJoin(
       evaluationVersions,
@@ -625,7 +646,7 @@ export async function getPublicShowcaseBySlug(slug: string) {
   void _runId;
   return {
     ...publicRow,
-    declaredSettings: JSON.parse(declaredSettingsJson) as unknown,
+    declaredSettings: JSON.parse(declaredSettingsJson ?? "{}") as unknown,
     provenance: declaredResultProvenance,
     evaluation:
       evaluationVersion === null
@@ -646,7 +667,7 @@ export async function getPublicShowcaseBySlug(slug: string) {
       row.scoreBps !== null &&
       evaluationVersion !== null &&
       evaluationVersion !== currentEvaluation?.version
-        ? `Scored — not ranked (historical evaluation v${evaluationVersion})`
+        ? "Reviewed"
         : publicResultStatus(row),
     artifacts: artifactRows.filter(
       (artifact) =>
@@ -864,8 +885,8 @@ export async function publishShowcase(id: string, ownerId: string) {
     .set({
       status: "published",
       safetyStatus: "approved",
-      judgeStatus: "queued",
-      judgeDueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      judgeStatus: "not_queued",
+      judgeDueAt: null,
       publishedAt: new Date(),
       updatedAt: new Date(),
     })

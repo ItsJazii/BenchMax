@@ -9,15 +9,15 @@ export function SiteFooter() {
             <span className="brand-mark">B/</span>
             <span>BENCHMAX</span>
           </Link>
-          <p>Real tests. Inspectable evidence. Rankings that earn trust.</p>
+          <p>Public AI Tests with inspectable prompts, setup, and evidence.</p>
         </div>
         <div className="footer-links">
           <div>
             <span>PRODUCT</span>
-            <Link href="/explore">Explore</Link>
-            <Link href="/tests">Tests</Link>
+            <Link href="/tests">All Tests</Link>
+            <Link href="/models">Models</Link>
             <Link href="/leaderboards">Leaderboards</Link>
-            <Link href="/submit">Submit result</Link>
+            <Link href="/submit">Submit Test</Link>
           </div>
           <div>
             <span>TRUST</span>
@@ -31,7 +31,7 @@ export function SiteFooter() {
       </div>
       <div className="footer-base section-wrap">
         <span>© 2026 Benchmax</span>
-        <span>Public methodology · community results v1</span>
+        <span>Community Tests · declared setup · inspectable evidence</span>
       </div>
     </footer>
   );

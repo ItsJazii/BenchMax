@@ -159,52 +159,99 @@ function assertSecurityHeaders(response, defaultSource = "'self'") {
   assert.equal(response.headers.get("x-frame-options"), "DENY");
 }
 
-test("server-renders the Benchmax public home with the publication and judge states visible", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-  assertSecurityHeaders(response);
-
-  const html = await response.text();
-  assert.match(html, /<title>Benchmax[^<]*<\/title>/i);
-  assert.match(html, /Share what a model/);
-  assert.match(html, /actually produced/);
-  assert.match(html, /Visible before ranking/);
-  assert.match(html, /Publish first\. Judge carefully/);
-  assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton/);
+test("root and /tests server-render the All Tests public feed", async () => {
+  const [home, testsPage] = await Promise.all([render(), render("/tests")]);
+  for (const response of [home, testsPage]) {
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+    assertSecurityHeaders(response);
+    const html = await response.text();
+    assert.match(html, /<title>(?:All Tests[^<]*|Benchmax[^<]*)<\/title>/i);
+    assert.match(html, /ALL TESTS/i);
+    assert.match(html, /See what people tested and what the model produced/i);
+    assert.match(html, /Safe Tests appear here as Awaiting review/i);
+    assert.doesNotMatch(html, /Your site is taking shape|react-loading-skeleton/);
+  }
 });
 
-test("public trust copy states declared provenance and best-of-N risk", async () => {
-  const [leaderboards, methodology, models] = await Promise.all([
-    render("/leaderboards"),
-    render("/methodology"),
-    render("/models"),
-  ]);
-  for (const response of [leaderboards, methodology, models]) {
-    assert.equal(response.status, 200);
-    assertSecurityHeaders(response);
+test("Submit Test renders the free-text setup and publish-before-review flow", async () => {
+  const response = await render("/submit");
+  assert.equal(response.status, 200);
+  assertSecurityHeaders(response);
+  const html = await response.text();
+  const wizardAsset = html.match(
+    /href="(\/assets\/UploadWizard-[^"]+\.js)"/i,
+  )?.[1];
+  assert.ok(wizardAsset, "Submit Test must ship the upload wizard client bundle.");
+  const wizardResponse = await fetch(`${baseUrl}${wizardAsset}`);
+  assert.equal(wizardResponse.status, 200);
+  const shippedSubmitSurface = `${html}\n${await wizardResponse.text()}`;
+  for (const phrase of [
+    "Prompt",
+    "Model family",
+    "Exact model version",
+    "Harness or tool",
+    "Reasoning",
+  ]) {
+    assert.match(shippedSubmitSurface, new RegExp(phrase, "i"));
   }
-  assert.match(await leaderboards.text(), /declared, unverified/i);
-  const methodologyHtml = await methodology.text();
-  assert.match(methodologyHtml, /declared,\s*(?:<!-- -->)?\s*unverified/i);
-  assert.match(methodologyHtml, /best-of-N cherry-picking/i);
-  assert.match(await models.text(), /declared, unverified/i);
+  assert.match(html, /Safe Tests publish as\s*(?:<!-- -->)?\s*Awaiting review/i);
+  assert.match(
+    shippedSubmitSurface,
+    /Your safe Test appears immediately as Awaiting review/i,
+  );
+});
+
+test("Models groups declared names and fails honestly when the catalog is empty", async () => {
+  const response = await render("/models");
+  assert.equal(response.status, 200);
+  assertSecurityHeaders(response);
+  const html = await response.text();
+  assert.match(html, /Tests grouped by declared model/i);
+  assert.match(html, /not independently verified/i);
+  assert.match(
+    html,
+    /No public Tests yet|Models are temporarily unavailable/i,
+  );
+  assert.doesNotMatch(
+    html,
+    /Opus 4\.6|GPT coding model|@maya|@niko|2h ago|Yesterday/,
+  );
+});
+
+test("Leaderboards ships an honest no-ranking-yet state", async () => {
+  const response = await render("/leaderboards");
+  assert.equal(response.status, 200);
+  assertSecurityHeaders(response);
+  const html = await response.text();
+  assert.match(html, /Rankings come after trustworthy reviews/i);
+  assert.match(html, /No ranked Tests yet/i);
+  assert.match(html, /top-rated submissions across different prompts/i);
+  assert.match(html, /not a scientific like-for-like model benchmark/i);
+});
+
+test("Methodology states the safety, enrichment, and additive-review contract", async () => {
+  const response = await render("/methodology");
+  assert.equal(response.status, 200);
+  assertSecurityHeaders(response);
+  const html = await response.text();
+  assert.match(html, /Mandatory evidence checks happen before publication/i);
+  assert.match(html, /A safe Test becomes public as Awaiting review/i);
+  assert.match(html, /Compatible source ZIPs receive non-blocking enrichment/i);
+  assert.match(html, /Enrichment failure never removes the Test/i);
+  assert.match(html, /Reviews add context without changing the submission/i);
+  assert.match(html, /Declared by contributor\s*(?:<!-- -->)?\s*—\s*(?:<!-- -->)?\s*not independently verified/i);
 });
 
 for (const [path, phrase] of [
-  ["/explore", "Every submitted result stays visible"],
-  ["/tests", "Add the tests that matter"],
-  ["/benchmarks", "Add the tests that matter"],
-  ["/models", "A model name is not a configuration"],
-  ["/methodology", "Evidence first. Ranking second"],
-  ["/submit", "Put your model test result on the record"],
-  ["/upload", "Put your model test result on the record"],
+  ["/tests", "See what people tested"],
+  ["/models", "Tests grouped by declared model"],
+  ["/methodology", "Publish the evidence. Review it later"],
+  ["/submit", "Share the Test you ran"],
   ["/security", "Untrusted by default"],
   ["/report", "Report unsafe or dishonest content"],
-  ["/leaderboards", "One leaderboard per test"],
-  ["/compare", "One leaderboard per test"],
-  ["/run", "Put your model test result on the record"],
-  ["/dashboard", "Your tests and submitted results"],
+  ["/leaderboards", "Rankings come after trustworthy reviews"],
+  ["/dashboard", "Your Tests"],
   ["/terms", "Rights before reach"],
   ["/privacy", "Public evidence, minimal account data"],
   ["/proposals/new", "Propose the next benchmark"],
@@ -220,39 +267,42 @@ for (const [path, phrase] of [
   });
 }
 
-test("empty public catalogs never render fabricated evidence or launch counts", async () => {
-  const [home, explore, models, testsPage] = await Promise.all([
+test("empty public feed never renders fabricated evidence or legacy workflow copy", async () => {
+  const [home, models, testsPage, submit, methodology] = await Promise.all([
     render("/"),
-    render("/explore"),
     render("/models"),
     render("/tests"),
+    render("/submit"),
+    render("/methodology"),
   ]);
-  for (const response of [home, explore, models, testsPage]) {
+  for (const response of [home, models, testsPage, submit, methodology]) {
     assert.equal(response.status, 200);
     assertSecurityHeaders(response);
   }
 
   const homeHtml = await home.text();
-  const exploreHtml = await explore.text();
   const modelsHtml = await models.text();
   const testsHtml = await testsPage.text();
-  const publicHtml = `${homeHtml}\n${exploreHtml}\n${modelsHtml}`;
+  const submitHtml = await submit.text();
+  const methodologyHtml = await methodology.text();
+  const publicHtml = `${homeHtml}\n${modelsHtml}\n${testsHtml}`;
+  const coreHtml = `${publicHtml}\n${submitHtml}\n${methodologyHtml}`;
 
   assert.doesNotMatch(
     publicHtml,
     /Opus 4\.6|GPT coding model|@maya|@niko|2h ago|Yesterday/,
   );
-  assert.doesNotMatch(testsHtml, /[45] launch definitions/);
-  assert.match(
-    modelsHtml,
-    /No eligible configuration summaries yet|configuration summaries are temporarily unavailable/i,
+  assert.match(modelsHtml, /No public Tests yet|temporarily unavailable/i);
+  assert.match(testsHtml, /No public Tests yet|temporarily unavailable/i);
+  assert.doesNotMatch(
+    coreHtml,
+    /Add the tests that matter|Turn a real prompt into a shared benchmark|Choose a frozen test|frozen prompt|approve (?:the )?rubric|pending AI review|AI judging and ranking may take up to 24 hours|review target:\s*24 hours|One leaderboard per test/i,
   );
-  assert.match(testsHtml, /Turn a real prompt into a shared benchmark/i);
 });
 
-test("explore pagination preserves active filters in page links", async () => {
+test("All Tests pagination preserves model, harness, query, and status filters", async () => {
   const response = await render(
-    "/explore?page=2&model=example&q=needle&status=ranked",
+    "/tests?page=2&model=example&harness=cursor&q=needle&status=ranked",
   );
   assert.equal(response.status, 200);
   assertSecurityHeaders(response);
@@ -262,8 +312,23 @@ test("explore pagination preserves active filters in page links", async () => {
   assert.match(html, /rel="prev"/i);
   assert.match(
     html,
-    /href="\/explore\?model=example(?:&|&amp;)q=needle(?:&|&amp;)status=ranked"/i,
+    /href="\/tests\?harness=cursor(?:&|&amp;)model=example(?:&|&amp;)q=needle(?:&|&amp;)status=ranked"/i,
   );
+});
+
+test("legacy discovery and detail routes redirect to canonical Tests URLs", async () => {
+  for (const [path, pathname] of [
+    ["/explore?model=example&harness=cursor", "/tests"],
+    ["/results/example-test?view=evidence", "/tests/example-test"],
+    ["/showcases/example-test", "/tests/example-test"],
+  ]) {
+    const response = await render(path, { redirect: "manual" });
+    assert.equal(response.status, 308);
+    assertSecurityHeaders(response);
+    const location = response.headers.get("location");
+    assert.ok(location);
+    assert.equal(new URL(location, baseUrl).pathname, pathname);
+  }
 });
 
 test("unknown result and contributor records return 404", async () => {

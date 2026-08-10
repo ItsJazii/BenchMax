@@ -14,33 +14,27 @@ export function SiteHeader() {
           <span>BENCHMAX</span>
         </Link>
         <nav className="desktop-nav" aria-label="Main navigation">
-          <Link href="/explore">Explore</Link>
+          <Link href="/tests">All Tests</Link>
+          <Link href="/models">Models</Link>
           <Link href="/leaderboards">Leaderboards</Link>
-          <Link href="/models">Model summaries</Link>
-          <Link href="/tests">Tests</Link>
           <Link href="/methodology">Methodology</Link>
         </nav>
         <div className="header-actions">
           <AuthControls configured={authConfigured} />
-          <Link className="header-run" href="/tests">
-            Add a test
-          </Link>
           <Link className="header-upload" href="/submit">
-            Submit result
+            Submit Test
           </Link>
         </div>
         <details className="mobile-menu">
           <summary aria-label="Open navigation">Menu</summary>
           <nav aria-label="Mobile navigation">
-            <Link href="/explore">Explore</Link>
+            <Link href="/tests">All Tests</Link>
+            <Link href="/models">Models</Link>
             <Link href="/leaderboards">Leaderboards</Link>
-            <Link href="/models">Model summaries</Link>
-            <Link href="/tests">Tests</Link>
             <Link href="/methodology">Methodology</Link>
             <span className="mobile-menu-divider" aria-hidden="true" />
-            <Link href="/tests">Add a test</Link>
             <Link className="mobile-upload" href="/submit">
-              Submit result
+              Submit Test
             </Link>
             <AuthControls configured={authConfigured} />
           </nav>

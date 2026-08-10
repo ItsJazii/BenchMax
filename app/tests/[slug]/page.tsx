@@ -1,10 +1,17 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { SiteFooter } from "@/app/components/SiteFooter";
 import { SiteHeader } from "@/app/components/SiteHeader";
-import { getPublicBenchmarkPage } from "@/lib/data/public-catalog";
-import { listPublicResultLeaderboard } from "@/lib/data/results";
+import { getRequestIdentity } from "@/lib/auth/server";
+import { getPublicShowcaseEnrichment } from "@/lib/data/showcase-enrichment";
+import {
+  getBlockedShowcaseForOwnerBySlug,
+  getPublicShowcaseBySlug,
+} from "@/lib/data/showcases";
+import { buildResultArtifactUrl } from "@/lib/security/usercontent";
 
 export async function generateMetadata({
   params,
@@ -12,242 +19,294 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const data = await getPublicBenchmarkPage(slug).catch(() => null);
+  const test = await getPublicShowcaseBySlug(slug).catch(() => null);
   return {
-    title: data?.benchmark.title ?? "Community test",
-    description: data
-      ? `Prompt, scoring contract, and ranked model results for ${data.benchmark.title}.`
-      : undefined,
+    title: test?.title ?? "Public Test",
+    description: test?.summary,
   };
 }
 
 export default async function TestPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ version?: string }>;
 }) {
   const { slug } = await params;
-  const { version: requestedVersionValue } = await searchParams;
-  const [data, leaderboard] = await Promise.all([
-    getPublicBenchmarkPage(slug).catch(() => null),
-    listPublicResultLeaderboard().catch(() => []),
-  ]);
-  if (!data) notFound();
-
-  const requestedVersion = Number(requestedVersionValue);
-  const current = requestedVersionValue
-    ? data.versions.find(
-        (version) => Number(version.version) === requestedVersion,
-      )
-    : data.versions[0];
-  if (!current) notFound();
-  const currentVersion = Number(current?.version ?? 0);
-  const dimensions = data.dimensions.filter(
-    (dimension) =>
-      String(dimension.benchmark_version_id) === String(current?.id),
-  );
-  const rankedResults = leaderboard.filter(
-    (row) => row.testSlug === slug && row.testVersion === currentVersion,
-  );
-  let successCriteria: string[] = [];
-  try {
-    const parsed = JSON.parse(String(current.success_criteria_json)) as unknown;
-    if (Array.isArray(parsed)) {
-      successCriteria = parsed.filter(
-        (criterion): criterion is string => typeof criterion === "string",
-      );
-    }
-  } catch {
-    successCriteria = [];
+  const test = await getPublicShowcaseBySlug(slug).catch(() => null);
+  if (!test) {
+    const identity = await getRequestIdentity(
+      new Request("https://benchmax.invalid/tests", {
+        headers: await headers(),
+      }),
+    ).catch(() => null);
+    const blocked = identity
+      ? await getBlockedShowcaseForOwnerBySlug(slug, identity.subject).catch(
+          () => null,
+        )
+      : null;
+    if (!blocked) notFound();
+    return <BlockedTestPage test={blocked} />;
   }
+
+  const enrichment = await getPublicShowcaseEnrichment(test.id).catch(
+    () => null,
+  );
+  const derivedArtifacts = (enrichment?.artifacts ?? []).map((artifact) => ({
+    ...artifact,
+    fileName: `Automated ${artifact.kind}`,
+    url: buildResultArtifactUrl(test.slug, artifact.id),
+  }));
+  const publishedLabel = test.publishedAt
+    ? new Intl.DateTimeFormat("en", {
+        dateStyle: "medium",
+        timeZone: "UTC",
+      }).format(test.publishedAt)
+    : "Publication date unavailable";
 
   return (
     <div className="site-shell">
       <SiteHeader />
-      <main className="inner-page section-wrap">
+      <main className="showcase-page section-wrap">
         <div className="showcase-breadcrumbs">
-          <Link href="/tests">Tests</Link>
+          <Link href="/tests">All Tests</Link>
           <span>/</span>
-          <span>Version {currentVersion || "—"}</span>
+          <span>{test.title}</span>
         </div>
-        {data.versions.length > 1 && (
-          <nav className="showcase-breadcrumbs" aria-label="Test versions">
-            <span>Versions</span>
-            {data.versions.map((version) => (
-              <Link
-                aria-current={
-                  Number(version.version) === currentVersion
-                    ? "page"
-                    : undefined
-                }
-                href={`/tests/${slug}?version=${Number(version.version)}`}
-                key={String(version.id)}
-              >
-                v{Number(version.version)}
+        <header className="showcase-hero">
+          <div>
+            <span
+              className={`status-pill ${statusTone(test.statusLabel)}`}
+            >
+              {test.statusLabel}
+            </span>
+            <h1>{test.title}</h1>
+            <p>{test.summary}</p>
+            <div className="showcase-byline">
+              <Link href={`/contributors/${test.contributor}`}>
+                @{test.contributor}
               </Link>
-            ))}
-          </nav>
-        )}
-        <header className="page-title split-title">
-          <div>
-            <span className="section-index">{String(current.category)}</span>
-            <h1>{String(current.title)}</h1>
+              <time dateTime={test.publishedAt?.toISOString()}>
+                {publishedLabel}
+              </time>
+            </div>
           </div>
-          <div>
-            <p>
-              Every submitted result uses this frozen prompt and rubric. A
-              changed prompt or scoring rule becomes a new version.
-            </p>
-            {current && (
-              <div className="wizard-actions">
-                <Link
-                  className="button button-primary"
-                  href={`/submit?test=${encodeURIComponent(String(current.id))}`}
-                >
-                  Submit a result
-                </Link>
-                <Link
-                  className="button button-secondary"
-                  href={`/tests/${slug}/edit`}
-                >
-                  Create a new version
-                </Link>
+          <div className="showcase-spec">
+            <div>
+              <span>MODEL</span>
+              <strong>{test.model}</strong>
+              <small>{test.modelVersion}</small>
+            </div>
+            <div>
+              <span>HARNESS</span>
+              <strong>{test.harness}</strong>
+            </div>
+            <div>
+              <span>REASONING</span>
+              <strong>{test.reasoning}</strong>
+            </div>
+            {test.scoreBps !== null && (
+              <div>
+                <span>SCORE</span>
+                <strong>{(test.scoreBps / 100).toFixed(2)}</strong>
+              </div>
+            )}
+            {test.rank && (
+              <div>
+                <span>RANK</span>
+                <strong>#{test.rank}</strong>
               </div>
             )}
           </div>
         </header>
 
-        {current && (
-          <section className="run-evidence">
-            <div>
-              <span className="section-index">EXACT TEST PROMPT</span>
-              <pre>{String(current.canonical_prompt)}</pre>
-            </div>
-            <div>
-              <span className="section-index">GOAL</span>
-              <p>{String(current.goal)}</p>
-              {successCriteria.length > 0 && (
-                <ul>
-                  {successCriteria.map((criterion) => (
-                    <li key={criterion}>{criterion}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div>
-              <span className="section-index">FROZEN VERSION</span>
-              <dl className="provenance-list">
-                <div>
-                  <dt>Version</dt>
-                  <dd>{currentVersion}</dd>
-                </div>
-                <div>
-                  <dt>Published</dt>
-                  <dd>
-                    {current.published_at
-                      ? new Date(Number(current.published_at)).toLocaleDateString(
-                          "en",
-                          { dateStyle: "medium" },
-                        )
-                      : "Not published"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Scoring dimensions</dt>
-                  <dd>{dimensions.length}</dd>
-                </div>
-              </dl>
-            </div>
-          </section>
-        )}
+        <section className="security-gate">
+          <strong>Declared by contributor — not independently verified</strong>
+          <p>
+            The named model, version, harness, reasoning, and settings describe
+            what the contributor says produced this evidence.
+          </p>
+        </section>
 
-        <section className="latest">
-          <div className="section-heading compact">
-            <div>
-              <span className="section-index">SCORING CONTRACT</span>
-              <h2>What the AI judge checks.</h2>
-            </div>
+        <section className="test-context">
+          <div>
+            <span className="section-index">TEST DETAILS</span>
+            <h2>Inspect the exact prompt and declared setup.</h2>
           </div>
-          <div className="model-detail-grid">
-            {dimensions.map((dimension) => (
-              <article key={String(dimension.key)}>
-                <span className="status-pill neutral">
-                  {Number(dimension.weight_bps) / 100}%
-                </span>
-                <h2>{String(dimension.title)}</h2>
-                <p>{String(dimension.description)}</p>
+          <div className="context-grid">
+            <article>
+              <span>PROMPT</span>
+              <pre>{test.prompt}</pre>
+            </article>
+            {test.systemPrompt && (
+              <article>
+                <span>SYSTEM PROMPT</span>
+                <pre>{test.systemPrompt}</pre>
               </article>
-            ))}
+            )}
+            <article>
+              <span>SETTINGS</span>
+              <pre>{formatSettings(test.declaredSettings)}</pre>
+            </article>
           </div>
         </section>
 
-        <section className="leaderboard-section">
-          <div className="section-heading compact">
-            <div>
-              <span className="section-index">RANKED RESULTS</span>
-              <h2>Compared only within version {currentVersion}.</h2>
-            </div>
-            <Link className="text-link" href="/explore">
-              See all public results →
-            </Link>
-          </div>
-          {rankedResults.length > 0 ? (
-            <div className="ranking-board exact-board">
-              <div className="ranking-head">
-                <span>Rank / result</span>
-                <span>Score</span>
-                <span>Samples</span>
-                <span>Configuration</span>
-              </div>
-              {rankedResults.map((row) => (
-                <div className="ranking-row" key={row.resultSlug}>
-                  <div className="ranking-category">
-                    <span className="rank-number">{row.rank}</span>
-                    <div>
-                      <strong>
-                        <Link href={`/results/${row.resultSlug}`}>
-                          {row.resultTitle}
-                        </Link>
-                      </strong>
-                      <div className="mono muted">
-                        {row.model} · {row.modelVersion}
-                      </div>
-                      <small>Declared, unverified</small>
-                    </div>
-                  </div>
-                  <strong className="score-large">
-                    {(row.scoreBps / 100).toFixed(2)}
-                  </strong>
-                  <span className="mono">{row.sampleCount}</span>
-                  <span className="mono">
-                    {row.harness} · {row.reasoning}
-                    <small>Declared, unverified</small>
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">
-              <strong>No ranked results for this version yet.</strong>
-              <p>
-                Submitted results can still be public in pending, delayed, or
-                not-ranked states.
-              </p>
-              {current && (
-                <Link
-                  className="button button-primary"
-                  href={`/submit?test=${encodeURIComponent(String(current.id))}`}
+        <EvidenceSection
+          artifacts={test.artifacts.map((artifact) => ({
+            ...artifact,
+            fileName: artifact.fileName,
+          }))}
+          heading="Uploaded output and evidence"
+          label="SUBMITTED EVIDENCE"
+        />
+
+        {derivedArtifacts.length > 0 && (
+          <EvidenceSection
+            artifacts={derivedArtifacts}
+            heading="Automated preview evidence"
+            label="AUTOMATED PREVIEW"
+          />
+        )}
+
+        {enrichment?.availability === "unavailable" && (
+          <section className="security-gate">
+            <strong>Automated preview unavailable</strong>
+          </section>
+        )}
+
+        <div className="report-link">
+          <Link
+            href={`/report?target=${encodeURIComponent(`/tests/${test.slug}`)}`}
+          >
+            Report this Test →
+          </Link>
+        </div>
+      </main>
+      <SiteFooter />
+    </div>
+  );
+}
+
+type EvidenceArtifact = {
+  byteSize: number;
+  contentType: string;
+  fileName: string;
+  id: string;
+  kind: string;
+  url: string;
+};
+
+function EvidenceSection({
+  artifacts,
+  heading,
+  label,
+}: {
+  artifacts: EvidenceArtifact[];
+  heading: string;
+  label: string;
+}) {
+  return (
+    <section className="test-context">
+      <div>
+        <span className="section-index">{label}</span>
+        <h2>{heading}</h2>
+      </div>
+      {artifacts.length > 0 ? (
+        <ul className="artifact-list">
+          {artifacts.map((artifact) => (
+            <li key={artifact.id}>
+              {artifact.contentType.startsWith("image/") && (
+                <a
+                  aria-label={`Open ${artifact.fileName}`}
+                  className="artifact-preview artifact-image"
+                  href={artifact.url}
                 >
-                  Submit the first result
-                </Link>
+                  <Image
+                    alt={artifact.fileName}
+                    fill
+                    sizes="(max-width: 900px) 100vw, 720px"
+                    src={artifact.url}
+                    unoptimized
+                  />
+                </a>
               )}
-            </div>
-          )}
+              {artifact.contentType.startsWith("video/") && (
+                <video
+                  className="artifact-preview artifact-video"
+                  controls
+                  preload="metadata"
+                >
+                  <source src={artifact.url} type={artifact.contentType} />
+                  <a href={artifact.url}>Download {artifact.fileName}</a>
+                </video>
+              )}
+              <div>
+                <strong>{artifact.fileName}</strong>
+                <small>
+                  {artifact.kind} · {artifact.contentType} ·{" "}
+                  {formatBytes(artifact.byteSize)}
+                </small>
+              </div>
+              <a href={artifact.url}>Download</a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No public evidence is available.</p>
+      )}
+    </section>
+  );
+}
+
+function BlockedTestPage({
+  test,
+}: {
+  test: NonNullable<
+    Awaited<ReturnType<typeof getBlockedShowcaseForOwnerBySlug>>
+  >;
+}) {
+  return (
+    <div className="site-shell">
+      <SiteHeader />
+      <main className="inner-page section-wrap">
+        <div className="showcase-breadcrumbs">
+          <Link href="/tests">All Tests</Link>
+          <span>/</span>
+          <span>Owner view</span>
+        </div>
+        <section className="security-gate">
+          <span className="status-pill blocked">Blocked</span>
+          <h1>{test.title}</h1>
+          <strong>This Test is private to you.</strong>
+          <p>
+            Its evidence did not pass the mandatory safety scan, so it is not
+            visible in All Tests or to other visitors.
+          </p>
+          <Link className="button button-secondary" href="/dashboard">
+            Open dashboard
+          </Link>
         </section>
       </main>
       <SiteFooter />
     </div>
   );
+}
+
+function formatSettings(value: unknown) {
+  if (!value || (typeof value === "object" && Object.keys(value).length === 0)) {
+    return "No additional settings declared.";
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+function statusTone(status: string) {
+  if (status === "Ranked") return "approved";
+  if (status === "Reviewed") return "neutral";
+  return "pending";
+}
+
+function formatBytes(value: number): string {
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(2)} GB`;
+  if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${value} B`;
 }

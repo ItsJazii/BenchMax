@@ -525,6 +525,130 @@ export const artifacts = sqliteTable(
   ],
 );
 
+export const showcaseEnrichments = sqliteTable(
+  "showcase_enrichments",
+  {
+    id: text("id").primaryKey(),
+    showcaseId: text("showcase_id")
+      .notNull()
+      .references(() => showcases.id, { onDelete: "cascade" }),
+    sourceArtifactId: text("source_artifact_id")
+      .notNull()
+      .references(() => artifacts.id, { onDelete: "restrict" }),
+    sourceSha256: text("source_sha256").notNull(),
+    templateBuildHash: text("template_build_hash"),
+    status: text("status", {
+      enum: ["queued", "running", "completed", "failed", "not_applicable"],
+    })
+      .notNull()
+      .default("queued"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    leaseExpiresAt: integer("lease_expires_at", { mode: "timestamp_ms" }),
+    failureCode: text("failure_code"),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("showcase_enrichments_showcase_uidx").on(table.showcaseId),
+    index("showcase_enrichments_status_idx").on(
+      table.status,
+      table.updatedAt,
+    ),
+    check(
+      "showcase_enrichments_status_allowed",
+      sql`${table.status} IN ('queued', 'running', 'completed', 'failed', 'not_applicable')`,
+    ),
+    check(
+      "showcase_enrichments_attempts_nonnegative",
+      sql`${table.attemptCount} >= 0`,
+    ),
+  ],
+);
+
+export const showcaseEnrichmentArtifacts = sqliteTable(
+  "showcase_enrichment_artifacts",
+  {
+    id: text("id").primaryKey(),
+    enrichmentId: text("enrichment_id")
+      .notNull()
+      .references(() => showcaseEnrichments.id, { onDelete: "cascade" }),
+    kind: text("kind", {
+      enum: ["screenshot", "video", "console", "accessibility"],
+    }).notNull(),
+    objectKey: text("object_key").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    sha256: text("sha256").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("showcase_enrichment_artifacts_object_key_uidx").on(
+      table.objectKey,
+    ),
+    uniqueIndex("showcase_enrichment_artifacts_kind_uidx").on(
+      table.enrichmentId,
+      table.kind,
+    ),
+    index("showcase_enrichment_artifacts_enrichment_idx").on(
+      table.enrichmentId,
+      table.kind,
+    ),
+    check(
+      "showcase_enrichment_artifacts_kind_allowed",
+      sql`${table.kind} IN ('screenshot', 'video', 'console', 'accessibility')`,
+    ),
+    check(
+      "showcase_enrichment_artifacts_size_positive",
+      sql`${table.byteSize} > 0`,
+    ),
+  ],
+);
+
+export const showcaseEnrichmentSpendRecords = sqliteTable(
+  "showcase_enrichment_spend_records",
+  {
+    id: text("id").primaryKey(),
+    enrichmentId: text("enrichment_id")
+      .notNull()
+      .references(() => showcaseEnrichments.id, { onDelete: "cascade" }),
+    attemptKey: text("attempt_key").notNull(),
+    status: text("status", { enum: ["completed", "failed"] }).notNull(),
+    currency: text("currency").notNull().default("USD"),
+    costMicrousd: integer("cost_microusd"),
+    durationMs: integer("duration_ms").notNull(),
+    pricingSnapshotJson: text("pricing_snapshot_json").notNull(),
+    pricingSnapshotHash: text("pricing_snapshot_hash").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("showcase_enrichment_spend_attempt_uidx").on(
+      table.attemptKey,
+    ),
+    index("showcase_enrichment_spend_enrichment_idx").on(
+      table.enrichmentId,
+      table.createdAt,
+    ),
+    index("showcase_enrichment_spend_daily_idx").on(table.createdAt),
+    check(
+      "showcase_enrichment_spend_status_allowed",
+      sql`${table.status} IN ('completed', 'failed')`,
+    ),
+    check(
+      "showcase_enrichment_spend_currency_usd",
+      sql`${table.currency} = 'USD'`,
+    ),
+    check(
+      "showcase_enrichment_spend_cost_nonnegative",
+      sql`${table.costMicrousd} IS NULL OR ${table.costMicrousd} >= 0`,
+    ),
+    check(
+      "showcase_enrichment_spend_duration_nonnegative",
+      sql`${table.durationMs} >= 0`,
+    ),
+  ],
+);
+
 export const uploadSessions = sqliteTable(
   "upload_sessions",
   {

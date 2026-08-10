@@ -54,15 +54,35 @@ import {
   repairStaleResultRankingRefreshes,
 } from "../lib/data/result-supersession";
 import { repairDeferredDisputeRejudgments } from "../lib/data/dispute-rejudge";
+import {
+  claimShowcaseEnrichment,
+  completeShowcaseEnrichment,
+  markShowcaseEnrichmentNotApplicable,
+  reconcileShowcaseEnrichments,
+  recordShowcaseEnrichmentFailure,
+} from "../lib/data/showcase-enrichment";
+import { executeShowcasePreviewEnrichment } from "../lib/evaluation/showcase-preview";
+import {
+  isShowcaseEnrichmentMessage,
+  type ShowcaseEnrichmentMessage,
+} from "../lib/pipeline/enrichment-messages";
+import {
+  enrichmentErrorCode,
+  enrichmentRetryDelaySeconds,
+} from "../lib/pipeline/enrichment-policy";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
-  EVALUATE_QUEUE: Queue<import("../lib/pipeline/messages").PipelineMessage>;
+  EVALUATE_QUEUE: Queue<
+    import("../lib/pipeline/messages").PipelineMessage | ShowcaseEnrichmentMessage
+  >;
   JUDGE_QUEUE: Queue<
     import("../lib/pipeline/messages").PipelineMessage | JudgeCalibrationMessage
   >;
-  PIPELINE_DLQ: Queue<import("../lib/pipeline/messages").PipelineMessage>;
+  PIPELINE_DLQ: Queue<
+    import("../lib/pipeline/messages").PipelineMessage | ShowcaseEnrichmentMessage
+  >;
   UPLOADS: R2Bucket;
 }
 
@@ -77,7 +97,9 @@ const worker = {
     return withSecurityHeaders(request, response);
   },
   async queue(
-    batch: MessageBatch<PipelineMessage | JudgeCalibrationMessage>,
+    batch: MessageBatch<
+      PipelineMessage | JudgeCalibrationMessage | ShowcaseEnrichmentMessage
+    >,
     env: Env,
   ): Promise<void> {
     if (isPipelineDeadLetterQueue(batch.queue)) {
@@ -135,6 +157,10 @@ const worker = {
             name: error instanceof Error ? error.name : "UnknownError",
           });
         }
+        continue;
+      }
+      if (isShowcaseEnrichmentMessage(body)) {
+        await consumeShowcaseEnrichmentMessage(message, body, env);
         continue;
       }
       if (!isPipelineMessage(body)) {
@@ -214,6 +240,13 @@ const worker = {
     jobs.push(
       sweepExpiredUploadSessions().catch((error) => {
         console.error("Benchmax upload quarantine sweep failed", {
+          name: error instanceof Error ? error.name : "UnknownError",
+        });
+      }),
+    );
+    jobs.push(
+      reconcileShowcaseEnrichments().catch((error) => {
+        console.error("Benchmax preview enrichment reconciliation failed", {
           name: error instanceof Error ? error.name : "UnknownError",
         });
       }),
@@ -338,9 +371,27 @@ async function recoverPipelineRuns(env: Env) {
 }
 
 async function consumePipelineDeadLetters(
-  batch: MessageBatch<PipelineMessage | JudgeCalibrationMessage>,
+  batch: MessageBatch<
+    PipelineMessage | JudgeCalibrationMessage | ShowcaseEnrichmentMessage
+  >,
 ) {
   for (const message of batch.messages) {
+    if (isShowcaseEnrichmentMessage(message.body)) {
+      await recordShowcaseEnrichmentFailure({
+        code: "preview_enrichment_dead_lettered",
+        enrichmentId: message.body.enrichmentId,
+        terminal: true,
+      });
+      await appendAuditEvent({
+        actorUserId: null,
+        entityType: "showcase-enrichment",
+        entityId: message.body.enrichmentId,
+        action: "showcase.preview_enrichment_dead_lettered",
+        metadata: { stageVersion: message.body.stageVersion },
+      });
+      message.ack();
+      continue;
+    }
     if (!isPipelineMessage(message.body)) {
       message.ack();
       continue;
@@ -360,6 +411,87 @@ async function consumePipelineDeadLetters(
       },
     );
     message.ack();
+  }
+}
+
+async function consumeShowcaseEnrichmentMessage(
+  message: {
+    ack(): void;
+    attempts: number;
+    retry(options?: { delaySeconds?: number }): void;
+  },
+  body: ShowcaseEnrichmentMessage,
+  env: Env,
+) {
+  const claim = await claimShowcaseEnrichment(body.enrichmentId);
+  if (claim.action === "skip") {
+    message.ack();
+    return;
+  }
+  if (claim.action === "retry") {
+    message.retry({
+      delaySeconds: enrichmentRetryDelaySeconds(claim.leaseExpiresAt),
+    });
+    return;
+  }
+  try {
+    const result = await executeShowcasePreviewEnrichment(body.enrichmentId);
+    if (result.outcome === "not_applicable") {
+      await markShowcaseEnrichmentNotApplicable(body.enrichmentId);
+      await appendAuditEvent({
+        actorUserId: null,
+        entityType: "showcase-enrichment",
+        entityId: body.enrichmentId,
+        action: "showcase.preview_enrichment_not_applicable",
+        metadata: { stageVersion: body.stageVersion },
+      });
+    } else {
+      const completed = await completeShowcaseEnrichment(
+        body.enrichmentId,
+        result.templateBuildHash,
+      );
+      if (!completed) {
+        throw new Error("Preview enrichment completion lease was lost.");
+      }
+      await appendAuditEvent({
+        actorUserId: null,
+        entityType: "showcase-enrichment",
+        entityId: body.enrichmentId,
+        action: "showcase.preview_enrichment_completed",
+        metadata: {
+          stageVersion: body.stageVersion,
+          templateBuildHash: result.templateBuildHash,
+        },
+      });
+    }
+    message.ack();
+  } catch (error) {
+    const code = enrichmentErrorCode(error);
+    const terminal = message.attempts >= 3;
+    await recordShowcaseEnrichmentFailure({
+      code,
+      enrichmentId: body.enrichmentId,
+      terminal,
+    });
+    if (!terminal) {
+      message.retry({
+        delaySeconds: Math.min(300, 5 * 2 ** message.attempts),
+      });
+      return;
+    }
+    try {
+      await env.PIPELINE_DLQ.send(body);
+      await appendAuditEvent({
+        actorUserId: null,
+        entityType: "showcase-enrichment",
+        entityId: body.enrichmentId,
+        action: "showcase.preview_enrichment_failed",
+        metadata: { code, stageVersion: body.stageVersion },
+      });
+      message.ack();
+    } catch {
+      message.retry({ delaySeconds: 300 });
+    }
   }
 }
 

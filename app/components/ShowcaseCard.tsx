@@ -31,19 +31,21 @@ export function ShowcaseCard({ showcase }: { showcase: Showcase }) {
       <div className="card-body">
         <div className="card-meta">
           <span>{showcase.model}</span>
-          <span>{showcase.reasoning} reasoning</span>
+          <span>{showcase.harness}</span>
         </div>
         <h3>
-          <Link href={`/results/${showcase.slug}`}>{showcase.title}</Link>
+          <Link href={`/tests/${showcase.slug}`}>{showcase.title}</Link>
         </h3>
         <p>{showcase.description}</p>
+        <small>Declared by contributor — not independently verified</small>
         <div className="evidence-list">
           {showcase.evidence.map((item) => (
             <span key={item}>{item}</span>
           ))}
         </div>
         <div className="card-meta">
-          <span>{showcase.status}</span>
+          <span>{simpleStatus(showcase.status, showcase.scoreBps)}</span>
+          <span>{showcase.reasoning} reasoning</span>
           {showcase.scoreBps !== null && (
             <strong>{(showcase.scoreBps / 100).toFixed(2)}</strong>
           )}
@@ -57,4 +59,19 @@ export function ShowcaseCard({ showcase }: { showcase: Showcase }) {
       </div>
     </article>
   );
+}
+
+function simpleStatus(status: string, scoreBps: number | null) {
+  const normalized = status.toLowerCase();
+  if (normalized === "ranked" || normalized.includes("ranked #")) {
+    return "Ranked";
+  }
+  if (
+    normalized === "reviewed" ||
+    scoreBps !== null ||
+    normalized.includes("scored")
+  ) {
+    return "Reviewed";
+  }
+  return "Awaiting review";
 }

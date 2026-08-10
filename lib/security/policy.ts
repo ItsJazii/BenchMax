@@ -79,10 +79,20 @@ const catalogIdPattern = /^[a-z0-9][a-z0-9:._-]{2,159}$/;
 
 export const showcaseDraftSchema = z
   .object({
-    benchmarkVersionId: z.string().trim().regex(catalogIdPattern),
-    title: z.string().trim().min(8).max(120),
-    summary: z.string().trim().min(24).max(800),
-    category: z.enum(["frontend", "browser-game", "browser-3d", "other"]),
+    title: z.preprocess(
+      (value) =>
+        typeof value === "string" && value.trim() === "" ? undefined : value,
+      z.string().trim().min(8).max(120).optional(),
+    ),
+    summary: z.preprocess(
+      (value) =>
+        typeof value === "string" && value.trim() === "" ? undefined : value,
+      z.string().trim().min(24).max(800).optional(),
+    ),
+    category: z
+      .enum(["frontend", "browser-game", "browser-3d", "other"])
+      .optional()
+      .default("other"),
     modelLabel: z.string().trim().min(2).max(100),
     modelVersionId: z.string().trim().regex(catalogIdPattern).optional(),
     modelVersionLabel: z.string().trim().min(1).max(100),
@@ -141,7 +151,7 @@ export function parseShowcaseSlug(value: string): string | null {
   } catch {
     return null;
   }
-  const match = /^\/(?:results|showcases)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/u.exec(
+  const match = /^\/(?:tests|results|showcases)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/u.exec(
     parsed.pathname,
   );
   return match?.[1] ?? null;
@@ -157,7 +167,7 @@ export function parseReportTarget(
   } catch {
     return null;
   }
-  const showcase = /^\/(?:results|showcases)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/u.exec(
+  const showcase = /^\/(?:tests|results|showcases)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/u.exec(
     parsed.pathname,
   );
   if (showcase) return { kind: "showcase", slug: showcase[1] };

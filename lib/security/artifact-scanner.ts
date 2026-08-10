@@ -13,6 +13,7 @@ import {
   detectSecretLabels,
   sha256Hex,
 } from "./policy";
+import { screenJudgeInjection } from "@/lib/judging/protocol";
 
 const MAX_INLINE_SOURCE_BYTES = 20 * 1024 * 1024;
 
@@ -133,11 +134,25 @@ async function scanTextArtifact(
     };
   }
   const secretLabels = detectSecretLabels(text);
+  const injection = screenJudgeInjection(null, [
+    { label: `submitted-${artifact.kind}`, value: text },
+  ]);
   return {
     status: secretLabels.length > 0 ? "blocked" : "approved",
     sha256: await sha256Hex(buffer),
-    checks: ["utf-8", "secret-patterns", "content-sha256"],
-    findings: secretLabels.map((label) => `Potential ${label} detected.`),
+    checks: [
+      "utf-8",
+      "secret-patterns",
+      "prompt-injection",
+      "content-sha256",
+    ],
+    findings: [
+      ...secretLabels.map((label) => `Potential ${label} detected.`),
+      ...injection.findings.map(
+        (finding) =>
+          `Potential prompt-injection pattern ${finding.pattern} in ${finding.file}.`,
+      ),
+    ],
   };
 }
 
@@ -153,9 +168,21 @@ async function scanZipArtifact(
       findings: ["Awaiting bounded deep archive scanning."],
     };
   }
-  return inspectZipArchive(
-    new Uint8Array(await object.arrayBuffer()),
-  );
+  const bytes = new Uint8Array(await object.arrayBuffer());
+  const result = await inspectZipArchive(bytes);
+  if (result.status !== "approved") return result;
+  const injection = screenJudgeInjection(bytes);
+  return {
+    ...result,
+    checks: [...result.checks, "prompt-injection"],
+    findings: [
+      ...result.findings,
+      ...injection.findings.map(
+        (finding) =>
+          `Potential prompt-injection pattern ${finding.pattern} in ${finding.file}.`,
+      ),
+    ],
+  };
 }
 
 async function recordScanResult(

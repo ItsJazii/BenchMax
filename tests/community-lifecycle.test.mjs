@@ -80,12 +80,23 @@ test(
         requestStatus: "pending",
       });
       assert.deepEqual(body.published, {
-        judgeStatus: "queued",
+        judgeStatus: "not_queued",
         status: "published",
       });
       assert.deepEqual(body.queued, {
         judgeQueueDeferred: false,
         runStatus: "judging",
+      });
+      assert.deepEqual(body.feedFirst, {
+        benchmarkVersionId: null,
+        category: "other",
+        judgeDueAt: null,
+        judgeStatus: "not_queued",
+        repairQueued: [],
+        runCount: 0,
+        status: "published",
+        summary: "A contributor-submitted test with no additional notes.",
+        title: "Feed Model model test",
       });
       assert.deepEqual(body.judged, {
         evidenceSufficient: true,

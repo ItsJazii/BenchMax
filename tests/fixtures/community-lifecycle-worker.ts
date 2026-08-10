@@ -26,7 +26,10 @@ import {
 } from "../../db/schema";
 import { createShowcaseDraft } from "../../lib/data/showcases";
 import { publishShowcase } from "../../lib/data/showcases";
-import { queuePublishedResult } from "../../lib/data/results";
+import {
+  queueMissingPublishedResults,
+  queuePublishedResult,
+} from "../../lib/data/results";
 import { judgeRun, JudgeContractError } from "../../lib/judging/judge-run";
 import { resolveCatalogRequest } from "../../lib/data/catalog-requests";
 import { seedRankedCatalog } from "../../lib/data/catalog-admin";
@@ -304,7 +307,6 @@ async function runLifecycle() {
   const db = getDb();
 
   const draft = await createShowcaseDraft(CONTRIBUTOR_ID, {
-    benchmarkVersionId: BENCHMARK_VERSION_ID,
     title: "Unknown model lifecycle",
     summary: "A real community result lifecycle fixture for catalog approval.",
     category: "frontend",
@@ -319,6 +321,10 @@ async function runLifecycle() {
     sourceVisibility: "public",
     rightsConfirmed: true,
   });
+  await db
+    .update(showcases)
+    .set({ benchmarkVersionId: BENCHMARK_VERSION_ID })
+    .where(eq(showcases.id, draft.id));
   const resultConfigurationId = draft.resultConfigurationId;
   if (!resultConfigurationId) {
     throw new Error("Lifecycle draft did not create a result configuration.");
@@ -357,6 +363,38 @@ async function runLifecycle() {
 
   const published = await publishShowcase(draft.id, CONTRIBUTOR_ID);
   const queued = await queuePublishedResult(published.id);
+  const feedDraft = await createShowcaseDraft(CONTRIBUTOR_ID, {
+    modelLabel: "Feed Model",
+    modelVersionLabel: "declared-v1",
+    harness: "Feed Harness",
+    reasoningLevel: "adaptive",
+    declaredSettings: {},
+    prompt: "Show this contributor-declared test in the public feed.",
+    systemPrompt: "",
+    sourceVisibility: "public",
+    rightsConfirmed: true,
+  });
+  await db.insert(artifacts).values({
+    id: "feed-first-log-artifact",
+    showcaseId: feedDraft.id,
+    uploaderId: CONTRIBUTOR_ID,
+    kind: "log",
+    objectKey: `lifecycle/${feedDraft.id}/output.txt`,
+    fileName: "output.txt",
+    contentType: "text/plain",
+    byteSize: 4,
+    sha256: "a".repeat(64),
+    quarantineStatus: "approved",
+    scanReportJson: "{}",
+    createdAt: new Date("2026-08-01T00:00:02.000Z"),
+    updatedAt: new Date("2026-08-01T00:00:02.000Z"),
+  });
+  const feedPublished = await publishShowcase(feedDraft.id, CONTRIBUTOR_ID);
+  const repairQueued = await queueMissingPublishedResults();
+  const [feedRunCount] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(runs)
+    .where(eq(runs.showcaseId, feedDraft.id));
   const judged = await judgeRun(queued.run.id);
   const [afterJudgeRun] = await db
     .select()
@@ -408,6 +446,17 @@ async function runLifecycle() {
     queued: {
       runStatus: queued.run.status,
       judgeQueueDeferred: queued.judgeQueueDeferred,
+    },
+    feedFirst: {
+      benchmarkVersionId: feedPublished.benchmarkVersionId,
+      category: feedPublished.category,
+      judgeDueAt: feedPublished.judgeDueAt,
+      judgeStatus: feedPublished.judgeStatus,
+      repairQueued,
+      runCount: Number(feedRunCount?.count ?? 0),
+      status: feedPublished.status,
+      summary: feedPublished.summary,
+      title: feedPublished.title,
     },
     judged: {
       evidenceSufficient: judged.evidenceSufficient,

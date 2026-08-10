@@ -1,14 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ShowcaseCard } from "@/app/components/ShowcaseCard";
 import { SiteFooter } from "@/app/components/SiteFooter";
 import { SiteHeader } from "@/app/components/SiteHeader";
-import { getPublicModelPage } from "@/lib/data/public-catalog";
-import { listPublicConfigurationSummaries } from "@/lib/data/results";
+import {
+  listPublicDeclaredModels,
+  listPublicShowcaseCardsPage,
+} from "@/lib/data/showcases";
 
-export const metadata: Metadata = {
-  title: "Community model configuration summary",
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  return { title: `${slug} Tests` };
+}
 
 export default async function ModelPage({
   params,
@@ -16,114 +24,49 @@ export default async function ModelPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const result = await listPublicConfigurationSummaries(slug).catch(
-    () => null,
-  );
-  const summaries = result?.summaries ?? [];
-  let modelExists: boolean | null = null;
-  if (result && summaries.length === 0) {
-    try {
-      modelExists = (await getPublicModelPage(slug)) !== null;
-    } catch {
-      modelExists = null;
-    }
+  const models = await listPublicDeclaredModels().catch(() => null);
+  if (!models) {
+    return (
+      <div className="site-shell">
+        <SiteHeader />
+        <main className="inner-page section-wrap">
+          <div className="security-gate">Model Tests are temporarily unavailable.</div>
+        </main>
+        <SiteFooter />
+      </div>
+    );
   }
-  if (modelExists === false) notFound();
-  const modelLabel = summaries[0]?.modelLabel ?? slug;
-  const snapshotDate = summaries
-    .map((summary) => summary.snapshotDate?.getTime())
-    .filter((value): value is number => value !== undefined)
-    .sort((a, b) => b - a)[0];
+  const model = models.find(
+    (candidate) => candidate.label.toLowerCase() === slug.toLowerCase(),
+  );
+  if (!model) notFound();
+  const page = await listPublicShowcaseCardsPage({
+    limit: 50,
+    modelExact: model.label,
+  });
   return (
     <div className="site-shell">
       <SiteHeader />
       <main className="inner-page section-wrap">
         <header className="page-title split-title">
           <div>
-            <span className="section-index">COMMUNITY MODEL SUMMARY</span>
-            <h1>{modelLabel}</h1>
+            <span className="section-index">DECLARED MODEL</span>
+            <h1>{model.label}</h1>
           </div>
-          <p>
-            Contributor-declared, unverified model, harness, reasoning, and
-            settings metadata. This summary is not a verified model ranking.
-          </p>
+          <p>Declared by contributors — not independently verified.</p>
         </header>
-        <div className="method-note">
-          Each test version contributes one median to the equal-weight score.
-          IQR is calculated across those test medians, so popular tests cannot
-          dominate the summary.
+        <div className="card-grid">
+          {page.items.map((test) => (
+            <ShowcaseCard key={test.id} showcase={test} />
+          ))}
         </div>
-        {result === null ? (
-          <div className="security-gate">
-            <strong>Model summary is temporarily unavailable.</strong>
-            <p>
-              Benchmax could not read this public catalog record and will not
-              invent a model summary.
-            </p>
-          </div>
-        ) : summaries.length === 0 ? (
-          <div className="empty-state">
-            <strong>No eligible configurations for this model yet.</strong>
-            <p>
-              Pending, delayed, and unranked submissions remain visible in
-              Explore even when they cannot enter this summary.
-            </p>
-            <Link className="button button-primary" href="/explore">
-              Browse public results
-            </Link>
-          </div>
-        ) : (
-          <div className="ranking-board exact-board">
-            <div className="ranking-head">
-              <span>Declared configuration</span>
-              <span>Equal-test score</span>
-              <span>Coverage / N</span>
-              <span>IQR</span>
-            </div>
-            {summaries.map((summary) => (
-              <div className="ranking-row" key={summary.configurationId}>
-                <div>
-                  <strong>{summary.modelVersionLabel}</strong>
-                  <div className="mono muted">
-                    {summary.harnessLabel} · {summary.reasoning} reasoning
-                  </div>
-                  <div className="mono muted">
-                    Settings {JSON.stringify(summary.declaredSettings)} · config{" "}
-                    {summary.metadataHash.slice(0, 12)}
-                  </div>
-                  <small>Declared, unverified</small>
-                </div>
-                <strong className="score-large">
-                  {(summary.scoreBps / 100).toFixed(2)}
-                </strong>
-                <span className="mono">
-                  {summary.testCoverage} tests · {summary.contributorCount}{" "}
-                  contributors
-                  {summary.provisional ? " · provisional" : ""}
-                </span>
-                <span className="mono">
-                  {(summary.q1ScoreBps / 100).toFixed(2)}–
-                  {(summary.q3ScoreBps / 100).toFixed(2)}
-                </span>
-              </div>
-            ))}
-          </div>
+        {page.hasNext && (
+          <p className="muted">
+            Showing the newest 50 Tests. Use the All Tests filters for a narrower view.
+          </p>
         )}
-        <div className="results-line">
-          <span>
-            Snapshot date{" "}
-            {snapshotDate
-              ? new Date(snapshotDate).toISOString()
-              : "not available"}
-          </span>
-          <span className="mono">
-            {result
-              ? `Evaluation v${result.evaluationVersion ?? "unavailable"} · aggregate snapshot v${result.snapshotVersion ?? "unavailable"} · reproducibility hash ${result.snapshotHash}`
-              : "Summary unavailable"}
-          </span>
-        </div>
-        <Link className="text-link" href="/leaderboards">
-          Compare results on the primary per-test leaderboards
+        <Link className="text-link" href={`/tests?model=${encodeURIComponent(model.label)}`}>
+          Open this model in All Tests →
         </Link>
       </main>
       <SiteFooter />

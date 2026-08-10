@@ -290,14 +290,14 @@ test("canonical result configuration identity does not split on display labels",
   );
 });
 
-test("public result status never claims a failed review was scored", () => {
+test("public result status uses the simple review vocabulary", () => {
   assert.equal(
     publicResultStatus({
       judgeStatus: "failed",
       rank: null,
       rankingStatus: "ineligible",
     }),
-    "Scored — not ranked (AI review failed)",
+    "Awaiting review",
   );
   assert.equal(
     publicResultStatus({
@@ -305,7 +305,7 @@ test("public result status never claims a failed review was scored", () => {
       rank: null,
       rankingStatus: "catalog_pending",
     }),
-    "Scored — not ranked (catalog pending)",
+    "Reviewed",
   );
 });
 
@@ -498,7 +498,6 @@ test("secret-like content is detected before persistence", () => {
 
 test("result-submission and report payloads are strict and bounded", () => {
   const draft = {
-    benchmarkVersionId: "frontend-command-center-v1",
     title: "A secure model test",
     summary: "A sufficiently detailed and inspectable test summary.",
     category: "frontend",
@@ -511,8 +510,25 @@ test("result-submission and report payloads are strict and bounded", () => {
     rightsConfirmed: true,
   };
   assert.equal(showcaseDraftSchema.safeParse(draft).success, true);
+  const minimal = showcaseDraftSchema.safeParse({
+    modelLabel: "Example model",
+    modelVersionLabel: "2026-07 snapshot",
+    harness: "Benchmax Web Agent",
+    reasoningLevel: "High",
+    prompt: "Build the requested interface.",
+    rightsConfirmed: true,
+  });
+  assert.equal(minimal.success, true);
+  assert.equal(minimal.success && minimal.data.category, "other");
   assert.equal(
     showcaseDraftSchema.safeParse({ ...draft, role: "owner" }).success,
+    false,
+  );
+  assert.equal(
+    showcaseDraftSchema.safeParse({
+      ...draft,
+      benchmarkVersionId: "frontend-command-center-v1",
+    }).success,
     false,
   );
   assert.equal(
@@ -790,11 +806,16 @@ test("result target parsing never fetches and accepts only a strict path", () =>
   );
   assert.equal(parseShowcaseSlug("/results/a-valid-slug"), "a-valid-slug");
   assert.equal(parseShowcaseSlug("https://evil.test/not-a-showcase"), null);
+  assert.equal(parseShowcaseSlug("/tests/a-valid-slug"), "a-valid-slug");
   assert.equal(parseShowcaseSlug("/showcases/../../admin"), null);
   assert.equal(parseShowcaseSlug("/showcases/not_valid"), null);
 });
 
 test("report targets accept only public result and legacy run paths", () => {
+  assert.deepEqual(parseReportTarget("/tests/a-valid-slug"), {
+    kind: "showcase",
+    slug: "a-valid-slug",
+  });
   assert.deepEqual(parseReportTarget("/results/a-valid-slug"), {
     kind: "showcase",
     slug: "a-valid-slug",

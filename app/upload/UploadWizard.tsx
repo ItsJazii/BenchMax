@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { SignInButton, useAuth, useUser } from "@clerk/clerk-react";
-import Link from "next/link";
 
 type Profile = {
   displayName: string;
@@ -11,7 +10,6 @@ type Profile = {
 };
 
 type DraftFields = {
-  benchmarkVersionId: string;
   category: "frontend" | "browser-game" | "browser-3d" | "other";
   declaredSettings: Record<string, unknown>;
   harness: string;
@@ -34,10 +32,9 @@ type UploadState = {
 };
 
 const initialDraft: DraftFields = {
-  benchmarkVersionId: "",
   title: "",
   summary: "",
-  category: "frontend",
+  category: "other",
   modelLabel: "",
   modelVersionLabel: "",
   harness: "",
@@ -49,32 +46,9 @@ const initialDraft: DraftFields = {
   declaredSettings: {},
 };
 
-type ResultCatalog = {
-  tests: Array<{
-    versionId: string;
-    title: string;
-    category: DraftFields["category"];
-    prompt: string;
-    version: number;
-  }>;
-  models: Array<{
-    id: string;
-    family: string;
-    provider: string;
-    version: string;
-  }>;
-  harnesses: Array<{ id: string; name: string; version: number }>;
-};
-
-export function UploadWizard({
-  authConfigured,
-  initialTestId,
-}: {
-  authConfigured: boolean;
-  initialTestId?: string;
-}) {
+export function UploadWizard({ authConfigured }: { authConfigured: boolean }) {
   if (!authConfigured) return <AuthSetupNotice />;
-  return <ConfiguredUploadWizard initialTestId={initialTestId} />;
+  return <ConfiguredUploadWizard />;
 }
 
 function AuthSetupNotice() {
@@ -95,16 +69,12 @@ function AuthSetupNotice() {
   );
 }
 
-function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
+function ConfiguredUploadWizard() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user: clerkUser } = useUser();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileChecked, setProfileChecked] = useState(false);
-  const [draft, setDraft] = useState({
-    ...initialDraft,
-    benchmarkVersionId: initialTestId ?? "",
-  });
-  const [catalog, setCatalog] = useState<ResultCatalog | null>(null);
+  const [draft, setDraft] = useState(initialDraft);
   const [files, setFiles] = useState<File[]>([]);
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [draftId, setDraftId] = useState<string | null>(null);
@@ -116,38 +86,6 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
     () => files.reduce((total, file) => total + file.size, 0),
     [files],
   );
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const response = await fetch("/api/results/catalog");
-        const payload = (await response.json()) as {
-          catalog?: ResultCatalog;
-          error?: string;
-        };
-        if (!response.ok || !payload.catalog) {
-          throw new Error(payload.error ?? "Could not load the result catalog.");
-        }
-        setCatalog(payload.catalog);
-        setDraft((current) => {
-          const tests = payload.catalog?.tests ?? [];
-          const selected =
-            tests.find(
-              (test) => test.versionId === current.benchmarkVersionId,
-            ) ?? tests[0];
-          if (!selected) return current;
-          return {
-            ...current,
-            benchmarkVersionId: selected.versionId,
-            category: selected.category,
-            prompt: selected.prompt,
-          };
-        });
-      } catch (caught) {
-        setError(toMessage(caught));
-      }
-    })();
-  }, []);
 
   async function authorizedFetch(url: string, init: RequestInit = {}) {
     const token = await getToken();
@@ -221,7 +159,7 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
         showcase?: { id: string };
       };
       if (!response.ok || !payload.showcase) {
-        throw new Error(payload.error ?? "Could not create draft.");
+        throw new Error(payload.error ?? "Could not create this Test.");
       }
       setDraftId(payload.showcase.id);
       setStep(2);
@@ -318,7 +256,7 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
         showcase?: { slug: string };
       };
       if (!response.ok || !payload.showcase) {
-        throw new Error(payload.error ?? "Could not publish this report.");
+        throw new Error(payload.error ?? "Could not publish this Test.");
       }
       setPublishedSlug(payload.showcase.slug);
       setStep(4);
@@ -347,7 +285,7 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
         <h2>Sign in before sending any data.</h2>
         <p>
           Browsing stays public. Google, GitHub, or email-code sign-in is
-          required to create and own a report.
+          required to create and own a Test.
         </p>
         <SignInButton mode="modal">
           <button className="button button-primary" type="button">
@@ -421,26 +359,10 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
       </form>
     );
   }
-  if (catalog && catalog.tests.length === 0) {
-    return (
-      <section className="wizard-panel empty-state">
-        <span className="section-index">A TEST COMES FIRST</span>
-        <h2>Add the test you ran before submitting its result.</h2>
-        <p>
-          A test freezes the prompt, goal, and scoring criteria so every result
-          is reviewed against the same contract.
-        </p>
-        <Link className="button button-primary" href="/tests">
-          Add the first test
-        </Link>
-      </section>
-    );
-  }
-
   return (
     <div className="upload-wizard">
       <ol className="wizard-steps">
-        {["Test context", "Evidence", "Review", "Published"].map(
+        {["Details", "Evidence", "Review", "Published"].map(
           (label, index) => (
             <li
               className={
@@ -466,186 +388,107 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
           <div className="panel-heading">
             <div>
               <span className="section-index">STEP 01</span>
-              <h2>Record the exact test context.</h2>
+              <h2>Record the Test and declared setup.</h2>
             </div>
             <span className="saved-as">Owned by @{profile.handle}</span>
           </div>
           <div className="field-grid">
             <label className="field-wide">
-              <span>Test</span>
-              <select
-                onChange={(event) => {
-                  const selected = catalog?.tests.find(
-                    (test) => test.versionId === event.target.value,
-                  );
-                  setDraft({
-                    ...draft,
-                    benchmarkVersionId: event.target.value,
-                    category: selected?.category ?? draft.category,
-                    prompt: selected?.prompt ?? "",
-                  });
-                }}
-                required
-                value={draft.benchmarkVersionId}
-              >
-                <option value="">Choose a published test</option>
-                {catalog?.tests.map((test) => (
-                  <option key={test.versionId} value={test.versionId}>
-                    {test.title} · v{test.version}
-                  </option>
-                ))}
-              </select>
-              <small>
-                Missing the test you ran? <Link href="/tests">Add it first.</Link>{" "}
-                Results are ranked only against this exact test version.
-              </small>
-            </label>
-            <label className="field-wide">
-              <span>Test title</span>
+              <span>Title (optional)</span>
               <input
                 maxLength={120}
-                minLength={8}
                 onChange={(event) =>
                   setDraft({ ...draft, title: event.target.value })
                 }
-                placeholder="Responsive dashboard result with working filters"
-                required
+                placeholder="Responsive dashboard with working filters"
                 value={draft.title}
               />
             </label>
             <label className="field-wide">
-              <span>Short summary</span>
+              <span>Prompt</span>
               <textarea
-                maxLength={800}
-                minLength={24}
+                maxLength={40_000}
+                minLength={1}
                 onChange={(event) =>
-                  setDraft({ ...draft, summary: event.target.value })
+                  setDraft({ ...draft, prompt: event.target.value })
                 }
-                placeholder="What was tested and what did the model produce?"
+                placeholder="Paste the exact prompt used for this Test."
                 required
-                rows={3}
-                value={draft.summary}
+                rows={8}
+                value={draft.prompt}
               />
             </label>
             <label>
-              <span>Known model version</span>
-              <select
-                onChange={(event) => {
-                  const selected = catalog?.models.find(
-                    (model) => model.id === event.target.value,
-                  );
-                  setDraft(
-                    selected
-                      ? {
-                          ...draft,
-                          modelLabel: selected.family,
-                          modelVersionLabel: selected.version,
-                          modelVersionId: selected.id,
-                        }
-                      : {
-                          ...draft,
-                          modelLabel: "",
-                          modelVersionLabel: "",
-                          modelVersionId: undefined,
-                        },
-                  );
-                }}
-                value={draft.modelVersionId ?? ""}
-              >
-                <option value="">Other / not listed</option>
-                {catalog?.models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.family} · {model.version} · {model.provider}
-                  </option>
-                ))}
-              </select>
+              <span>Model family</span>
+              <input
+                maxLength={100}
+                minLength={2}
+                onChange={(event) =>
+                  setDraft({ ...draft, modelLabel: event.target.value })
+                }
+                placeholder="Kimi, Claude, GPT, Gemini..."
+                required
+                value={draft.modelLabel}
+              />
             </label>
             <label>
-              <span>Known harness</span>
-              <select
-                onChange={(event) => {
-                  const selected = catalog?.harnesses.find(
-                    (harness) => harness.id === event.target.value,
-                  );
-                  setDraft(
-                    selected
-                      ? {
-                          ...draft,
-                          harness: `${selected.name} v${selected.version}`,
-                          harnessId: selected.id,
-                        }
-                      : { ...draft, harness: "", harnessId: undefined },
-                  );
-                }}
-                value={draft.harnessId ?? ""}
-              >
-                <option value="">Other / not listed</option>
-                {catalog?.harnesses.map((harness) => (
-                  <option key={harness.id} value={harness.id}>
-                    {harness.name} · v{harness.version}
-                  </option>
-                ))}
-              </select>
+              <span>Exact model version</span>
+              <input
+                maxLength={100}
+                minLength={1}
+                onChange={(event) =>
+                  setDraft({ ...draft, modelVersionLabel: event.target.value })
+                }
+                placeholder="Release, snapshot, or endpoint label"
+                required
+                value={draft.modelVersionLabel}
+              />
+              <small>Use the version shown when you ran the Test.</small>
             </label>
-            {!draft.modelVersionId && (
-              <>
-                <label>
-                  <span>Model family</span>
-                  <input
-                    maxLength={100}
-                    minLength={2}
-                    onChange={(event) =>
-                      setDraft({ ...draft, modelLabel: event.target.value })
-                    }
-                    placeholder="Model family"
-                    required
-                    value={draft.modelLabel}
-                  />
-                </label>
-                <label>
-                  <span>Exact model version</span>
-                  <input
-                    maxLength={100}
-                    minLength={1}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        modelVersionLabel: event.target.value,
-                      })
-                    }
-                    placeholder="Release, snapshot, or endpoint label"
-                    required
-                    value={draft.modelVersionLabel}
-                  />
-                  <small>
-                    Use the release, dated snapshot, or endpoint label shown
-                    when you ran the test—not only the model family.
-                  </small>
-                </label>
-              </>
-            )}
-            {!draft.harnessId && (
-              <label>
-                <span>Harness name and version</span>
-                <input
-                  maxLength={80}
-                  minLength={2}
-                  onChange={(event) =>
-                    setDraft({ ...draft, harness: event.target.value })
-                  }
-                  placeholder="Harness name and version"
-                  required
-                  value={draft.harness}
-                />
-                <small>
-                  Include a version or dated build when the harness exposes one.
-                </small>
-              </label>
-            )}
             <label>
-              <span>Category</span>
+              <span>Harness or tool</span>
+              <input
+                maxLength={80}
+                minLength={2}
+                onChange={(event) =>
+                  setDraft({ ...draft, harness: event.target.value })
+                }
+                placeholder="Cursor, Claude Code, Codex, custom..."
+                required
+                value={draft.harness}
+              />
+            </label>
+            <label>
+              <span>Reasoning</span>
+              <input
+                list="reasoning-options"
+                maxLength={100}
+                minLength={1}
+                onChange={(event) =>
+                  setDraft({ ...draft, reasoningLevel: event.target.value })
+                }
+                placeholder="High, adaptive, custom..."
+                required
+                value={draft.reasoningLevel}
+              />
+              <datalist id="reasoning-options">
+                <option value="None" />
+                <option value="Low" />
+                <option value="Medium" />
+                <option value="High" />
+                <option value="Max" />
+                <option value="Unknown / adaptive" />
+              </datalist>
+            </label>
+            <label>
+              <span>Category (optional)</span>
               <select
-                disabled
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    category: event.target.value as DraftFields["category"],
+                  })
+                }
                 value={draft.category}
               >
                 <option value="frontend">Frontend</option>
@@ -654,25 +497,20 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
                 <option value="other">Other</option>
               </select>
             </label>
-            <label>
-              <span>Reasoning level</span>
-              <select
+            <label className="field-wide">
+              <span>Notes (optional)</span>
+              <textarea
+                maxLength={800}
                 onChange={(event) =>
-                  setDraft({ ...draft, reasoningLevel: event.target.value })
+                  setDraft({ ...draft, summary: event.target.value })
                 }
-                required
-                value={draft.reasoningLevel}
-              >
-                <option value="None">None / off</option>
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-                <option value="Max">Max</option>
-                <option value="Unknown">Unknown / adaptive</option>
-              </select>
+                placeholder="Anything else people should know about this Test or output."
+                rows={3}
+                value={draft.summary}
+              />
             </label>
             <label className="field-wide">
-              <span>Other test settings (optional)</span>
+              <span>Other settings (optional)</span>
               <textarea
                 maxLength={2000}
                 onChange={(event) =>
@@ -681,24 +519,10 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
                     declaredSettings: { notes: event.target.value },
                   })
                 }
-                placeholder="Context window, temperature, tool permissions, mode, or other settings that affected the result."
+                placeholder="Context window, temperature, tool permissions, mode, or other settings."
                 rows={3}
                 value={String(draft.declaredSettings.notes ?? "")}
               />
-            </label>
-            <label className="field-wide">
-              <span>Prompt used for this result</span>
-              <textarea
-                maxLength={40_000}
-                readOnly
-                required
-                rows={8}
-                value={draft.prompt}
-              />
-              <small>
-                Frozen by the selected test version. Choose a different test if
-                this is not the exact prompt you ran.
-              </small>
             </label>
             <label className="field-wide">
               <span>System prompt (optional)</span>
@@ -743,18 +567,21 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
               <span>
                 I have the right to submit this material and grant Benchmax a
                 license to host, scan, evaluate where applicable, and publicly
-                display this result under the Terms.
+                display this Test under the Terms.
               </span>
             </label>
           </div>
           <div className="wizard-actions">
-            <p>Saving creates a private draft. Nothing publishes yet.</p>
+            <p>
+              Saving creates a private draft. The Test is public only after its
+              evidence passes the mandatory safety scan.
+            </p>
             <button
               className="button button-primary"
               disabled={busy}
               type="submit"
             >
-              {busy ? "Saving securely…" : "Save context and continue"}
+              {busy ? "Saving securely…" : "Save Test and continue"}
             </button>
           </div>
           {error && <p className="form-error">{error}</p>}
@@ -766,7 +593,7 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
           <div className="panel-heading">
             <div>
               <span className="section-index">STEP 02</span>
-              <h2>Add what the model produced.</h2>
+              <h2>Add the output and evidence.</h2>
             </div>
             <span className="status-pill pending">Quarantine enabled</span>
           </div>
@@ -815,7 +642,7 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
             <p>
               Files are isolated first. Type signatures, paths, archive
               expansion, executable content, and credential patterns are
-              checked before this result can appear publicly.
+              checked before this Test can appear publicly.
             </p>
           </div>
           <div className="wizard-actions">
@@ -855,7 +682,9 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
           <div className="review-summary">
             <div>
               <span>MODEL</span>
-              <strong>{draft.modelLabel}</strong>
+              <strong>
+                {draft.modelLabel} · {draft.modelVersionLabel}
+              </strong>
             </div>
             <div>
               <span>HARNESS</span>
@@ -871,10 +700,10 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
             </div>
           </div>
           <div className="publish-rule">
-            <span>Public after the safety scan — AI review follows</span>
+            <span>Public after the mandatory safety scan</span>
             <p>
-              Your result appears on the site as soon as it publishes. Benchmax
-              may take up to 24 hours to judge it and decide ranking eligibility.
+              Your safe Test appears immediately as Awaiting review. Reviews
+              and leaderboard placement can be added later.
             </p>
           </div>
           <div className="wizard-actions">
@@ -900,7 +729,7 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
               onClick={() => void publish()}
               type="button"
             >
-              {busy ? "Publishing…" : "Publish test report"}
+              {busy ? "Publishing…" : "Publish Test"}
             </button>
           </div>
           {uploads.some((upload) => upload.status === "scanning") && (
@@ -916,16 +745,16 @@ function ConfiguredUploadWizard({ initialTestId }: { initialTestId?: string }) {
         <section className="wizard-panel success-panel">
           <span className="success-mark">✓</span>
           <span className="section-index">PUBLISHED</span>
-          <h2>Your test is on the public record.</h2>
+          <h2>Your Test is on the public record.</h2>
           <p>
-            AI review is queued. The public page will show pending, delayed,
-            ranked, or not-ranked status as the review progresses.
+            It is public as Awaiting review with your declared setup and
+            evidence. Reviews and ranking can be added later.
           </p>
           <a
             className="button button-primary"
-            href={publishedSlug ? `/results/${publishedSlug}` : "/explore"}
+            href={publishedSlug ? `/tests/${publishedSlug}` : "/tests"}
           >
-            View public result
+            View public Test
           </a>
         </section>
       )}

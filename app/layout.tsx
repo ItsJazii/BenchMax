@@ -34,22 +34,23 @@ export const metadata: Metadata = {
     template: "%s · Benchmax",
   },
   description:
-    "Public, evidence-backed AI model tests with declared provenance, transparent AI judging, and per-test rankings.",
+    "Browse public AI Tests with their prompts, contributor-declared setup, and inspectable output evidence.",
   applicationName: "Benchmax",
   category: "technology",
   keywords: [
-    "AI benchmarks",
+    "AI tests",
+    "AI outputs",
     "coding models",
-    "model tests",
+    "community model tests",
     "AI leaderboard",
-    "verified benchmarks",
+    "coding agents",
   ],
   openGraph: {
     type: "website",
     siteName: "Benchmax",
     title: "Benchmax — See what models actually built",
     description:
-      "Public, evidence-backed AI model tests with declared provenance, transparent AI judging, and per-test rankings.",
+      "Public AI Tests with their prompts, declared setup, contributor, and output evidence.",
     images: [
       {
         url: "/og.png",
@@ -63,7 +64,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Benchmax — See what models actually built",
     description:
-      "Public, evidence-backed AI model tests with declared provenance and transparent AI judging.",
+      "Browse public AI Tests and inspect exactly what contributors submitted.",
     images: ["/og.png"],
   },
 };

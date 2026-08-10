@@ -10,7 +10,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "tsx --test tests/security-policy.test.ts tests/usercontent-security.test.ts tests/judge-integrity.test.ts tests/pipeline-recovery.test.ts tests/repair-backoff.test.ts tests/result-aggregate.test.ts tests/judge-budget.test.ts tests/community-test-versioning.test.ts tests/community-static-evaluation.test.ts tests/submission-state.test.ts tests/result-spend.test.ts && node --test --test-concurrency=1 tests/evaluator-smoke.test.mjs tests/community-lifecycle.test.mjs && node scripts/test-d1-invariants.mjs && npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "tsx --test tests/security-policy.test.ts tests/usercontent-security.test.ts tests/judge-integrity.test.ts tests/pipeline-recovery.test.ts tests/repair-backoff.test.ts tests/result-aggregate.test.ts tests/judge-budget.test.ts tests/community-test-versioning.test.ts tests/community-static-evaluation.test.ts tests/showcase-enrichment.test.ts tests/submission-state.test.ts tests/result-spend.test.ts && node --test --test-concurrency=1 tests/evaluator-smoke.test.mjs tests/community-lifecycle.test.mjs && node scripts/test-d1-invariants.mjs && npm run build && node --test tests/rendered-html.test.mjs",
     "test:security": "tsx --test tests/security-policy.test.ts",
     "test:evaluator": "node --test tests/evaluator-smoke.test.mjs",
     "test:d1": "node scripts/test-d1-invariants.mjs",

@@ -1,4 +1,14 @@
-import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
 import {
@@ -397,6 +407,7 @@ export async function queueMissingPublishedResults(limit = 50) {
       and(
         eq(showcases.status, "published"),
         eq(showcases.safetyStatus, "approved"),
+        isNotNull(showcases.benchmarkVersionId),
         or(
           isNull(runs.id),
           and(

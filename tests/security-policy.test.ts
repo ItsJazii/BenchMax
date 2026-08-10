@@ -90,18 +90,62 @@ test("manual judge calibration stays owner-only, bounded, and reachable from ope
   assert.match(routeSource, /requireRole\(user, \["owner"\]\)/);
   assert.match(routeSource, /action: "judge-calibration-manual"/);
   assert.match(routeSource, /limit: 3/);
-  assert.match(routeSource, /getRequestExecutionContext\(\)/);
-  assert.match(routeSource, /executionContext\.waitUntil\(/);
-  const requestHandlerSource = routeSource.split(
-    "async function runManualCalibration",
-  )[0];
-  assert.doesNotMatch(requestHandlerSource, /await runJudgeCalibration\(\)/);
+  assert.match(routeSource, /await enqueueJudgeCalibration\(user\.id\)/);
+  assert.doesNotMatch(routeSource, /waitUntil\(/);
+  assert.doesNotMatch(routeSource, /runJudgeCalibration\(/);
   assert.match(routeSource, /status: 202/);
   assert.match(operationsSource, /"\/api\/admin\/catalog\/seed"/);
   assert.match(operationsSource, /"\/api\/admin\/judge\/calibrate"/);
   assert.match(operationsSource, /catalogSeedResponseSchema\.safeParse/);
   assert.doesNotMatch(operationsSource, /evaluationVersion:/);
   assert.doesNotMatch(operationsSource, /evaluationStatus:/);
+});
+
+test("queued calibration never repeats paid work when an audit write fails", () => {
+  const workerSource = readFileSync(
+    new URL("../worker/index.ts", import.meta.url),
+    "utf8",
+  );
+  const calibrationBranch = workerSource.slice(
+    workerSource.indexOf("if (isJudgeCalibrationMessage(body))"),
+    workerSource.indexOf("if (!isPipelineMessage(body))"),
+  );
+  assert.match(calibrationBranch, /calibration = await runJudgeCalibration\(\)/);
+  assert.match(
+    calibrationBranch,
+    /message\.ack\(\);\s*try \{\s*await appendAuditEvent\(\{[\s\S]*?action: "judge\.calibration_completed"/,
+  );
+  assert.match(
+    calibrationBranch,
+    /Benchmax queued calibration completion audit failed/,
+  );
+  assert.match(
+    calibrationBranch,
+    /if \(message\.attempts >= 3\) \{\s*message\.ack\(\);\s*try \{\s*await appendAuditEvent\(\{[\s\S]*?action: "judge\.calibration_background_failed"/,
+  );
+  assert.match(
+    calibrationBranch,
+    /Benchmax queued calibration failure audit failed/,
+  );
+});
+
+test("deploy preparation rejects generated routes or vars before overriding them", () => {
+  const deployScriptSource = readFileSync(
+    new URL("../scripts/prepare-main-deploy.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    deployScriptSource,
+    /for \(const key of \["routes", "vars"\]\)/,
+  );
+  assert.match(
+    deployScriptSource,
+    /if \(!isEmptyBinding\(builtConfig\[key\]\)\)/,
+  );
+  assert.match(
+    deployScriptSource,
+    /must be empty before the \$\{environmentName\} environment override/,
+  );
 });
 
 test("public result provenance explicitly marks every declared field unverified", () => {

@@ -36,6 +36,25 @@ export type JudgeOutput = {
   evidence_sufficiency_reason: string;
 };
 
+export const JUDGE_OUTPUT_RULES = [
+  "Return exactly the outputContract shape.",
+  "Do not echo calibration, benchmark, evidenceGate, objectiveResults, rubric, untrustedEvidence, or outputContract.",
+  "Use the field name reasoning, never reason.",
+  "Do not add extra keys.",
+] as const;
+
+export function buildJudgeOutputContract(dimensionKeys: readonly string[]) {
+  return {
+    evidence_sufficient: "boolean",
+    evidence_sufficiency_reason: "string, 8-500 characters",
+    dimensions: dimensionKeys.map((key) => ({
+      key,
+      score_bps: "integer, 0-10000",
+      reasoning: "string, 1-1500 characters",
+    })),
+  } as const;
+}
+
 export function screenJudgeInjection(
   sourceBytes: Uint8Array | null,
   runtimeEvidence: readonly RuntimeEvidenceInput[] = [],
@@ -109,6 +128,7 @@ export function buildJudgePromptPayload(input: {
   }[];
   untrustedEvidence: string;
 }) {
+  const dimensionKeys = input.rubric.map((dimension) => dimension.key);
   return {
     benchmark: input.benchmarkPrompt,
     evidenceGate: {
@@ -125,6 +145,8 @@ export function buildJudgePromptPayload(input: {
       scoreBps: row.scoreBps,
       status: row.status,
     })),
+    outputContract: buildJudgeOutputContract(dimensionKeys),
+    outputRules: JUDGE_OUTPUT_RULES,
     rubric: input.rubric.map((dimension) => ({
       description: dimension.description,
       key: dimension.key,

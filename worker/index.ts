@@ -29,6 +29,10 @@ import {
 } from "../lib/ranking/result-snapshots";
 import { runJudgeCalibration } from "../lib/judging/calibration";
 import {
+  isJudgeCalibrationMessage,
+  type JudgeCalibrationMessage,
+} from "../lib/judging/calibration-queue";
+import {
   recoverStalledPipelineRuns,
   shouldDelayCommunityPipelineFailure,
   stageClaimDisposition,
@@ -55,7 +59,9 @@ interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   EVALUATE_QUEUE: Queue<import("../lib/pipeline/messages").PipelineMessage>;
-  JUDGE_QUEUE: Queue<import("../lib/pipeline/messages").PipelineMessage>;
+  JUDGE_QUEUE: Queue<
+    import("../lib/pipeline/messages").PipelineMessage | JudgeCalibrationMessage
+  >;
   PIPELINE_DLQ: Queue<import("../lib/pipeline/messages").PipelineMessage>;
   UPLOADS: R2Bucket;
 }
@@ -71,7 +77,7 @@ const worker = {
     return withSecurityHeaders(request, response);
   },
   async queue(
-    batch: MessageBatch<PipelineMessage>,
+    batch: MessageBatch<PipelineMessage | JudgeCalibrationMessage>,
     env: Env,
   ): Promise<void> {
     if (isPipelineDeadLetterQueue(batch.queue)) {
@@ -80,6 +86,57 @@ const worker = {
     }
     for (const message of batch.messages) {
       const body = message.body;
+      if (isJudgeCalibrationMessage(body)) {
+        let calibration: Awaited<ReturnType<typeof runJudgeCalibration>>;
+        try {
+          calibration = await runJudgeCalibration();
+        } catch (error) {
+          const errorName =
+            error instanceof Error ? error.name : "UnknownError";
+          console.error("Benchmax queued calibration failed", {
+            name: errorName,
+          });
+          if (message.attempts >= 3) {
+            message.ack();
+            try {
+              await appendAuditEvent({
+                actorUserId: body.actorUserId,
+                entityType: "judge-calibration",
+                entityId: "manual",
+                action: "judge.calibration_background_failed",
+                metadata: { errorName },
+              });
+            } catch (auditError) {
+              console.error("Benchmax queued calibration failure audit failed", {
+                name:
+                  auditError instanceof Error
+                    ? auditError.name
+                    : "UnknownError",
+              });
+            }
+          } else {
+            message.retry({ delaySeconds: Math.min(300, 15 * 2 ** message.attempts) });
+          }
+          continue;
+        }
+        // The calibration is paid, state-changing work. Once it succeeds, ack
+        // before the best-effort audit so a bookkeeping failure cannot rerun it.
+        message.ack();
+        try {
+          await appendAuditEvent({
+            actorUserId: body.actorUserId,
+            entityType: "judge-calibration",
+            entityId: "manual",
+            action: "judge.calibration_completed",
+            metadata: calibration,
+          });
+        } catch (error) {
+          console.error("Benchmax queued calibration completion audit failed", {
+            name: error instanceof Error ? error.name : "UnknownError",
+          });
+        }
+        continue;
+      }
       if (!isPipelineMessage(body)) {
         message.ack();
         continue;
@@ -281,7 +338,7 @@ async function recoverPipelineRuns(env: Env) {
 }
 
 async function consumePipelineDeadLetters(
-  batch: MessageBatch<PipelineMessage>,
+  batch: MessageBatch<PipelineMessage | JudgeCalibrationMessage>,
 ) {
   for (const message of batch.messages) {
     if (!isPipelineMessage(message.body)) {

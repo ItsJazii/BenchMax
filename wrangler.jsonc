@@ -76,6 +76,18 @@
   "env": {
     "staging": {
       "name": "benchmax-staging",
+      "routes": [
+        {
+          "pattern": "benchmax.xyz/*",
+          "zone_name": "benchmax.xyz"
+        }
+      ],
+      "vars": {
+        "BENCHMAX_JUDGE_DAILY_SAMPLE_BUDGET": "30",
+        "BENCHMAX_JUDGE_INPUT_MICROUSD_PER_MILLION_TOKENS": "950000",
+        "BENCHMAX_JUDGE_OUTPUT_MICROUSD_PER_MILLION_TOKENS": "4000000",
+        "BENCHMAX_SANDBOX_MICROUSD_PER_HOUR": "117000"
+      },
       "d1_databases": [
         {
           "binding": "DB",
@@ -134,6 +146,8 @@
     },
     "production": {
       "name": "benchmax",
+      "routes": [],
+      "vars": {},
       "d1_databases": [
         {
           "binding": "DB",

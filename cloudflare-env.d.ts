@@ -4,7 +4,10 @@ declare global {
       ASSETS: Fetcher;
       DB: D1Database;
       EVALUATE_QUEUE: Queue<import("./lib/pipeline/messages").PipelineMessage>;
-      JUDGE_QUEUE: Queue<import("./lib/pipeline/messages").PipelineMessage>;
+      JUDGE_QUEUE: Queue<
+        | import("./lib/pipeline/messages").PipelineMessage
+        | import("./lib/judging/calibration-queue").JudgeCalibrationMessage
+      >;
       PIPELINE_DLQ: Queue<import("./lib/pipeline/messages").PipelineMessage>;
       UPLOADS: R2Bucket;
     }

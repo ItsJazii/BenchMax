@@ -179,6 +179,10 @@ test("runtime console injection is flagged while its payload remains inside one 
   );
   assert.match(finalPrompt, /evidence_sufficient/);
   assert.match(finalPrompt, /without guessing/);
+  assert.match(finalPrompt, /outputContract/);
+  assert.match(finalPrompt, /"reasoning":"string, 1-1500 characters"/);
+  assert.match(finalPrompt, /Use the field name reasoning, never reason/);
+  assert.doesNotMatch(finalPrompt, /"reason":"string/);
 });
 
 test("benign prose containing system and assistant labels is not an injection flag", () => {

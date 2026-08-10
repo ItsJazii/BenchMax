@@ -3,20 +3,20 @@
   "items": [
     {
       "id": "reference-frontend-001",
-      "benchmark": "A frozen benchmark prompt and evaluator context.",
+      "benchmark": "Evaluate the synthetic reference interface from the complete blinded human review notes. Score only the supplied evidence against the frozen rubric.",
       "rubric": [
         {
           "key": "visual-quality",
           "description": "Visual hierarchy, coherence, and polish.",
-          "expectedScoreBps": 7500
+          "expectedScoreBps": 8000
         },
         {
           "key": "usability",
           "description": "Clarity of the primary flow and interaction feedback.",
-          "expectedScoreBps": 7000
+          "expectedScoreBps": 8200
         }
       ],
-      "evidence": "A reviewed, model-blinded description of a reference output and its permitted visual evidence."
+      "evidence": "Blinded human review notes for the 1440 by 900 reference build. The page uses a single 40px heading, a 20px supporting line, and three consistently spaced sections on an 8px grid. Primary text contrast measures 9.1:1 and secondary text 5.2:1. The indigo accent is used consistently for the main action, focus ring, and selected state. Cards share one radius and border treatment, and the primary action remains visually dominant. Two secondary metric cards become crowded near the 1024px breakpoint, and one long helper line wraps awkwardly. The primary task is a three-step flow with persistent labels, keyboard-reachable controls, inline validation beside each field, a disabled duplicate-submit state, a visible loading state, and a confirmation summary. Error messages explain how to recover. The destructive reset action asks for confirmation, but its wording is less specific than the submit confirmation. On a 390px viewport the navigation requires one extra tap, while the form remains usable without horizontal scrolling. These notes are the complete permitted evidence for this synthetic staging smoke reference."
     }
   ]
 }

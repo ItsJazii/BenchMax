@@ -11,9 +11,11 @@ import {
   judgeCalibrationDisposition,
 } from "./provider";
 import {
+  buildJudgeOutputContract,
   createJudgeOutputSchema,
   evidenceSufficiencyConsensus,
   JUDGE_EVIDENCE_SUFFICIENCY_RULE,
+  JUDGE_OUTPUT_RULES,
   median,
 } from "./protocol";
 import { meanAbsoluteDriftBps } from "./calibration-math";
@@ -104,6 +106,8 @@ export async function runJudgeCalibration() {
           evidence_sufficiency_reason: "concise reason",
         },
       },
+      outputContract: buildJudgeOutputContract(keys),
+      outputRules: JUDGE_OUTPUT_RULES,
       rubric: item.rubric.map(({ key, description }) => ({
         key,
         description,

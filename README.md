@@ -1,14 +1,19 @@
-# Benchmax
+# BenchMax
 
-Benchmax is a public hub for community-run AI model tests.
+BenchMax is a public feed for community-run AI Tests.
 
-Contributors choose or create a test, declare the exact model version,
-reasoning level, harness, and settings, then upload the result as code, images,
-video, logs, or any supported combination. Safe submissions appear publicly
-before scoring. The pinned Benchmax AI judge may take up to 24 hours to review
-the evidence and publish an eligible per-test ranking.
+Anyone can browse every Test. A contributor signs in only to submit one prompt,
+the declared model/version, harness, reasoning, and the resulting output or
+evidence. Title, settings, and notes are optional. After the mandatory safety
+scan passes, the Test appears publicly as **Awaiting review** under its contributor
+and declared model.
 
-Benchmax never calls the model being tested and never asks contributors for a
+AI and trusted-human reviews are additive later layers; they do not gate a safe
+Test from the public feed. Reviewed Tests may eventually enter a top-rated
+submissions leaderboard across prompts. That leaderboard is a showcase, not a
+scientific like-for-like benchmark.
+
+BenchMax never calls the model being tested and never asks contributors for a
 tested-model API key.
 
 ## Stack
@@ -18,7 +23,8 @@ tested-model API key.
 - R2 for quarantined evidence, evaluation artifacts, and backup manifests
 - A separate cookieless Worker/origin for every public user-controlled byte
 - Clerk for verified contributor accounts
-- Cloudflare Queues for evaluation, judging, publication, retries, and DLQ
+- Cloudflare Queues for upload processing, optional evaluation, later judging,
+  retries, and DLQ
 - E2B for optional no-network execution of compatible source bundles
 
 ## Local verification
@@ -56,51 +62,56 @@ commit a filled environment file.
    `BENCHMAX_APP_ORIGIN` to the exact application origin, and set
    `NEXT_PUBLIC_USERCONTENT_ORIGIN` on the main application to the Worker
    origin. The Worker must never share Clerk or application secrets.
-4. Build the pinned E2B evaluator template and record its measured hash.
-5. Upload the judge calibration set to private R2 and configure its SHA-256.
-6. Configure and pin the AI judge provider, model snapshot, and HTTPS origin.
-7. Set `BENCHMAX_JUDGE_DAILY_SAMPLE_BUDGET` from the measured calibration-set
-   cost. Benchmax reserves at most five initial judged submissions per account
-   per UTC day and leaves excess results public and pending.
-8. Seed the metadata catalog. Model families include GPT, Claude, Gemini, Kimi,
+4. Build the pinned E2B evaluator template and record its measured hash. Compatible
+   source ZIP evaluation is optional, asynchronous enrichment and must never delay
+   or remove an otherwise safe public Test.
+5. Seed the metadata catalog. Model families include GPT, Claude, Gemini, Kimi,
    GLM, MiniMax, Qwen, and DeepSeek; this catalog is descriptive, not a launch
    restriction.
 
-The exact judge snapshot must be chosen from current calibration results before
-production leaderboards are enabled. Pricing or cost multiples are not
-hard-coded; measure current providers against the calibration set when setting
-budgets.
+AI reviews and leaderboards are a later rollout stage. Before enabling them,
+upload the calibration set to private R2, configure its SHA-256, calibrate an exact
+immutable judge snapshot, and set `BENCHMAX_JUDGE_DAILY_SAMPLE_BUDGET` from measured
+cost. Pricing or cost multiples are not hard-coded.
 
 ## Product invariants
 
-- Every safe submitted result is public whether AI review is pending, delayed,
-  ranked, or not ranked.
-- Every result points to one immutable test version.
+- Every safe Test is public as Awaiting review after mandatory safety processing;
+  AI-judge availability is not a publication or launch gate.
+- One submission creates one public Test containing its prompt, declared setup,
+  output/evidence, and contributor. There is no contributor-facing reusable-test
+  definition or rubric-approval step.
+- Prompt, model/version, harness, reasoning, and output/evidence are required.
+  Title, settings, and notes are optional.
 - Model, version, harness, reasoning, and settings are contributor-declared and
-  labeled "declared, unverified"; catalog mapping standardizes names but does
-  not prove which configuration produced the evidence.
-- Benchmax cannot observe unsubmitted attempts, so best-of-N cherry-picking is
-  possible. Rankings compare submitted evidence, not independently reproduced
-  pass@1 model performance.
-- Unknown model or harness labels create catalog-review requests; they do not
-  block publication.
-- Only canonical, safe, successfully judged results are ranking-eligible.
-- Rankings are per test version and pinned evaluation version. Equal scores
-  share rank.
-- Initial judging uses one sample. Results entering the top ten are rechecked
-  to three samples until the leaderboard reaches a fixpoint.
-- Judge work is admitted through idempotent daily reservations. When the
-  account or global daily capacity is exhausted, the result remains public and
-  pending while its original 24-hour deadline continues.
-- Submitted evidence is untrusted. Judge prompts are pinned, evidence is
-  bounded and identity-blinded, and injection signals disqualify ranking.
+  labeled "Declared by contributor — not independently verified". Optional catalog
+  mapping standardizes names but does not prove which configuration produced the
+  evidence.
+- BenchMax cannot observe unsubmitted attempts, so best-of-N cherry-picking is
+  possible. Reviews assess submitted evidence, not independently reproduced pass@1
+  model performance.
+- Free-text model and harness labels do not block publication; catalog linking may
+  normalize them later.
+- Mandatory upload or safety-processing failure keeps the Test private and gives
+  the contributor a retry path.
+- Compatible source ZIP evaluation runs after publication as non-blocking
+  enrichment. Failure leaves the Test public and shows **Automated preview
+  unavailable** without exposing technical details publicly.
+- AI, admin, and approved-human reviews are append-only additions to the original
+  submission. Only reviewed, eligible Tests may enter a leaderboard.
+- The main leaderboard is a top-rated submissions showcase across different
+  prompts, not a like-for-like benchmark. Same-prompt comparison groups may be a
+  separate later view.
+- Submitted evidence is untrusted. When AI review is enabled, judge prompts are
+  pinned and evidence is bounded and identity-blinded. Injection signals enter
+  moderation before any ranking decision.
 - Public evidence is authorized from D1 and streamed from R2 only by the
   separate cookieless user-content Worker. The main application emits absolute
   user-content URLs; its compatibility artifact routes only redirect and never
   read or stream R2 objects. Private source and quarantined, blocked, removed,
   or unpublished evidence fail closed.
 - No tested-model credentials exist in application state, logs, storage, or
-  queue messages. The only provider credential is the operator-managed judge
+  queue messages. A later AI-review stage may use only an operator-managed judge
   key.
 
 ## Operations

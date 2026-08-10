@@ -1,9 +1,16 @@
-# Phase 2 provisioning and security handoff
+# Provisioning and security handoff
 
 Status: replacement-account resources provisioned, 2026-08-05.
 
 This runbook records the external prerequisites for staging. It deliberately
 does not contain credentials, tokens, private keys, or database exports.
+
+Transition note: `npm run phase2:preflight` validates that the environment variable
+names exist in `.env.example`; it does not require non-empty judge values. The current
+catalog-initialization and publication code still enters judge-specific paths, so the
+feed-only product must not be deployed until Phase 1 decouples those paths. Existing
+staging judge values remain in place during that implementation; this documentation
+change alone does not make the current runtime feed-only.
 
 ## Current Cloudflare evidence
 
@@ -13,7 +20,7 @@ does not contain credentials, tokens, private keys, or database exports.
   `b3947917-6bd5-4a92-a0ec-40f583acdb08` in region EEUR.
 - Staging D1 `benchmax-staging-d1` exists with ID
   `b5f6150a-7160-4ce7-bd87-2a9038683019` in region EEUR, matching production
-  so Phase 3 latency and behavior measurements use the intended placement. The
+  so staging latency and behavior measurements use the intended placement. The
   previous empty APAC staging database (`490090cb-d8c1-42b2-8c6a-90651c20c44f`)
   was deleted on 2026-08-07 before migrations or application data; it was
   recreated in EEUR specifically for production-region parity.
@@ -99,16 +106,19 @@ does not contain credentials, tokens, private keys, or database exports.
    never enter JSONC, `.env`, GitHub logs, queue payloads, or D1.
 9. Generate a fresh 32-byte `PROVENANCE_ENCRYPTION_KEY` with a CSPRNG and store
    it as base64. Never reuse a development key in staging or production.
-10. Apply migrations to staging, seed only non-secret catalog metadata, upload
-   the calibration set to private R2, and run calibration before enabling
-   submissions.
+10. Apply migrations to staging and seed only non-secret catalog metadata before
+    enabling submissions. Upload the calibration set and run calibration only when
+    Phase 4 review work selects an immutable judge snapshot; calibration is not a
+    prerequisite for the public Tests feed.
 
 ## Required values
 
 `.env.example` is the complete naming contract. Before deployment, every blank
-required value must have an owner-approved source. Exact HTTPS origins,
-calibration hashes, judge model snapshots, E2B template IDs, and pricing values
-must be recorded in the deployment change and never inferred at runtime.
+value required by the enabled product stage must have an owner-approved source.
+Exact HTTPS origins, E2B template IDs, and pricing values must be recorded in the
+deployment change and never inferred at runtime. Judge and calibration names remain
+in the contract, but their values become required only when AI reviews and rankings
+are enabled, after Phase 1 removes their current feed-publication dependency.
 
 ## Preflight
 
@@ -138,5 +148,6 @@ npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc --env stagi
 ```
 
 A green preflight proves configuration consistency only. It does not prove that
-Cloudflare, Clerk, the judge provider, or E2B are safe to use until the staging
-checks in `LAUNCH-PLAN.md` pass.
+Cloudflare, Clerk, or E2B are safe to use until the **Phase 2 — Validate the public
+feed on staging** checks in `LAUNCH-PLAN.md` pass. Judge-provider validation belongs
+to Phase 4 review work and is not a public-feed launch gate.

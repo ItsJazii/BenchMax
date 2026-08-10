@@ -1,283 +1,230 @@
-# Benchmax v3 — Community Test Results
+# BenchMax v1 — Public AI Test Feed
 
-**This version supersedes the v2 platform-generation plan.** Benchmax is now a public
-hub where anyone can create a reusable AI model test, submit evidence of a model's
-attempt at it, and get an AI-judged score on a public per-test leaderboard — free to
-browse, cheap to run, with **no tested-model generation keys anywhere**; the only
-provider credential in the system is the pinned judge's API key.
+BenchMax is a simple public site where people share AI tests and their outputs.
 
-## 1. What changed from v2, and the honest trade
+Anyone can browse every submitted test. A user logs in only when they want to
+submit one. Each submission clearly shows the prompt, model, harness, reasoning,
+output/evidence, and contributor. Review and leaderboards are important, but they
+are a later layer and must never block the core public test feed.
 
-v2's thesis was that only platform-generated runs are verifiable, so only they could
-rank. That was true — and it made the product expensive (platform pays generation),
-high-friction (contributors bring API keys), and narrow (one seeded model). v3 trades
-verified provenance for accessibility:
+## 1. Product in one sentence
 
-- **Anyone can participate**: pick or create a test, upload evidence, get judged.
-- **Costs collapse**: no generation spend, no BYOK infrastructure; the only variable
-  cost is judging, which §7 caps.
-- **The trade, stated plainly**: rankings now measure *submitted evidence*, not
-  independently verified model runs. Contributor-declared model/harness/reasoning
-  metadata is unverifiable and always labeled as such. Nothing stops best-of-N
-  cherry-picking. Benchmax's honesty guarantee shifts from "we verified this run" to
-  "we judged this evidence with a pinned, blinded, published process — and we never
-  pretend the metadata is verified."
+> Submit an AI test with the prompt, setup, and output; let everyone inspect it;
+> then let AI and trusted humans review and rank it later.
 
-Consequences for framing (enforced in UI and copy):
-- **Per-test leaderboards are the product.** Comparing results on the same immutable
-  test version is meaningful: same prompt, same rubric, same judge.
-- **Model aggregate pages are summaries, not benchmarks.** They carry a permanent
-  "community-declared metadata" caveat and never present themselves as verified model
-  rankings.
-- The methodology page states all of the above in plain language.
+## 2. Product principles
 
-The generation stack (run wizard, BYOK GenerationSession Durable Object, platform
-credits, generate-platform queue, Moonshot runtime key, context budgeting, generation
-recovery states) is **deleted, not deactivated**. Any existing run records stay
-read-only at their URLs; navigation and creation APIs are removed.
+1. **Browse first.** No login is required to see tests, outputs, contributors,
+   models, or leaderboards.
+2. **One simple submission.** A user does not create a reusable test and then a
+   separate result. One form creates one public test submission.
+3. **Attribution is always visible.** Every test shows who submitted it and which
+   model, harness, and reasoning setting they declared.
+4. **Publish before ranking.** A safe test can be public while it is waiting for
+   review. AI-judge availability is not a launch blocker.
+5. **Leaderboard is the end game.** Reviews and rankings add value later; the
+   public All Tests page is useful from day one.
+6. **Be honest.** Model and setup details are contributor-declared, not verified
+   by BenchMax, unless a reviewer explicitly verifies something.
 
-## 2. Product
+## 3. The core object: a Test
 
-### 2.1 Core objects
+The public product calls every submission a **Test**. Internally it may be stored
+as a submission or result, but users should not need to understand that.
 
-- **CommunityTest** → immutable **CommunityTestVersion**: prompt, goal, category
-  (frontend / browser game / browser 3D / other), success criteria, approved rubric,
-  creator, published timestamp. Editing anything creates a new version.
-- **TestResult** (evolved from the showcase concept, keeping its artifact
-  relationships): `testVersionId`, model/harness catalog references (canonical or
-  pending), raw + normalized reasoning level (`none|low|medium|high|max|unknown`),
-  declared settings + metadata hash, judge status/score/deadline, ranking eligibility
-  with reason, superseded-result reference.
+Every Test contains:
 
-### 2.2 Lifecycle (four internal axes, one visible status)
+- Contributor/user
+- Optional title
+- Prompt
+- Model family and model version
+- Harness/tool, such as Cursor, Claude Code, Codex, Cline, aider, or custom
+- Reasoning level or reasoning description
+- Optional settings and notes
+- Output/evidence: images, video, source ZIP, logs, text, or a supported combination
+- Submission date
+- Review status
+- Reviews, score, and leaderboard rank when available
 
-Internal state axes (kept separate so no axis blocks another incorrectly):
-- Publication: `draft | published | removed | rejected`
-- Safety: `pending | scanning | approved | blocked`
-- Judge: `not_queued | queued | evaluating | judging | scored | unranked | overdue | failed`
-- Ranking: `pending | eligible | catalog_pending | insufficient_evidence | moderation_hold | superseded | ineligible`
+Free-text model and harness names are allowed. Catalog normalization may improve
+filtering later, but an unknown label must not stop a safe Test from publishing.
+Supporting this is a real Phase 1 data-model/API change: the current catalog-keyed
+schema must accept and preserve the contributor's declared free-text values while
+optionally linking normalized catalog entries later.
 
-**Users see exactly one computed status** on every result: `Draft`, `Scanning`,
-`Public — pending AI review`, `Scored — ranked #N`, `Scored — not ranked (reason)`,
-`Delayed`, or `Blocked (owner-visible reason)`. The axis detail lives in an expandable
-"status history" for those who want it.
+## 4. Main user flow
 
-Safety-blocked results are the only exception to public visibility: private to the
-owner, with the reason shown.
+### Visitor
 
-### 2.3 The flow
+1. Visit BenchMax.
+2. Land on **All Tests**.
+3. Browse or filter tests by model, harness, contributor, status, or category.
+4. Open a Test page to see its prompt, declared setup, evidence, contributor,
+   review status, reviews, score, and rank.
+5. Optionally open model pages, contributor profiles, or the leaderboard.
 
-1. **Create or pick a test** (`/tests`, `/tests/[slug]`): creator supplies prompt,
-   goal, category, success criteria. Benchmax's judge drafts a rubric (§5.2); the
-   creator approves → immutable test version published.
-2. **Submit a result** (`/submit`): declare model, version, harness, reasoning
-   (free-text allowed — unmatched entries create a catalog request, §2.4); upload
-   evidence (images, video, code, logs). At least one approved public artifact
-   required; source artifacts may be marked private (judge-visible only).
-3. **Safety scan** (existing quarantine pipeline, unchanged) → publish as
-   `Public — pending AI review`.
-4. **Judged** (§5) as capacity allows; hard target 24h (`judgeDueAt =
-   publishedAt + 24h`; at the deadline mark `overdue`, alert operations, keep the
-   result public, keep retrying).
-5. **Ranked** on the test-version leaderboard (§6); model/config aggregate pages
-   update via snapshots.
+### Contributor
 
-### 2.4 Metadata catalogs (no provider APIs)
+1. Log in.
+2. Open **Submit Test**.
+3. Enter the prompt, model, harness, and reasoning; optionally add a title,
+   settings, and notes.
+4. Upload the actual output/evidence.
+5. Submit.
+6. BenchMax performs the required safety scan.
+7. If safe, the Test appears publicly under that contributor as
+   **Awaiting review**.
+8. For compatible source ZIPs, the sandbox evaluator runs afterward as
+   non-blocking enrichment and attaches derived screenshots, video, console,
+   and accessibility evidence when available.
+9. Reviews and leaderboard placement are added later without changing the
+   original submission.
 
-Model and harness catalogs are metadata-only. Seed the major families — GPT, Claude,
-Gemini, Kimi, GLM, MiniMax, Qwen, DeepSeek — plus common harnesses (Cursor, Codex,
-Claude Code, Cline, aider, custom). Admins add versions without deploys. A missing
-entry creates a **catalog request**: the result still publishes and gets judged, but
-stays `catalog_pending` for ranking until an admin maps or approves it. Free-text
-model names never enter rankings uncanonicalized.
+There is no separate test-creation flow, rubric-approval gate, or active-judge
+requirement before a Test can appear publicly.
 
-### 2.5 Pages
+## 5. Public pages
 
-`/tests`, `/tests/[slug]` (create/browse/compare tests), `/submit`, `/results/[slug]`
-(evidence, status, score breakdown, rank), plus updated Explore, model pages,
-contributor profiles, dashboard, moderation console, and leaderboards. Old showcase
-URLs 301-redirect; legacy run pages stay read-only if records exist.
+### Required for the simple product
 
-## 3. Evidence handling
+- `/` or `/tests` — **All Tests**, the main product page
+- `/tests/[slug]` — one complete Test and its evidence/reviews
+- `/submit` — one submission form, login required
+- `/contributors/[handle]` — everything submitted by one user
+- `/models` and `/models/[slug]` — tests grouped by declared model
+- `/leaderboards` — ranked reviewed tests; during Stage A it may show an honest
+  empty state explaining that reviews and rankings are coming later
+- `/dashboard` — the signed-in user's submissions and statuses
 
-- **Reuse unchanged**: R2 quarantine, MIME/magic-byte checks, traversal/zip-bomb
-  limits, executable rejection, secret scanning + redaction, quotas, safe headers,
-  sha256 verification at publish, upload-session sweep, abuse reporting.
-- **Source evidence**: always statically inspected after scanning.
-  **Static-only execution in v1**: recognized web projects that include runnable
-  static files (no build/install step — a build step would require network in the
-  sandbox, which stays disabled) execute in the no-network E2B sandbox with the
-  hardened evaluator: build-log/console capture, accessibility checks, screenshots,
-  fixed-duration video (±50ms tolerance), and explicit per-operation timeouts so
-  model-caused hangs become failed checks and scores, never infra retries. Projects
-  needing a build, and non-web languages, are judged from submitted evidence only —
-  never executed.
-- Private source reaches the judge but never public APIs or pages.
+### Admin pages
 
-## 4. Trust and integrity rules
+- `/moderation` — blocked/flagged tests and abuse reports
+- `/operations` — review queue, system health, and judge spend
 
-- Contributor-declared provenance is labeled **"declared, unverified"** everywhere it
-  appears — result pages, leaderboards, aggregates, API responses.
-- Judge process is fully published: pinned judge snapshot, rubric, prompts template
-  hash, sample count, blinding rules.
-- Anti-gaming baseline (v1): email-verified accounts to submit; per-account daily
-  submission caps (§7); one eligible result per contributor per exact configuration
-  per test version (latest wins, older marked `Superseded`, scores retained);
-  contributor count N displayed on every aggregate; new-account swarm detection
-  deferred but result sets are snapshotted so retroactive cleanup is possible.
-- Injection-flagged evidence stays publicly visible, enters `moderation_hold`, and
-  does not rank until a moderator clears it (reversible, as built).
-- Every state change, judgment, and moderation action remains append-only audited.
+Explore, Compare, and other discovery pages are optional polish. They must not
+delay the All Tests experience.
 
-## 5. Judging
+## 6. Test statuses
 
-### 5.1 The judge (cheap by default, rigorous where it matters)
+Users should see one plain status:
 
-- **One pinned judge snapshot** (a current Sonnet-class multimodal snapshot, exact ID
-  fixed in config at launch — chosen over Opus-class for materially lower cost; the
-  precise multiple depends on current pricing and evidence mix, so **per-result cost
-  is measured against the calibration set before leaderboards are enabled**, not
-  assumed from list prices. Near launch, compare current Sonnet snapshots on the
-  calibration set and pin the exact immutable winner. The pinned-snapshot rule is
-  what matters: launch is blocked if the snapshot is unavailable and no silent
-  substitution ever happens; judge changes create a new evaluation version).
-- **k=1 sample for standard results.** Score, dimension breakdown, and concise
-  reasoning publish with judge/evaluation version and timestamps.
-- **k=3 samples with per-dimension median** (escalation) for: results entering the
-  displayed top 10 of their test-version leaderboard, disputed results, and
-  moderator-requested re-judgments. **Escalation iterates to a fixpoint**: if a k=3
-  re-judgment demotes a result out of the top 10, whichever un-escalated result now
-  enters the top 10 is escalated in turn, repeating until every displayed top-10
-  result carries k=3 scoring. This concentrates rigor where variance changes
-  outcomes while keeping the average cost per result near the k=1 price.
-- Calibration set re-judged on the existing weekly cron; drift beyond threshold
-  freezes the evaluation version and alerts (as built).
+- **Processing** — evidence is being scanned
+- **Awaiting review** — public and safe, but not scored yet
+- **Reviewed** — has one or more AI/human reviews
+- **Ranked** — eligible and included in a leaderboard
+- **Blocked** — hidden because of a safety or moderation issue
 
-### 5.2 Rubric creation (judge-assisted, creator-approved)
+Do not expose the full internal queue/state-machine vocabulary in the main UI.
 
-- Creator supplies prompt, goal, success criteria; the judge drafts 3–6 dimensions
-  with stable keys and weights totaling 10,000 bps; **task success and correctness
-  are mandatory dimensions**; evidence sufficiency is an eligibility gate, not a
-  scored dimension. Creator reviews/edits/approves before the version publishes;
-  later changes = new version. Test creation is rate-limited (it costs judge tokens).
+If upload or mandatory safety processing fails before publication, the Test stays
+private and the contributor sees **Processing failed** in their dashboard with a
+retry path. If optional sandbox enrichment fails, the public Test remains
+**Awaiting review** and shows **Automated preview unavailable**; the technical
+failure details remain private to the contributor/admin.
 
-### 5.3 Judging a result (hardening carried over from the verified pipeline)
+## 7. Review and leaderboard layer
 
-- Blind model, harness, contributor, filenames, and provider-identifying strings
-  (full redaction list as built).
-- All evidence inside sanitized untrusted-evidence envelopes; injection screen runs
-  over source and runtime-captured text; `checkKey`/dimension keys returned by the
-  judge validated against the frozen rubric (allowlist).
-- Queue jobs idempotent by (result, stage, evaluation version); late duplicates ack
-  without regressing progressed results; DLQ and recovery handlers re-read current
-  status before failing anything; 2-minute recovery cron as built.
+Review is additive. It does not control whether a safe Test exists publicly.
 
-## 6. Ranking
+Reviewers may include:
 
-- Every judged result stays visible; eligibility only controls ranking.
-- **Per-test-version leaderboard**: eligible results ranked by score; ties share rank.
-- **Configuration aggregates** (model version + harness + reasoning): median eligible
-  score per test version, then equal-weight mean across test medians (popular tests
-  can't dominate). Display N, IQR, test coverage, provisional flag, declared-metadata
-  caveat, and snapshot date.
-- Immutable, reproducible leaderboard snapshots on every eligible-set change (existing
-  snapshot machinery, redirected from benchmark versions to test versions).
+- BenchMax AI judge
+- Admin/owner
+- Approved human reviewers or moderators
 
-## 7. Cost model and abuse economics
+Every review records who or what reviewed the Test, when it happened, its score,
+and its written reasoning. Reviews are append-only; corrections create another
+review or an explicit moderation action.
 
-Fixed costs stay ~$5–10/mo (Workers Paid, R2, Clerk free tier). The only variable
-cost is judging:
+The main leaderboard is a **top-rated submissions showcase across different
+prompts**, not a scientific like-for-like benchmark. The exact scoring and
+consensus policy can be chosen after the public feed works. The first simple policy
+may be one AI review plus one trusted human/admin approval. Only reviewed, eligible
+Tests enter leaderboards.
 
-- Standard k=1 Sonnet-class judgment: several-fold cheaper per result than the k=3
-  Opus design it replaces (the exact multiple depends on current per-token pricing
-  and the evidence mix — **real per-result cost is established by judging the
-  calibration set before leaderboards go live**, and the budget caps below are set
-  from that measurement, not from estimates).
-- **Caps, enforced server-side**: per-account daily judged-submission quota (launch:
-  5/day) and monthly test-creation quota (launch: 10/month); a global daily judge
-  budget — when exhausted, new results queue as `Public — pending AI review` and the
-  24h clock keeps them honest; storage quotas as built.
-- Judge and sandbox spend metered per result in the existing ledger; `/operations`
-  shows daily burn.
+Later, a contributor may choose **Use the same prompt as this Test** to create
+comparable prompt groups without bringing back the separate reusable-test/result
+creation flow. Those groups may support like-for-like leaderboards as a distinct
+view.
 
-## 8. Repository changes and rollout
+Leaderboards should support useful filters such as model, harness, category,
+contributor, and date. A Test that is not ranked remains visible on All Tests.
 
-### 8.1 Cleanup (adopting the pivot plan's list)
+## 8. Safety and trust
 
-Order matters — the current worktree is valuable but not commit-ready (the evaluator
-smoke test fails on clean checkouts until the portability fix lands, and
-`sandbox/browser-web-v1/node_modules/` is untracked-but-unignored, so a blanket
-`git add -A` would commit hundreds of dependency files):
+Keep the security infrastructure already built:
 
-1. Create the pivot branch (`codex/community-results-pivot`); never reset the
-   worktree.
-2. Fix `.gitignore` first: nested `node_modules`, `.claude/launch.json`; stage
-   selectively from then on.
-3. Finish the still-relevant evaluator/upload/queue fixes (below) and get the full
-   suite green on a clean checkout.
-4. Commit that hardened baseline as one commit.
-5. Then the three curated pivot commits (§ below).
-- Preserve all verified hardening (uploads, security, moderation, audit, evaluator,
-  queues, recovery).
-- Delete generation-only code: run wizard, GenerationSession DO, generate-platform
-  queue, platform credits, provider generation keys, Kimi runtime catalog, context
-  budgeting, generation recovery states. Legacy run records read-only.
-- Land the still-relevant round-2 fixes: evaluator per-operation timeouts + ±50ms
-  video tolerance; portable smoke-test prerequisite detection with mandatory CI mode;
-  duplicate/DLQ status re-checks; quarantine orphan cleanup; quota triggers filtered
-  by `expires_at`; recovery/moderation audit events; rubric key allowlisting.
-- Delete `.openai/hosting.json`; neutral upload placeholder copy; rewrite
-  README/PLAN/methodology around community-submitted results and declared provenance.
-- Regenerate the Drizzle journal/snapshots against a clean scratch DB so 0003+ and the
-  pivot migration are consistent.
-- Three curated commits: (1) schema/migrations/catalogs/legacy retirement,
-  (2) upload/evaluation/judge/recovery/ranking pipeline, (3) UI/moderation/docs/deploy
-  config.
+- Verified account required to submit
+- Upload quarantine and type/signature validation
+- ZIP traversal, executable, secret, and zip-bomb rejection
+- Private R2 storage and separate cookieless user-content delivery
+- Prompt-injection screening
+- Moderation and abuse reporting
+- Append-only audit records
+- Rate limits and storage quotas
 
-### 8.2 Production rollout
+Contributor-declared model, harness, reasoning, and settings must be labeled
+**Declared by contributor — not independently verified**.
 
-Prerequisites: Clerk + exact authorized origins; D1, private R2, judge/evaluation
-queues + DLQ + 2-min cron; separate cookieless usercontent origin; E2B template +
-pinned build hash; Anthropic key with access to the pinned judge snapshot; calibration
-fixtures + hash; owner identities.
+BenchMax never needs the tested model's API key and does not generate the tested
+output. The contributor runs the model elsewhere and uploads the result.
 
-Order: staging deploy → migrations → seed catalogs → synthetic image/video/source
-submissions through the full lifecycle → back up D1/R2 → production deploy with
-submissions disabled → migrations → seed → activate judge version → verify calibration
-→ enable submissions → watch queue age/error/spend → enable leaderboard publication.
+## 9. Simple launch scope
 
-## 9. Test and acceptance plan
+### Stage A — Public Tests product
 
-Unit: rubric immutability + weight validation; catalog mapping + pending requests;
-reasoning normalization + metadata hashing; eligibility/supersession; per-test ranking
-(ties, medians, IQR, equal-test aggregation, snapshot reproducibility); judge schema,
-blinding, injection screening, rubric-key allowlisting; **judge budget caps and
-escalation triggers** (k=1 → k=3 on top-10 entry).
+Launch when all of these work:
 
-Integration: draft → upload → scan → public-pending → judged → ranked; results stay
-public while queued/delayed/overdue/unranked/superseded; unknown catalog entries
-publish + score but don't rank until mapped; duplicates and late DLQ deliveries can't
-regress completed results; private source never reaches public APIs; blocked artifacts
-never publish; static web execution success, model-caused failure, sandbox timeout →
-scored, infra fault → retried; upload expiry/orphan cleanup/quota alignment;
-moderation hold, dispute, audit immutability; **budget-exhausted queuing behavior**.
+- Anyone can browse All Tests without logging in
+- A user can log in and submit one complete Test
+- Prompt, model, harness, reasoning, evidence, and contributor are visible
+- Safe submissions become public as Awaiting review
+- Compatible source ZIPs receive sandbox-generated preview evidence asynchronously;
+  enrichment failure never removes an otherwise safe public Test
+- Contributor and model pages list the correct Tests
+- Admin can block or remove unsafe submissions
+- Mobile and keyboard use are acceptable
 
-E2E browser: create test → approve rubric → upload each artifact type → pending →
-scored → ranked; catalog approval; moderation; mobile + keyboard accessibility.
+An AI judge, final scoring formula, and populated leaderboard are not required
+to launch this stage.
 
-Release gates: full `npm test` + TypeScript + lint + production build + migration
-invariants + evaluator smoke (mandatory CI mode) + Cloudflare dry-runs + prod
-dependency audit; a safe result publishes after scanning; escalated scoring produces
-the calibrated median with full public breakdown; synthetic results judged within 24h;
-**no provider generation keys, BYOK flows, or credits remain in the codebase**; no
-unsafe artifact, private source, raw judge trace, secret, or model identity leaks.
+### Stage B — Reviews and leaderboards
 
-## 10. Assumptions
+Add after the public feed is stable:
 
-- Benchmax ranks community-submitted evidence; provenance is declared, not verified,
-  and is always labeled as such.
-- Results are comparable only within the same immutable test version; model summaries
-  are equal-weight aggregates across tests with a permanent caveat.
-- Judging starts promptly; 24h is the operational maximum, not a waiting period.
-- Native multi-language execution, build-step execution, payments, comments, voting,
-  and Benchmax-funded model generation are out of scope for v1.
+- AI judge reviews
+- Admin and approved-human reviews
+- Review history on Test pages
+- Final score/consensus policy
+- Leaderboard eligibility and ranking
+- Disputes and re-review
+
+### Stage C — Growth polish
+
+- Better search and filters
+- Compare view
+- More model/harness normalization
+- Reviewer reputation or permissions
+- Better leaderboard slices and trends
+- Optional same-prompt comparison groups
+
+## 10. What is explicitly out of scope for v1
+
+- Separate reusable Test definitions and Test Results
+- Mandatory AI-generated rubrics before submission
+- Blocking publication until an immutable AI judge is active
+- BenchMax-funded model generation
+- Tested-model API keys or BYOK
+- Payments
+- Comments and voting
+- Reproducing or verifying every contributor's model run
+
+## 11. Build strategy
+
+Reuse the working authentication, uploads, evidence security, user-content Worker,
+moderation, audit, model pages, contributor pages, and queue infrastructure.
+
+Simplify the product surface around **All Tests → Submit Test → Test page** before
+adding or repairing anything related to judge calibration or advanced ranking.
+The code may keep some internal result terminology during the transition, but the
+public experience and product copy must use this simple Test model.

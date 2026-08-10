@@ -1,165 +1,124 @@
-# Benchmax — launch plan (2026-08-01)
+# BenchMax simple-product launch plan
 
-Everything between the current state and a publicly launched product, in order.
-Owner tags: **[Codex]** implements, **[Claude]** reviews/verifies, **[You]** are the
-only one who can do accounts, payments, domains, and product decisions.
-Reference docs: PLAN.md (product spec); open code items and session state live in
-the local (untracked) handoff.md.
+This launch plan implements `PLAN.md`. The public All Tests product comes first.
+AI judging and leaderboards come after the feed and submission flow work.
 
----
+## Current position
 
-## Phase 0 — Finish the code (complete 2026-08-01)
+The repository already contains substantial infrastructure: authentication,
+uploads, safety scanning, public evidence delivery, model/contributor pages,
+moderation, queues, judging, ranking, audits, and staging resources.
 
-1. **[Codex]** Round-3.1 and Round-3.2 code residuals are implemented, including
-   migration metadata, frozen-evaluation guards, durable repair backoff, the legacy
-   seal, catalog invariants, and the public-surface/CI hygiene pass.
-2. **[Codex]** The three curated commits (schema/catalogs/retirement · pipeline ·
-   UI/docs/deploy) and the bounded residual follow-up are on
-   `codex/community-results-pivot`.
-3. **[Claude]** Verification is green on the committed code: typecheck, lint, full
-   tests, D1 invariants, rendered HTML, and deployment dry-runs.
-4. **[You]** One product decision, needed before beta: the submission-vs-judging cap
-   ratio (today: 20 publishes/day but 5 judged/day per account — either lower the
-   publish cap or accept a visible "pending review" queue by design).
+The product surface is currently more complicated than the new plan. The next job
+is simplification, not more infrastructure or judge work.
 
-**Exit criteria:** clean worktree, curated commits plus the residual follow-up, and
-full suite + typecheck + lint + dry-runs green. Remaining work is staging validation,
-the cap decision, and the explicitly deferred launch polish listed below.
+## Phase 1 — Simplify the product
 
-## Phase 1 — Repo safety (complete 2026-08-01)
+1. Make `/tests` the primary All Tests feed and make it useful when no item has a
+   score yet.
+2. Collapse the current create-test/result workflow into one **Submit Test** form.
+3. Require: prompt, model, harness, reasoning, and output/evidence.
+4. Change the current catalog-keyed model/harness schema and APIs to preserve
+   contributor-declared free-text values, with optional catalog normalization later.
+   Treat this as a data-model change, not a copy or UI-only task.
+5. Keep compatible source-ZIP sandbox evaluation as asynchronous enrichment: publish
+   after the mandatory safety scan, then attach generated preview/accessibility
+   evidence when evaluation finishes. Enrichment failure must not unpublish the Test.
+6. Show contributor attribution and declared-model/setup caveats everywhere.
+7. Make one Test page show the complete submission and later reviews.
+8. Use the simple public statuses: Processing, Awaiting review, Reviewed, Ranked,
+   and Blocked.
+9. Keep mandatory processing failures private to the contributor dashboard with a
+   retry path; show optional enrichment failure publicly only as
+   **Automated preview unavailable**.
+10. Remove or hide rubric approval, immutable test-version, and active-judge gates
+   from the contributor flow.
+11. Decouple feed-only catalog initialization and publication from judge/calibration
+    secrets. Keep the judge variable names in the environment contract for the later
+    review phase, but do not require their values to publish a safe Awaiting review
+    Test.
+12. Keep `/leaderboards` reachable with an honest empty state until reviewed Tests
+    exist.
 
-1. **[Codex]** Private GitHub repo `ItsJazii/BenchMax` contains the complete project
-   tree on both `main` and `codex/community-results-pivot`; the starter commit was
-   preserved as merge history.
-2. **[Codex/Claude]** The clean-checkout CI workflow passed on GitHub with the
-   mandatory evaluator-smoke flag (run `30710201657`).
-3. **[Codex/You]** From Phase 2 onward, all code/config changes use focused PRs.
-   GitHub rejected branch protection for this private repository's current plan, so
-   `CONTRIBUTING.md`, `SECURITY.md`, `CODEOWNERS`, CI, and human approval are the
-   active PR safety controls until repository settings support required checks.
+**Exit:** a visitor can browse Tests and a logged-in user can submit one complete
+Test without understanding BenchMax's internal pipeline.
 
-**Exit criteria:** code on GitHub, CI green on a machine that isn't yours.
+## Phase 2 — Validate the public feed on staging
 
-## Phase 2 — Accounts and services (in progress 2026-08-05; mostly [You])
+1. Submit image, video, source ZIP, and mixed-evidence Tests.
+2. Confirm safe submissions become public as Awaiting review.
+3. Confirm compatible source ZIPs publish before optional evaluator enrichment,
+   derived artifacts attach later, and evaluator failure leaves the Test public.
+4. Confirm mandatory processing failures stay private with a retry path.
+5. Confirm unsafe submissions remain blocked/private.
+6. Verify All Tests, Test detail, model, contributor, dashboard, and moderation
+   pages on desktop and mobile.
+7. Verify Google, GitHub, and email-code login.
+8. Repeat public leak, private-source, secret, accessibility, queue, and DLQ checks.
 
-1. **[Devin/You]** Replacement Cloudflare account access is confirmed through
-   Wrangler OAuth and the Workers Bindings MCP. Production and staging D1,
-   their six disjoint queues, and private R2 buckets `benchmax-uploads` and
-   `benchmax-uploads-staging` are provisioned. The owner login has 2FA; verify
-   account-level enforcement. Staging deliberately starts on Workers Free in
-   attended mode, with the DLQ checked after every lifecycle batch and at least
-   every 12 hours. A Paid upgrade is deferred until measured CPU, bundle-size,
-   queue-volume, retention, or unattended-operation needs require owner-approved
-   billing.
-2. **[You]** Domain(s): one main domain (e.g. benchmax.dev) and one SEPARATE domain
-   or distinct registrable origin for user content (cookieless isolation per PLAN §3;
-   a `*.workers.dev` subdomain is acceptable for the usercontent origin at launch).
-3. **[You]** Clerk app (free tier): enable Google, GitHub, email-code; add production
-   domain; collect publishable + secret keys.
-4. **[You]** Kimi API access is available for staging calibration.
-   **[You + Devin]** may measure the moving `kimi-k2.7-code` alias as a
-   candidate. Kimi's sampling parameters are vendor-fixed, so Phase 3 must
-   verify that the three-sample median and drift threshold absorb observed
-   variance. A passing candidate is held in the terminal `candidate` status
-   after calibration and cannot rank or recalibrate. A future immutable ID
-   creates a new evaluation version rather than mutating this measured
-   candidate. Launch still requires either an immutable Moonshot model ID or a
-   calibrated pinned OpenAI snapshot; never activate a moving alias.
-5. **[You]** E2B account; **[Codex]** build `sandbox/browser-web-v1` as a template,
-   record immutable template ID + build hash.
-6. **[Devin]** Keep the provisioned buckets private, deploy both Workers with
-   isolated staging/production environments, attach only the selected HTTPS
-   origins, and configure the disjoint queue consumers/crons. All secrets go via
-   `wrangler secret put` (Clerk, judge key/origin/model, provenance key, calibration
-   hash/key, owner subjects) — never in files.
+**Exit:** the no-score public product is safe, understandable, and usable.
 
-**Exit criteria:** all prerequisites in PLAN §8.2 exist; `.env.example` fully
-mappable to real secrets.
+## Phase 3 — Public beta
 
-## Phase 3 — Staging validation (PLAN §8.2; ~1–2 days)
+1. Deploy production with submissions initially disabled.
+2. Apply migrations and verify the production resource isolation.
+3. Smoke-test authentication and evidence delivery on the real domain.
+4. Add 10–20 honest seed Tests so the feed is not empty.
+5. Enable submissions and monitor moderation, storage, queues, and abuse.
 
-1. **[Codex]** Deploy both workers to staging (workers.dev), apply migrations 0000→
-   latest, seed metadata catalogs via the owner endpoint.
-2. **[Codex]** Upload calibration fixtures to private R2; activate the evaluation
-   version; run calibration — must pass with the pinned snapshot.
-3. **[Claude]** Measure real judge cost per result on the calibration set; set the
-   global daily judge budget and per-account caps from measurement (PLAN §7 says
-   caps come from measurement, not estimates).
-4. **[You + Codex]** Full synthetic lifecycle on staging, all three evidence types
-   (image, video, source-zip): create test → rubric draft → approve → submit →
-   scan → public-pending → judged → ranked. Plus: unknown model → catalog request →
-   admin approve → becomes ranked; a dispute → re-judge; a safety-blocked upload
-   (stays private, owner sees reason); an overdue simulation.
-5. **[Claude]** Review staging behavior against PLAN §9 release gates; browser pass
-   on mobile viewport + keyboard accessibility; verify no secret/private-source/
-   judge-trace leaks in any public payload.
+**Exit:** strangers can browse and submit Tests; safe Tests appear publicly under
+the correct model and contributor.
 
-**Exit criteria:** every PLAN §9 release gate demonstrably passes on staging.
+## Phase 4 — Add reviews
 
-## Phase 4 — Production rollout (PLAN §8.2 order; ~half a day)
+1. Define the smallest review schema and UI shared by AI and humans.
+2. Let the owner/admin review and score a Test.
+3. Add approved human reviewers.
+4. Select and calibrate an immutable AI judge snapshot.
+5. Display append-only review history and reviewer identity/type.
+6. Define the minimum review policy for leaderboard eligibility.
 
-1. **[Codex]** Back up staging-verified state; capture D1 export + Time Travel
-   bookmark procedure per docs/backup-restore.md.
-2. **[Codex]** Deploy production with **submissions disabled** → apply migrations →
-   seed catalogs → activate judge/evaluation version → verify calibration in prod.
-3. **[You]** Smoke-test signup with all three auth methods on the real domain.
-4. **[Codex]** Enable submissions. Watch `/operations`: queue age, overdue count,
-   error rates, judge spend.
-5. **[Codex]** After the first real results judge cleanly: enable leaderboard
-   publication.
+**Exit:** a Test can receive trustworthy AI/human reviews without changing its
+original submitted evidence.
 
-**Exit criteria:** a stranger can sign up, submit, get judged, and appear ranked.
+## Phase 5 — Leaderboards
 
-## Phase 5 — Launch content (before announcing; ~1–2 days, mostly [You])
+1. Calculate a final score from the approved review policy.
+2. Rank eligible Tests as a top-rated submissions showcase across prompts; do not
+   describe it as a like-for-like benchmark.
+3. Add model, harness, category, contributor, and date filters.
+4. Keep unreviewed/unranked Tests visible in All Tests.
+5. Add disputes and re-review only after the basic ranking works.
+6. Consider optional same-prompt comparison groups later as a separate leaderboard
+   view.
 
-An empty community site launches dead. Before telling anyone:
+**Exit:** reviewed Tests enter a useful leaderboard while All Tests remains the
+main product.
 
-1. **[You]** Create 6–10 good seed tests across the categories (frontend, browser
-   game, browser 3D, other) — real prompts you'd actually want models compared on.
-   Approve their rubrics carefully; they're immutable per version and they set the
-   site's quality bar.
-2. **[You]** Submit 3–5 honest seed results per popular test (your own runs of
-   different models, correctly declared) so leaderboards and Explore aren't empty.
-3. **[You]** Review ToS/privacy pages content (they exist; make sure you're happy
-   putting your name behind them) and set a real DMCA/abuse contact address.
-4. **[Claude]** Final copy pass: methodology page accuracy (declared-provenance
-   caveats, judge identity, cost/caps), OG images, 404s, mobile nav.
-5. **[You]** Optional: invite 1–2 trusted moderators (owner can grant roles).
+## Confirmed Phase 1 decisions
 
-**Exit criteria:** site looks alive and trustworthy to a first-time visitor.
+- Required form fields are prompt, model, harness, reasoning, and output/evidence.
+- Title and notes are optional.
+- Safe Tests publish immediately as Awaiting review after the mandatory safety scan.
 
-## Phase 6 — Launch and operate
+## Decisions still needed from the owner
 
-1. **[You]** Announce wherever your audience is (X, HN Show, Reddit r/LocalLLaMA
-   etc.). Lead with the honest pitch: community evidence, AI-judged, per-test
-   leaderboards, provenance declared-not-verified.
-2. Operating rhythm: **[You/moderators]** clear the moderation queue (injection
-   flags, catalog requests, disputes) — catalog requests are the growth bottleneck,
-   keep them under ~24h; **[Claude]** periodic health reviews (`/operations` spend,
-   overdue trends, DLQ, calibration drift alerts).
-3. **[Codex]** Weekly backups per runbook; dependency updates only with green suite.
-4. First-month iteration candidates (deliberately NOT in v1): submission-cap tuning
-   from real data, more seeded catalogs, evidence-verified tier, richer compare
-   views, build-step execution.
+### Needed before public beta
 
----
+- Seed Tests and outputs
+- Final Terms/Privacy review
+- Abuse/contact email
+- Submission rate limit
 
-## Decisions only you can make (collect them here)
+### Needed later, not now
 
-| Decision | Needed by | Recommendation |
-|---|---|---|
-| Submission vs judging cap ratio | Phase 0 exit | Lower publishes to ~8/day at launch |
-| Domain name(s) | Phase 2 | One .dev/.com + workers.dev for usercontent |
-| Workers Paid upgrade | Phase 3–4 | Stay Free for staging; upgrade only if measured limits block reliability |
-| Judge snapshot to pin | Phase 3 | Calibrate Kimi K3 as candidate; activate only an immutable Moonshot ID or pinned OpenAI snapshot |
-| Budget caps (from measurement) | Phase 3 | Set from calibration cost × expected volume |
-| Seed tests + rubrics | Phase 5 | 6–10, you author them |
-| Moderators | Phase 5–6 | Optional at launch |
+- AI judge provider and immutable snapshot
+- Human reviewer invitations
+- Scoring/consensus formula
+- Leaderboard eligibility rules
 
-## Cost picture
+## Immediate next step
 
-Prelaunch Cloudflare infrastructure stays within Workers, Queues, and R2 free
-allowances while staging measurements pass. Public-launch fixed cost may become
-~$5–10/mo after an owner-approved Workers Paid upgrade plus domain amortization;
-variable judge spend is measured in Phase 3 and capped by budget. Sandbox time is
-pennies. No generation costs, no BYOK — the judge key is the only provider credential.
+Audit the current routes and data model against this approved plan, then prepare a
+focused Phase 1 implementation plan. Do not deploy or redesign judging before the
+All Tests and Submit Test experience is simplified.

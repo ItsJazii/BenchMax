@@ -4,9 +4,10 @@ import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
 import { artifacts, showcases } from "@/db/schema";
 import {
-  inspectZipArchive,
+  inspectZipArchiveWithText,
   matchesMagicBytes,
   type ScanResult,
+  withPromptInjectionFindings,
 } from "./artifact-inspection";
 import {
   constantTimeEqualHex,
@@ -137,23 +138,15 @@ async function scanTextArtifact(
   const injection = screenJudgeInjection(null, [
     { label: `submitted-${artifact.kind}`, value: text },
   ]);
-  return {
-    status: secretLabels.length > 0 ? "blocked" : "approved",
-    sha256: await sha256Hex(buffer),
-    checks: [
-      "utf-8",
-      "secret-patterns",
-      "prompt-injection",
-      "content-sha256",
-    ],
-    findings: [
-      ...secretLabels.map((label) => `Potential ${label} detected.`),
-      ...injection.findings.map(
-        (finding) =>
-          `Potential prompt-injection pattern ${finding.pattern} in ${finding.file}.`,
-      ),
-    ],
-  };
+  return withPromptInjectionFindings(
+    {
+      status: secretLabels.length > 0 ? "blocked" : "approved",
+      sha256: await sha256Hex(buffer),
+      checks: ["utf-8", "secret-patterns", "content-sha256"],
+      findings: secretLabels.map((label) => `Potential ${label} detected.`),
+    },
+    injection,
+  );
 }
 
 async function scanZipArtifact(
@@ -169,20 +162,15 @@ async function scanZipArtifact(
     };
   }
   const bytes = new Uint8Array(await object.arrayBuffer());
-  const result = await inspectZipArchive(bytes);
+  const { result, textEntries } = await inspectZipArchiveWithText(bytes);
   if (result.status !== "approved") return result;
-  const injection = screenJudgeInjection(bytes);
-  return {
-    ...result,
-    checks: [...result.checks, "prompt-injection"],
-    findings: [
-      ...result.findings,
-      ...injection.findings.map(
-        (finding) =>
-          `Potential prompt-injection pattern ${finding.pattern} in ${finding.file}.`,
-      ),
-    ],
-  };
+  const injection = screenJudgeInjection(null, [
+    {
+      label: "submitted-source-archive",
+      value: textEntries,
+    },
+  ]);
+  return withPromptInjectionFindings(result, injection);
 }
 
 async function recordScanResult(
@@ -225,16 +213,30 @@ async function recordScanResult(
         version: 1,
         checks: finalResult.checks,
         findings: finalResult.findings,
+        injectionFlag: Boolean(finalResult.injectionFlag),
         scannedAt: now.toISOString(),
       }),
       updatedAt: now,
     })
     .where(eq(artifacts.id, artifact.id));
 
+  if (finalResult.injectionFlag) {
+    await getDb()
+      .update(showcases)
+      .set({ rankingStatus: "moderation_hold", updatedAt: now })
+      .where(eq(showcases.id, artifact.showcaseId));
+  }
+
   if (finalResult.status === "blocked") {
     await getDb()
       .update(showcases)
-      .set({ safetyStatus: "blocked", updatedAt: now })
+      .set({
+        safetyStatus: "blocked",
+        processingFailureCode: null,
+        processingFailureSummary: null,
+        processingFailedAt: null,
+        updatedAt: now,
+      })
       .where(eq(showcases.id, artifact.showcaseId));
   } else {
     const remaining = await getDb()
@@ -250,7 +252,13 @@ async function recordScanResult(
     if (remaining.length === 0 && finalResult.status === "approved") {
       await getDb()
         .update(showcases)
-        .set({ safetyStatus: "approved", updatedAt: now })
+        .set({
+          safetyStatus: "approved",
+          processingFailureCode: null,
+          processingFailureSummary: null,
+          processingFailedAt: null,
+          updatedAt: now,
+        })
         .where(eq(showcases.id, artifact.showcaseId));
     }
   }

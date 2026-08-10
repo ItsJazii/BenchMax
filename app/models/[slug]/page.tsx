@@ -8,6 +8,7 @@ import {
   listPublicDeclaredModels,
   listPublicShowcaseCardsPage,
 } from "@/lib/data/showcases";
+import { declaredModelLabelFromPathKey } from "@/lib/domain/declared-model-path";
 
 export async function generateMetadata({
   params,
@@ -15,7 +16,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  return { title: `${slug} Tests` };
+  const label = declaredModelLabelFromPathKey(slug);
+  return { title: label ? `${label} Tests` : "Model Tests" };
 }
 
 export default async function ModelPage({
@@ -24,6 +26,8 @@ export default async function ModelPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const modelLabel = declaredModelLabelFromPathKey(slug);
+  if (!modelLabel) notFound();
   const models = await listPublicDeclaredModels().catch(() => null);
   if (!models) {
     return (
@@ -36,14 +40,12 @@ export default async function ModelPage({
       </div>
     );
   }
-  const model = models.find(
-    (candidate) => candidate.label.toLowerCase() === slug.toLowerCase(),
-  );
+  const model = models.find((candidate) => candidate.label === modelLabel);
   if (!model) notFound();
   const page = await listPublicShowcaseCardsPage({
     limit: 50,
     modelExact: model.label,
-  });
+  }).catch(() => null);
   return (
     <div className="site-shell">
       <SiteHeader />
@@ -55,12 +57,26 @@ export default async function ModelPage({
           </div>
           <p>Declared by contributors — not independently verified.</p>
         </header>
-        <div className="card-grid">
-          {page.items.map((test) => (
-            <ShowcaseCard key={test.id} showcase={test} />
-          ))}
-        </div>
-        {page.hasNext && (
+        {page === null ? (
+          <div className="security-gate">
+            <strong>Model Tests are temporarily unavailable.</strong>
+            <p>
+              Benchmax will not show an empty feed when these public records
+              cannot be read.
+            </p>
+          </div>
+        ) : page.items.length > 0 ? (
+          <div className="card-grid">
+            {page.items.map((test) => (
+              <ShowcaseCard key={test.id} showcase={test} />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <strong>No public Tests for this model.</strong>
+          </div>
+        )}
+        {page?.hasNext && (
           <p className="muted">
             Showing the newest 50 Tests. Use the All Tests filters for a narrower view.
           </p>

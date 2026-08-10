@@ -397,12 +397,14 @@ function ConfiguredUploadWizard() {
               <span>Title (optional)</span>
               <input
                 maxLength={120}
+                minLength={8}
                 onChange={(event) =>
                   setDraft({ ...draft, title: event.target.value })
                 }
                 placeholder="Responsive dashboard with working filters"
                 value={draft.title}
               />
+              <small>Leave blank, or use at least 8 characters.</small>
             </label>
             <label className="field-wide">
               <span>Prompt</span>
@@ -501,6 +503,7 @@ function ConfiguredUploadWizard() {
               <span>Notes (optional)</span>
               <textarea
                 maxLength={800}
+                minLength={24}
                 onChange={(event) =>
                   setDraft({ ...draft, summary: event.target.value })
                 }
@@ -508,6 +511,7 @@ function ConfiguredUploadWizard() {
                 rows={3}
                 value={draft.summary}
               />
+              <small>Leave blank, or use at least 24 characters.</small>
             </label>
             <label className="field-wide">
               <span>Other settings (optional)</span>

@@ -19,6 +19,7 @@ type DashboardData = {
     rank: number | null;
     judgeDueAt: string | null;
     updatedAt: string;
+    canPublish: boolean;
     state: {
       code: string;
       label: string;
@@ -38,6 +39,11 @@ type DashboardData = {
     enrichment: {
       status: string;
       failureCode: string | null;
+      canRetry: boolean;
+    } | null;
+    processing: {
+      failureCode: string;
+      failedAt: string | null;
       canRetry: boolean;
     } | null;
   }>;
@@ -171,6 +177,52 @@ function ConfiguredDashboard() {
                   {retryingId === submission.id ? "Retrying…" : "Retry preview"}
                 </button>
               )}
+              {submission.processing?.canRetry && (
+                <button
+                  className="button button-secondary"
+                  disabled={retryingId === submission.id}
+                  onClick={() => {
+                    setRetryingId(submission.id);
+                    void retryProcessing(submission.id, getToken)
+                      .then(() => window.location.reload())
+                      .catch((caught) => {
+                        setError(
+                          caught instanceof Error
+                            ? caught.message
+                            : "Could not retry evidence processing.",
+                        );
+                        setRetryingId(null);
+                      });
+                  }}
+                  type="button"
+                >
+                  {retryingId === submission.id
+                    ? "Retrying…"
+                    : "Retry processing"}
+                </button>
+              )}
+              {submission.canPublish && (
+                <button
+                  className="button button-primary"
+                  disabled={retryingId === submission.id}
+                  onClick={() => {
+                    setRetryingId(submission.id);
+                    void publishTest(submission.id, getToken)
+                      .then(() => window.location.reload())
+                      .catch((caught) => {
+                        setError(
+                          caught instanceof Error
+                            ? caught.message
+                            : "Could not publish this Test.",
+                        );
+                        setRetryingId(null);
+                      });
+                  }}
+                  type="button"
+                >
+                  {retryingId === submission.id ? "Publishing…" : "Publish Test"}
+                </button>
+              )}
             </article>
           ))}
           {data.submissions.length === 0 && (
@@ -207,6 +259,44 @@ async function retryEnrichment(
   const payload = (await response.json()) as { error?: string };
   if (!response.ok) {
     throw new Error(payload.error ?? "Could not retry the automated preview.");
+  }
+}
+
+async function retryProcessing(
+  showcaseId: string,
+  getToken: () => Promise<string | null>,
+) {
+  const token = await getToken();
+  if (!token) throw new Error("Your session expired.");
+  const response = await fetch(
+    `/api/showcases/${encodeURIComponent(showcaseId)}/processing/retry`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const payload = (await response.json()) as { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not retry evidence processing.");
+  }
+}
+
+async function publishTest(
+  showcaseId: string,
+  getToken: () => Promise<string | null>,
+) {
+  const token = await getToken();
+  if (!token) throw new Error("Your session expired.");
+  const response = await fetch(
+    `/api/showcases/${encodeURIComponent(showcaseId)}/publish`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const payload = (await response.json()) as { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not publish this Test.");
   }
 }
 

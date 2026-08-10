@@ -397,6 +397,11 @@ export const showcases = sqliteTable(
     })
       .notNull()
       .default("pending"),
+    processingFailureCode: text("processing_failure_code"),
+    processingFailureSummary: text("processing_failure_summary"),
+    processingFailedAt: integer("processing_failed_at", {
+      mode: "timestamp_ms",
+    }),
     judgeStatus: text("judge_status", {
       enum: [
         "not_queued",

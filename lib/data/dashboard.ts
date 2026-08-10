@@ -16,8 +16,11 @@ type SubmissionRow = {
   updated_at: number;
   run_id: string | null;
   run_status: string | null;
-  failure_code: string | null;
-  failure_summary: string | null;
+  processing_failure_code: string | null;
+  processing_failure_summary: string | null;
+  processing_failed_at: number | null;
+  run_failure_code: string | null;
+  run_failure_summary: string | null;
   score_bps: number | null;
   rank: number | null;
   benchmark_version_id: string | null;
@@ -70,12 +73,18 @@ export type ContributorSubmission = {
   rank: number | null;
   judgeDueAt: string | null;
   updatedAt: string;
+  canPublish: boolean;
   state: SubmissionState;
   timeline: SubmissionTimelineEvent[];
   enrichment: {
     status: string;
     failureCode: string | null;
     canRetry: boolean;
+  } | null;
+  processing: {
+    failureCode: string;
+    failedAt: string | null;
+    canRetry: true;
   } | null;
 };
 
@@ -94,8 +103,11 @@ export async function getContributorSubmissions(ownerId: string) {
          s.updated_at,
          r.id AS run_id,
          r.status AS run_status,
-         r.failure_code,
-         r.failure_summary,
+         s.processing_failure_code,
+         s.processing_failure_summary,
+         s.processing_failed_at,
+         r.failure_code AS run_failure_code,
+         r.failure_summary AS run_failure_summary,
          r.overall_score_bps AS score_bps,
          s.benchmark_version_id,
          bv.title AS benchmark,
@@ -226,8 +238,12 @@ export async function getContributorSubmissions(ownerId: string) {
       rankingStatus: row.ranking_status,
       rank: nullableNumber(row.rank),
       runStatus: row.run_status,
-      failureCode: row.failure_code,
-      failureSummary: row.failure_summary,
+      failureCode:
+        row.processing_failure_code ??
+        (row.benchmark_version_id ? row.run_failure_code : null),
+      failureSummary:
+        row.processing_failure_summary ??
+        (row.benchmark_version_id ? row.run_failure_summary : null),
     });
     const timeline = [
       ...(auditByShowcase.get(row.id) ?? []).map(auditTimelineEvent),
@@ -250,6 +266,10 @@ export async function getContributorSubmissions(ownerId: string) {
         ? nullableIso(row.judge_due_at)
         : null,
       updatedAt: iso(row.updated_at),
+      canPublish:
+        row.showcase_status === "draft" &&
+        row.safety_status === "approved" &&
+        !row.processing_failure_code,
       state,
       timeline,
       enrichment: row.enrichment_status
@@ -257,6 +277,13 @@ export async function getContributorSubmissions(ownerId: string) {
             status: row.enrichment_status,
             failureCode: row.enrichment_failure_code,
             canRetry: row.enrichment_status === "failed",
+          }
+        : null,
+      processing: row.processing_failure_code
+        ? {
+            failureCode: row.processing_failure_code,
+            failedAt: nullableIso(row.processing_failed_at),
+            canRetry: true,
           }
         : null,
     };
@@ -308,6 +335,10 @@ function auditLabel(action: string) {
     "artifact.scan_approved": "Evidence safety scan passed",
     "artifact.scan_blocked": "Evidence blocked by safety scan",
     "artifact.scan_pending": "Evidence held for safety review",
+    "showcase.processing_failed": "Evidence processing failed",
+    "showcase.processing_retry_completed": "Evidence processing completed",
+    "showcase.processing_retry_blocked": "Evidence blocked after retry",
+    "showcase.processing_retry_pending": "Evidence processing retry pending",
     "run.published": "AI review published",
     "run.ranking_refreshed": "Ranking refreshed",
     "run.pipeline_delayed": "AI review delayed",

@@ -65,6 +65,8 @@ try {
     "0020_restore_catalog_request_delete_seal.sql",
     "0021_fearless_scourge.sql",
     "0022_evaluation_status_transitions.sql",
+    "0023_overrated_leader.sql",
+    "0024_flippant_vampiro.sql",
   ]) {
     assert.match(migrationOutput, new RegExp(migration.replaceAll(".", "\\.")));
   }

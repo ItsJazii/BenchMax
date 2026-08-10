@@ -98,6 +98,40 @@ test(
         summary: "A contributor-submitted test with no additional notes.",
         title: "Feed Model model test",
       });
+      assert.equal(
+        body.processingRetry.recordedStoredSummary,
+        "Evidence processing could not finish because the scanner was unavailable. Retry processing from your dashboard.",
+      );
+      assert.doesNotMatch(
+        body.processingRetry.recordedStoredSummary,
+        /secret|database connection/i,
+      );
+      assert.deepEqual(
+        {
+          ...body.processingRetry,
+          recordedStoredSummary: undefined,
+        },
+        {
+          recordedCode: "artifact_scan_unavailable",
+          recordedStoredCode: "artifact_scan_unavailable",
+          recordedStoredSummary: undefined,
+          outcome: "ready",
+          publishable: true,
+          runCount: 0,
+          safetyStatus: "approved",
+          showcaseStatus: "draft",
+          storedFailureCode: null,
+          storedFailureSummary: null,
+          wrongOwnerStatus: 404,
+        },
+      );
+      assert.deepEqual(body.blockedProcessingRetry, {
+        failureCode: null,
+        failureSummary: null,
+        retryStatus: 409,
+        safetyStatus: "blocked",
+        showcaseStatus: "draft",
+      });
       assert.deepEqual(body.judged, {
         evidenceSufficient: true,
         judgeStatus: "scored",

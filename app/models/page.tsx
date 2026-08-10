@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SiteFooter } from "@/app/components/SiteFooter";
 import { SiteHeader } from "@/app/components/SiteHeader";
 import { listPublicDeclaredModels } from "@/lib/data/showcases";
+import { declaredModelPathKey } from "@/lib/domain/declared-model-path";
 
 export const metadata: Metadata = {
   title: "Models",
@@ -47,7 +48,7 @@ export default async function ModelsPage() {
                   {model.testCount} Test{model.testCount === 1 ? "" : "s"}
                 </span>
                 <h2>
-                  <Link href={`/models/${encodeURIComponent(model.label)}`}>
+                  <Link href={`/models/${declaredModelPathKey(model.label)}`}>
                     {model.label}
                   </Link>
                 </h2>

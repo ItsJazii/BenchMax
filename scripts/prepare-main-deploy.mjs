@@ -18,7 +18,15 @@ if (!environment) throw new Error(`Missing main Worker environment: ${environmen
 // Every key the environment block must override. An absent key would previously
 // serialize as undefined and silently DELETE the section from the deploy config
 // (e.g. no triggers -> every cron sweep dead but preflight green).
-const overrideKeys = ["name", "d1_databases", "r2_buckets", "queues", "triggers"];
+const overrideKeys = [
+  "name",
+  "routes",
+  "vars",
+  "d1_databases",
+  "r2_buckets",
+  "queues",
+  "triggers",
+];
 for (const key of overrideKeys) {
   if (environment[key] === undefined) {
     throw new Error(`main Worker ${environmentName} environment is missing required key: ${key}`);

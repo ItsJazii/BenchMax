@@ -87,16 +87,9 @@ const worker = {
     for (const message of batch.messages) {
       const body = message.body;
       if (isJudgeCalibrationMessage(body)) {
+        let calibration: Awaited<ReturnType<typeof runJudgeCalibration>>;
         try {
-          const calibration = await runJudgeCalibration();
-          await appendAuditEvent({
-            actorUserId: body.actorUserId,
-            entityType: "judge-calibration",
-            entityId: "manual",
-            action: "judge.calibration_completed",
-            metadata: calibration,
-          });
-          message.ack();
+          calibration = await runJudgeCalibration();
         } catch (error) {
           const errorName =
             error instanceof Error ? error.name : "UnknownError";
@@ -115,6 +108,23 @@ const worker = {
           } else {
             message.retry({ delaySeconds: Math.min(300, 15 * 2 ** message.attempts) });
           }
+          continue;
+        }
+        // The calibration is paid, state-changing work. Once it succeeds, ack
+        // before the best-effort audit so a bookkeeping failure cannot rerun it.
+        message.ack();
+        try {
+          await appendAuditEvent({
+            actorUserId: body.actorUserId,
+            entityType: "judge-calibration",
+            entityId: "manual",
+            action: "judge.calibration_completed",
+            metadata: calibration,
+          });
+        } catch (error) {
+          console.error("Benchmax queued calibration completion audit failed", {
+            name: error instanceof Error ? error.name : "UnknownError",
+          });
         }
         continue;
       }

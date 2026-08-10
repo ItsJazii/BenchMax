@@ -44,6 +44,17 @@ for (const key of Object.keys(environment)) {
   }
 }
 
+// routes and vars are environment policy, not generated build output. Keep the
+// inverted allowlist fail-loud if the build ever starts emitting either one;
+// otherwise the environment override would silently discard that new output.
+for (const key of ["routes", "vars"]) {
+  if (!isEmptyBinding(builtConfig[key])) {
+    throw new Error(
+      `built Worker config ${key} must be empty before the ${environmentName} environment override`,
+    );
+  }
+}
+
 // The built config inherits top-level (= production) values. Inverted
 // allowlist: every key that is neither overridden per environment nor a
 // known-safe non-binding key must be EMPTY, so any future binding type (KV,

@@ -101,6 +101,45 @@ test("manual judge calibration stays owner-only, bounded, and reachable from ope
   assert.doesNotMatch(operationsSource, /evaluationStatus:/);
 });
 
+test("queued calibration never repeats paid work when its completion audit fails", () => {
+  const workerSource = readFileSync(
+    new URL("../worker/index.ts", import.meta.url),
+    "utf8",
+  );
+  const calibrationBranch = workerSource.slice(
+    workerSource.indexOf("if (isJudgeCalibrationMessage(body))"),
+    workerSource.indexOf("if (!isPipelineMessage(body))"),
+  );
+  assert.match(calibrationBranch, /calibration = await runJudgeCalibration\(\)/);
+  assert.match(
+    calibrationBranch,
+    /message\.ack\(\);\s*try \{\s*await appendAuditEvent\(\{[\s\S]*?action: "judge\.calibration_completed"/,
+  );
+  assert.match(
+    calibrationBranch,
+    /Benchmax queued calibration completion audit failed/,
+  );
+});
+
+test("deploy preparation rejects generated routes or vars before overriding them", () => {
+  const deployScriptSource = readFileSync(
+    new URL("../scripts/prepare-main-deploy.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    deployScriptSource,
+    /for \(const key of \["routes", "vars"\]\)/,
+  );
+  assert.match(
+    deployScriptSource,
+    /if \(!isEmptyBinding\(builtConfig\[key\]\)\)/,
+  );
+  assert.match(
+    deployScriptSource,
+    /must be empty before the \$\{environmentName\} environment override/,
+  );
+});
+
 test("public result provenance explicitly marks every declared field unverified", () => {
   assert.deepEqual(declaredResultProvenance, {
     label: "Declared, unverified",

@@ -74,6 +74,11 @@ upload the calibration set to private R2, configure its SHA-256, calibrate an ex
 immutable judge snapshot, and set `BENCHMAX_JUDGE_DAILY_SAMPLE_BUDGET` from measured
 cost. Pricing or cost multiples are not hard-coded.
 
+The current implementation still references judge configuration during catalog
+initialization and publication. Phase 1 must remove that dependency before the
+feed-only product is staged; changing these documents does not by itself make the
+existing runtime deployable without judge values.
+
 ## Product invariants
 
 - Every safe Test is public as Awaiting review after mandatory safety processing;

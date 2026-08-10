@@ -5,6 +5,13 @@ Status: replacement-account resources provisioned, 2026-08-05.
 This runbook records the external prerequisites for staging. It deliberately
 does not contain credentials, tokens, private keys, or database exports.
 
+Transition note: `npm run phase2:preflight` validates that the environment variable
+names exist in `.env.example`; it does not require non-empty judge values. The current
+catalog-initialization and publication code still enters judge-specific paths, so the
+feed-only product must not be deployed until Phase 1 decouples those paths. Existing
+staging judge values remain in place during that implementation; this documentation
+change alone does not make the current runtime feed-only.
+
 ## Current Cloudflare evidence
 
 - Account access is available through the least-privilege Cloudflare Workers
@@ -107,10 +114,11 @@ does not contain credentials, tokens, private keys, or database exports.
 ## Required values
 
 `.env.example` is the complete naming contract. Before deployment, every blank
-required value must have an owner-approved source. Exact HTTPS origins,
-E2B template IDs, and pricing values must be recorded in the deployment change and
-never inferred at runtime. Calibration hashes and judge model snapshots become
-required when AI reviews and rankings are enabled.
+value required by the enabled product stage must have an owner-approved source.
+Exact HTTPS origins, E2B template IDs, and pricing values must be recorded in the
+deployment change and never inferred at runtime. Judge and calibration names remain
+in the contract, but their values become required only when AI reviews and rankings
+are enabled, after Phase 1 removes their current feed-publication dependency.
 
 ## Preflight
 

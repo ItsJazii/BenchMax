@@ -33,7 +33,11 @@ is simplification, not more infrastructure or judge work.
    **Automated preview unavailable**.
 10. Remove or hide rubric approval, immutable test-version, and active-judge gates
    from the contributor flow.
-11. Keep `/leaderboards` reachable with an honest empty state until reviewed Tests
+11. Decouple feed-only catalog initialization and publication from judge/calibration
+    secrets. Keep the judge variable names in the environment contract for the later
+    review phase, but do not require their values to publish a safe Awaiting review
+    Test.
+12. Keep `/leaderboards` reachable with an honest empty state until reviewed Tests
     exist.
 
 **Exit:** a visitor can browse Tests and a logged-in user can submit one complete

@@ -5,34 +5,26 @@ import { UploadWizard } from "@/app/upload/UploadWizard";
 import { isClerkConfigured } from "@/lib/auth/server";
 
 export const metadata: Metadata = {
-  title: "Submit a model result",
+  title: "Submit a Test",
   description:
-    "Submit code, images, video, or logs from a model test for public evidence and asynchronous AI judging.",
+    "Submit an AI Test with its prompt, declared setup, and output evidence.",
 };
 
-export default async function SubmitPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ test?: string }>;
-}) {
-  const { test } = await searchParams;
+export default function SubmitPage() {
   return (
     <div className="site-shell">
       <SiteHeader />
       <main className="upload-page section-wrap">
         <header className="upload-title">
-          <span className="section-index">SUBMIT A RESULT</span>
-          <h1>Put your model test result on the record.</h1>
+          <span className="section-index">SUBMIT A TEST</span>
+          <h1>Share the Test you ran and what the model produced.</h1>
           <p>
-            Choose the test, model version, reasoning level, and harness. Attach
-            code, images, video, or logs. The result publishes after safety
-            checks; AI judging can take up to 24 hours.
+            Record the prompt, model, harness, and reasoning, then attach the
+            output as code, images, video, or logs. Safe Tests publish as
+            Awaiting review.
           </p>
         </header>
-        <UploadWizard
-          authConfigured={isClerkConfigured()}
-          initialTestId={test}
-        />
+        <UploadWizard authConfigured={isClerkConfigured()} />
       </main>
       <SiteFooter />
     </div>

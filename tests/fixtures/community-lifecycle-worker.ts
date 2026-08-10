@@ -26,7 +26,10 @@ import {
 } from "../../db/schema";
 import { createShowcaseDraft } from "../../lib/data/showcases";
 import { publishShowcase } from "../../lib/data/showcases";
-import { queuePublishedResult } from "../../lib/data/results";
+import {
+  queueMissingPublishedResults,
+  queuePublishedResult,
+} from "../../lib/data/results";
 import { judgeRun, JudgeContractError } from "../../lib/judging/judge-run";
 import { resolveCatalogRequest } from "../../lib/data/catalog-requests";
 import { seedRankedCatalog } from "../../lib/data/catalog-admin";
@@ -37,6 +40,10 @@ import { repairBudgetPendingEscalations } from "../../lib/ranking/result-snapsho
 import { repairDeferredDisputeRejudgments } from "../../lib/data/dispute-rejudge";
 import { canonicalJson, canonicalSha256 } from "../../lib/security/canonical";
 import { sha256Hex } from "../../lib/security/policy";
+import {
+  recordShowcaseProcessingFailure,
+  retryShowcaseProcessing,
+} from "../../lib/data/showcase-processing";
 
 const CONTRIBUTOR_ID = "lifecycle-contributor";
 const PROVIDER_ID = "lifecycle-provider";
@@ -304,7 +311,6 @@ async function runLifecycle() {
   const db = getDb();
 
   const draft = await createShowcaseDraft(CONTRIBUTOR_ID, {
-    benchmarkVersionId: BENCHMARK_VERSION_ID,
     title: "Unknown model lifecycle",
     summary: "A real community result lifecycle fixture for catalog approval.",
     category: "frontend",
@@ -319,6 +325,10 @@ async function runLifecycle() {
     sourceVisibility: "public",
     rightsConfirmed: true,
   });
+  await db
+    .update(showcases)
+    .set({ benchmarkVersionId: BENCHMARK_VERSION_ID })
+    .where(eq(showcases.id, draft.id));
   const resultConfigurationId = draft.resultConfigurationId;
   if (!resultConfigurationId) {
     throw new Error("Lifecycle draft did not create a result configuration.");
@@ -357,6 +367,38 @@ async function runLifecycle() {
 
   const published = await publishShowcase(draft.id, CONTRIBUTOR_ID);
   const queued = await queuePublishedResult(published.id);
+  const feedDraft = await createShowcaseDraft(CONTRIBUTOR_ID, {
+    modelLabel: "Feed Model",
+    modelVersionLabel: "declared-v1",
+    harness: "Feed Harness",
+    reasoningLevel: "adaptive",
+    declaredSettings: {},
+    prompt: "Show this contributor-declared test in the public feed.",
+    systemPrompt: "",
+    sourceVisibility: "public",
+    rightsConfirmed: true,
+  });
+  await db.insert(artifacts).values({
+    id: "feed-first-log-artifact",
+    showcaseId: feedDraft.id,
+    uploaderId: CONTRIBUTOR_ID,
+    kind: "log",
+    objectKey: `lifecycle/${feedDraft.id}/output.txt`,
+    fileName: "output.txt",
+    contentType: "text/plain",
+    byteSize: 4,
+    sha256: "a".repeat(64),
+    quarantineStatus: "approved",
+    scanReportJson: "{}",
+    createdAt: new Date("2026-08-01T00:00:02.000Z"),
+    updatedAt: new Date("2026-08-01T00:00:02.000Z"),
+  });
+  const feedPublished = await publishShowcase(feedDraft.id, CONTRIBUTOR_ID);
+  const repairQueued = await queueMissingPublishedResults();
+  const [feedRunCount] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(runs)
+    .where(eq(runs.showcaseId, feedDraft.id));
   const judged = await judgeRun(queued.run.id);
   const [afterJudgeRun] = await db
     .select()
@@ -394,6 +436,115 @@ async function runLifecycle() {
     .from(showcases)
     .where(eq(showcases.id, draft.id));
 
+  const retryDraft = await createShowcaseDraft(CONTRIBUTOR_ID, {
+    modelLabel: "Retry Model",
+    modelVersionLabel: "declared-v1",
+    harness: "Retry Harness",
+    reasoningLevel: "medium",
+    declaredSettings: {},
+    prompt: "Prove mandatory evidence processing can be retried safely.",
+    systemPrompt: "",
+    sourceVisibility: "public",
+    rightsConfirmed: true,
+  });
+  const retryBytes = strToU8("Safe contributor evidence for a processing retry.");
+  const retryKey = `lifecycle/${retryDraft.id}/retry.txt`;
+  await env.UPLOADS.put(retryKey, retryBytes, {
+    httpMetadata: { contentType: "text/plain" },
+  });
+  await db.insert(artifacts).values({
+    id: "feed-first-retry-artifact",
+    showcaseId: retryDraft.id,
+    uploaderId: CONTRIBUTOR_ID,
+    kind: "log",
+    objectKey: retryKey,
+    fileName: "retry.txt",
+    contentType: "text/plain",
+    byteSize: retryBytes.byteLength,
+    quarantineStatus: "quarantined",
+    createdAt: new Date("2026-08-01T00:00:03.000Z"),
+    updatedAt: new Date("2026-08-01T00:00:03.000Z"),
+  });
+  const recordedFailure = await recordShowcaseProcessingFailure(
+    retryDraft.id,
+    new Error("secret database connection details must not persist"),
+  );
+  const [recordedProcessingFailure] = await db
+    .select({
+      code: showcases.processingFailureCode,
+      summary: showcases.processingFailureSummary,
+    })
+    .from(showcases)
+    .where(eq(showcases.id, retryDraft.id));
+  let wrongOwnerStatus: number | null = null;
+  try {
+    await retryShowcaseProcessing(retryDraft.id, "not-the-owner");
+  } catch (error) {
+    wrongOwnerStatus =
+      error instanceof Error &&
+      "status" in error &&
+      typeof error.status === "number"
+        ? error.status
+        : null;
+  }
+  const processingRetry = await retryShowcaseProcessing(
+    retryDraft.id,
+    CONTRIBUTOR_ID,
+  );
+  const [afterProcessingRetry] = await db
+    .select()
+    .from(showcases)
+    .where(eq(showcases.id, retryDraft.id));
+  const [retryRunCount] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(runs)
+    .where(eq(runs.showcaseId, retryDraft.id));
+
+  const blockedRetryDraft = await createShowcaseDraft(CONTRIBUTOR_ID, {
+    modelLabel: "Blocked Retry Model",
+    modelVersionLabel: "declared-v1",
+    harness: "Retry Harness",
+    reasoningLevel: "medium",
+    declaredSettings: {},
+    prompt: "Keep definitively unsafe evidence blocked during retry.",
+    systemPrompt: "",
+    sourceVisibility: "public",
+    rightsConfirmed: true,
+  });
+  await db.insert(artifacts).values({
+    id: "feed-first-blocked-retry-artifact",
+    showcaseId: blockedRetryDraft.id,
+    uploaderId: CONTRIBUTOR_ID,
+    kind: "log",
+    objectKey: `lifecycle/${blockedRetryDraft.id}/blocked.txt`,
+    fileName: "blocked.txt",
+    contentType: "text/plain",
+    byteSize: 1,
+    quarantineStatus: "blocked",
+    scanReportJson: "{}",
+    createdAt: new Date("2026-08-01T00:00:04.000Z"),
+    updatedAt: new Date("2026-08-01T00:00:04.000Z"),
+  });
+  await recordShowcaseProcessingFailure(
+    blockedRetryDraft.id,
+    new Error("temporary scanner outage"),
+  );
+  let blockedRetryStatus: number | null = null;
+  try {
+    await retryShowcaseProcessing(blockedRetryDraft.id, CONTRIBUTOR_ID);
+  } catch (error) {
+    blockedRetryStatus =
+      error instanceof Error &&
+      "status" in error &&
+      typeof error.status === "number"
+        ? error.status
+        : null;
+  }
+  const [afterBlockedRetry] = await db
+    .select()
+    .from(showcases)
+    .where(eq(showcases.id, blockedRetryDraft.id));
+
   return {
     approved,
     beforePublish: {
@@ -408,6 +559,37 @@ async function runLifecycle() {
     queued: {
       runStatus: queued.run.status,
       judgeQueueDeferred: queued.judgeQueueDeferred,
+    },
+    feedFirst: {
+      benchmarkVersionId: feedPublished.benchmarkVersionId,
+      category: feedPublished.category,
+      judgeDueAt: feedPublished.judgeDueAt,
+      judgeStatus: feedPublished.judgeStatus,
+      repairQueued,
+      runCount: Number(feedRunCount?.count ?? 0),
+      status: feedPublished.status,
+      summary: feedPublished.summary,
+      title: feedPublished.title,
+    },
+    processingRetry: {
+      recordedCode: recordedFailure?.code,
+      recordedStoredCode: recordedProcessingFailure?.code,
+      recordedStoredSummary: recordedProcessingFailure?.summary,
+      outcome: processingRetry.outcome,
+      publishable: processingRetry.publishable,
+      runCount: Number(retryRunCount?.count ?? 0),
+      safetyStatus: afterProcessingRetry?.safetyStatus,
+      showcaseStatus: afterProcessingRetry?.status,
+      storedFailureCode: afterProcessingRetry?.processingFailureCode,
+      storedFailureSummary: afterProcessingRetry?.processingFailureSummary,
+      wrongOwnerStatus,
+    },
+    blockedProcessingRetry: {
+      failureCode: afterBlockedRetry?.processingFailureCode,
+      failureSummary: afterBlockedRetry?.processingFailureSummary,
+      retryStatus: blockedRetryStatus,
+      safetyStatus: afterBlockedRetry?.safetyStatus,
+      showcaseStatus: afterBlockedRetry?.status,
     },
     judged: {
       evidenceSufficient: judged.evidenceSufficient,

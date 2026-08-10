@@ -19,6 +19,7 @@ type DashboardData = {
     rank: number | null;
     judgeDueAt: string | null;
     updatedAt: string;
+    canPublish: boolean;
     state: {
       code: string;
       label: string;
@@ -35,6 +36,16 @@ type DashboardData = {
       status: "completed" | "failed" | "info" | "pending";
       occurredAt: string;
     }>;
+    enrichment: {
+      status: string;
+      failureCode: string | null;
+      canRetry: boolean;
+    } | null;
+    processing: {
+      failureCode: string;
+      failedAt: string | null;
+      canRetry: boolean;
+    } | null;
   }>;
 };
 
@@ -55,6 +66,7 @@ function ConfiguredDashboard() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   useEffect(() => {
     if (!isSignedIn) return;
     void (async () => {
@@ -102,16 +114,16 @@ function ConfiguredDashboard() {
         <span className="section-index">@{data.profile.handle}</span>
         <h2>{data.profile.displayName}</h2>
         <p>{data.profile.role}</p>
-        <strong>{data.submissions.length} submitted results</strong>
+        <strong>{data.submissions.length} submitted Tests</strong>
         <small>
-          {publicCount} public · {rankedCount} ranked. Public results stay visible
-          while AI review is pending.
+          {publicCount} public · {rankedCount} ranked. Safe Tests stay visible
+          while awaiting review.
         </small>
       </section>
       <section>
         <div className="section-heading compact">
-          <h2>Submitted results</h2>
-          <Link href="/submit">Submit result →</Link>
+          <h2>Your Tests</h2>
+          <Link href="/submit">Submit Test →</Link>
         </div>
         <div className="dashboard-list">
           {data.submissions.map((submission) => (
@@ -119,66 +131,102 @@ function ConfiguredDashboard() {
               <div className="submission-status-body">
                 <strong>{submission.title}</strong>
                 <p>
-                  {submission.benchmark ?? "Test pending"} · {submission.model}
-                  {submission.modelVersion
-                    ? ` ${submission.modelVersion}`
-                    : ""} · {submission.reasoning}
+                  {submission.model}
+                  {submission.modelVersion ? ` ${submission.modelVersion}` : ""}
+                  {` · ${submission.harness} · ${submission.reasoning}`}
                 </p>
-                <p>{submission.state.detail}</p>
-                {submission.judgeDueAt &&
-                  submission.state.code === "public_pending_review" && (
-                    <p>
-                      Review target: {formatTimestamp(submission.judgeDueAt)}
-                    </p>
-                  )}
-                {submission.state.blockedReason && (
+                <p>{simpleDashboardDetail(submission.state)}</p>
+                {submission.enrichment?.status === "failed" && (
+                  <p>Automated preview unavailable.</p>
+                )}
+                {submission.state.blockedReason &&
+                  ["Blocked", "Processing failed"].includes(
+                    simpleDashboardStatus(submission.state),
+                  ) && (
                   <p className="submission-blocked-reason">
-                    <strong>
-                      {submission.state.publicVisible
-                        ? "Why not ranked:"
-                        : "Blocked reason:"}
-                    </strong>{" "}
+                    <strong>Details:</strong>{" "}
                     {submission.state.blockedReason}
                   </p>
-                )}
-                <details className="submission-history">
-                  <summary>
-                    Stage history ({submission.timeline.length})
-                  </summary>
-                  {submission.timeline.length > 0 ? (
-                    <ol>
-                      {submission.timeline.map((event) => (
-                        <li key={event.key}>
-                          <span
-                            className={`status-pill ${timelineTone(event.status)}`}
-                          >
-                            {event.status}
-                          </span>
-                          <div>
-                            <strong>{event.label}</strong>
-                            {event.detail && <p>{event.detail}</p>}
-                            <time dateTime={event.occurredAt}>
-                              {formatTimestamp(event.occurredAt)}
-                            </time>
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p>No recorded stage events yet.</p>
                   )}
-                </details>
               </div>
               <span className={`status-pill ${submission.state.tone}`}>
-                {submission.state.label}
+                {simpleDashboardStatus(submission.state)}
               </span>
               {submission.state.publicVisible && (
-                <Link href={`/results/${submission.slug}`}>Open →</Link>
+                <Link href={`/tests/${submission.slug}`}>Open →</Link>
+              )}
+              {submission.enrichment?.canRetry && (
+                <button
+                  className="button button-secondary"
+                  disabled={retryingId === submission.id}
+                  onClick={() => {
+                    setRetryingId(submission.id);
+                    void retryEnrichment(submission.id, getToken)
+                      .then(() => window.location.reload())
+                      .catch((caught) => {
+                        setError(
+                          caught instanceof Error
+                            ? caught.message
+                            : "Could not retry the automated preview.",
+                        );
+                        setRetryingId(null);
+                      });
+                  }}
+                  type="button"
+                >
+                  {retryingId === submission.id ? "Retrying…" : "Retry preview"}
+                </button>
+              )}
+              {submission.processing?.canRetry && (
+                <button
+                  className="button button-secondary"
+                  disabled={retryingId === submission.id}
+                  onClick={() => {
+                    setRetryingId(submission.id);
+                    void retryProcessing(submission.id, getToken)
+                      .then(() => window.location.reload())
+                      .catch((caught) => {
+                        setError(
+                          caught instanceof Error
+                            ? caught.message
+                            : "Could not retry evidence processing.",
+                        );
+                        setRetryingId(null);
+                      });
+                  }}
+                  type="button"
+                >
+                  {retryingId === submission.id
+                    ? "Retrying…"
+                    : "Retry processing"}
+                </button>
+              )}
+              {submission.canPublish && (
+                <button
+                  className="button button-primary"
+                  disabled={retryingId === submission.id}
+                  onClick={() => {
+                    setRetryingId(submission.id);
+                    void publishTest(submission.id, getToken)
+                      .then(() => window.location.reload())
+                      .catch((caught) => {
+                        setError(
+                          caught instanceof Error
+                            ? caught.message
+                            : "Could not publish this Test.",
+                        );
+                        setRetryingId(null);
+                      });
+                  }}
+                  type="button"
+                >
+                  {retryingId === submission.id ? "Publishing…" : "Publish Test"}
+                </button>
               )}
             </article>
           ))}
           {data.submissions.length === 0 && (
-            <p className="muted">No submitted results yet.</p>
+            <p className="muted">No submitted Tests yet.</p>
           )}
         </div>
       </section>
@@ -186,16 +234,82 @@ function ConfiguredDashboard() {
   );
 }
 
-function timelineTone(status: "completed" | "failed" | "info" | "pending") {
-  if (status === "completed") return "approved";
-  if (status === "failed") return "blocked";
-  if (status === "pending") return "pending";
-  return "neutral";
+function simpleDashboardStatus(state: DashboardData["submissions"][number]["state"]) {
+  if (state.code === "processing_failed") return "Processing failed";
+  if (state.code === "ranked") return "Ranked";
+  if (state.code === "reviewed") return "Reviewed";
+  if (state.publicVisible) return "Awaiting review";
+  if (["blocked", "rejected", "removed"].includes(state.code)) return "Blocked";
+  return "Processing";
 }
 
-function formatTimestamp(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+async function retryEnrichment(
+  showcaseId: string,
+  getToken: () => Promise<string | null>,
+) {
+  const token = await getToken();
+  if (!token) throw new Error("Your session expired.");
+  const response = await fetch(
+    `/api/showcases/${encodeURIComponent(showcaseId)}/enrichment/retry`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const payload = (await response.json()) as { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not retry the automated preview.");
+  }
+}
+
+async function retryProcessing(
+  showcaseId: string,
+  getToken: () => Promise<string | null>,
+) {
+  const token = await getToken();
+  if (!token) throw new Error("Your session expired.");
+  const response = await fetch(
+    `/api/showcases/${encodeURIComponent(showcaseId)}/processing/retry`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const payload = (await response.json()) as { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not retry evidence processing.");
+  }
+}
+
+async function publishTest(
+  showcaseId: string,
+  getToken: () => Promise<string | null>,
+) {
+  const token = await getToken();
+  if (!token) throw new Error("Your session expired.");
+  const response = await fetch(
+    `/api/showcases/${encodeURIComponent(showcaseId)}/publish`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  const payload = (await response.json()) as { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not publish this Test.");
+  }
+}
+
+function simpleDashboardDetail(state: DashboardData["submissions"][number]["state"]) {
+  const status = simpleDashboardStatus(state);
+  if (status === "Awaiting review") {
+    return "This safe Test is public and waiting for review.";
+  }
+  if (status === "Reviewed") {
+    return "This Test has been reviewed and remains public.";
+  }
+  if (status === "Ranked") {
+    return "This Test is included in the current leaderboard.";
+  }
+  return state.detail;
 }

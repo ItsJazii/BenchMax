@@ -7,6 +7,7 @@ import {
   promoteUploadSessionObjectKey,
 } from "@/lib/data/uploads";
 import { apiErrorResponse } from "@/lib/http/api";
+import { recordShowcaseProcessingFailure } from "@/lib/data/showcase-processing";
 import { secureJson } from "@/lib/security/http";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { scanQuarantinedArtifact } from "@/lib/security/artifact-scanner";
@@ -99,7 +100,32 @@ export async function POST(
     }
 
     const artifact = await finalizeUploadedArtifact({ sessionId: session.id });
-    const scan = await scanQuarantinedArtifact(artifact);
+    let scan;
+    try {
+      scan = await scanQuarantinedArtifact(artifact);
+    } catch (error) {
+      const failure = await recordShowcaseProcessingFailure(
+        artifact.showcaseId,
+        error,
+      );
+      if (failure) {
+        await appendAuditEvent({
+          actorUserId: user.id,
+          entityType: "showcase",
+          entityId: artifact.showcaseId,
+          action: "showcase.processing_failed",
+          metadata: { code: failure.code, stage: "artifact_scan" },
+        }).catch(() => undefined);
+      }
+      return secureJson(
+        {
+          code: "processing_failed",
+          error:
+            "Evidence processing could not finish. Retry processing from your dashboard.",
+        },
+        { status: 503 },
+      );
+    }
     await appendAuditEvent({
       actorUserId: user.id,
       entityType: "artifact",

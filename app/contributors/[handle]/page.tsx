@@ -43,13 +43,13 @@ export default async function ContributorPage({
             <span className="section-index">CONTRIBUTOR</span>
             <h1>@{contributor.handle}</h1>
             <p>
-              {contributor.displayName} shares inspectable model test results
-              and their evidence.
+              {contributor.displayName} shares public AI Tests with inspectable
+              prompts, declared setup, and evidence.
             </p>
           </div>
           <dl>
             <div>
-              <dt>Public results</dt>
+              <dt>Public Tests</dt>
               <dd>{results.length}</dd>
             </div>
           </dl>
@@ -57,7 +57,7 @@ export default async function ContributorPage({
         <div className="section-heading compact">
           <div>
             <span className="section-index">PUBLIC RECORD</span>
-            <h2>Submitted results</h2>
+            <h2>Submitted Tests</h2>
           </div>
         </div>
         {results.length > 0 ? (
@@ -68,7 +68,7 @@ export default async function ContributorPage({
           </div>
         ) : publicResultsPage === null ? (
           <div className="empty-state">
-            <strong>Public results are temporarily unavailable.</strong>
+            <strong>Public Tests are temporarily unavailable.</strong>
             <p>
               Benchmax does not show substitute data when this contributor’s
               public records cannot be read.
@@ -76,10 +76,8 @@ export default async function ContributorPage({
           </div>
         ) : (
           <div className="empty-state">
-            <strong>No public results yet.</strong>
-            <p>
-              This active contributor has not published a model test result.
-            </p>
+            <strong>No public Tests yet.</strong>
+            <p>This contributor has not published a Test.</p>
           </div>
         )}
       </main>

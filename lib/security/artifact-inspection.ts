@@ -5,6 +5,7 @@ const MAX_ARCHIVE_ENTRIES = 5_000;
 const MAX_ARCHIVE_EXPANDED_BYTES = 100 * 1024 * 1024;
 const MAX_SINGLE_ARCHIVE_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_TEXT_ENTRY_BYTES = 1024 * 1024;
+const MAX_SCREENED_ARCHIVE_TEXT_BYTES = 4 * 1024 * 1024;
 const MAX_COMPRESSION_RATIO = 100;
 
 const textExtensions = new Set([
@@ -64,24 +65,66 @@ const blockedArchiveExtensions = new Set([
 export type ScanResult = {
   checks: string[];
   findings: string[];
+  injectionFlag?: boolean;
   sha256: string | null;
   status: "approved" | "blocked" | "scanning";
 };
 
+export type BoundedArchiveTextEntry = {
+  path: string;
+  text: string;
+};
+
+export function withPromptInjectionFindings(
+  result: ScanResult,
+  injection: {
+    flagged: boolean;
+    findings: ReadonlyArray<{ file: string; pattern: number }>;
+  },
+): ScanResult {
+  return {
+    ...result,
+    injectionFlag: injection.flagged,
+    checks: result.checks.includes("prompt-injection")
+      ? result.checks
+      : [...result.checks, "prompt-injection"],
+    findings: [
+      ...result.findings,
+      ...injection.findings.map(
+        (finding) =>
+          `Potential prompt-injection pattern ${finding.pattern} in ${finding.file}.`,
+      ),
+    ],
+  };
+}
+
 export async function inspectZipArchive(
   bytes: Uint8Array,
 ): Promise<ScanResult> {
+  return (await inspectZipArchiveWithText(bytes)).result;
+}
+
+export async function inspectZipArchiveWithText(
+  bytes: Uint8Array,
+): Promise<{
+  result: ScanResult;
+  textEntries: BoundedArchiveTextEntry[];
+}> {
   if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
     return {
-      status: "blocked",
-      sha256: null,
-      checks: ["zip-signature"],
-      findings: ["Source archive does not have a ZIP signature."],
+      result: {
+        status: "blocked",
+        sha256: null,
+        checks: ["zip-signature"],
+        findings: ["Source archive does not have a ZIP signature."],
+      },
+      textEntries: [],
     };
   }
 
   let entryCount = 0;
   let expandedBytes = 0;
+  let selectedTextBytes = 0;
   const selectedTextPaths = new Set<string>();
   const filter = (file: UnzipFileInfo) => {
     entryCount += 1;
@@ -90,9 +133,11 @@ export async function inspectZipArchive(
     const extension = extensionOf(file.name);
     if (
       textExtensions.has(extension) &&
-      file.originalSize <= MAX_TEXT_ENTRY_BYTES
+      file.originalSize <= MAX_TEXT_ENTRY_BYTES &&
+      selectedTextBytes + file.originalSize <= MAX_SCREENED_ARCHIVE_TEXT_BYTES
     ) {
       selectedTextPaths.add(file.name);
+      selectedTextBytes += file.originalSize;
       return true;
     }
     return false;
@@ -103,19 +148,23 @@ export async function inspectZipArchive(
     unpacked = unzipSync(bytes, { filter });
   } catch (error) {
     return {
-      status: "blocked",
-      sha256: await sha256Hex(bytes.slice().buffer),
-      checks: ["zip-signature", "archive-structure", "expansion-bounds"],
-      findings: [
-        error instanceof Error
-          ? `Archive rejected: ${safeScannerMessage(error.message)}`
-          : "Archive structure is invalid.",
-      ],
+      result: {
+        status: "blocked",
+        sha256: await sha256Hex(bytes.slice().buffer),
+        checks: ["zip-signature", "archive-structure", "expansion-bounds"],
+        findings: [
+          error instanceof Error
+            ? `Archive rejected: ${safeScannerMessage(error.message)}`
+            : "Archive structure is invalid.",
+        ],
+      },
+      textEntries: [],
     };
   }
 
   const secretLabels = new Set<string>();
-  for (const path of selectedTextPaths) {
+  const textEntries: BoundedArchiveTextEntry[] = [];
+  for (const path of [...selectedTextPaths].sort()) {
     const content = unpacked[path];
     if (!content) continue;
     let text: string;
@@ -124,26 +173,30 @@ export async function inspectZipArchive(
     } catch {
       continue;
     }
+    textEntries.push({ path, text });
     for (const label of detectSecretLabels(text)) {
       secretLabels.add(label);
     }
   }
 
   return {
-    status: secretLabels.size > 0 ? "blocked" : "approved",
-    sha256: await sha256Hex(bytes.slice().buffer),
-    checks: [
-      "zip-signature",
-      "archive-paths",
-      "entry-count",
-      "expansion-ratio",
-      "executable-blocklist",
-      "secret-patterns",
-      "content-sha256",
-    ],
-    findings: [...secretLabels].map(
-      (label) => `Potential ${label} detected in source.`,
-    ),
+    result: {
+      status: secretLabels.size > 0 ? "blocked" : "approved",
+      sha256: await sha256Hex(bytes.slice().buffer),
+      checks: [
+        "zip-signature",
+        "archive-paths",
+        "entry-count",
+        "expansion-ratio",
+        "executable-blocklist",
+        "secret-patterns",
+        "content-sha256",
+      ],
+      findings: [...secretLabels].map(
+        (label) => `Potential ${label} detected in source.`,
+      ),
+    },
+    textEntries,
   };
 }
 

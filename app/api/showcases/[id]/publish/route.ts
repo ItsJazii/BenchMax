@@ -8,7 +8,7 @@ import { apiErrorResponse } from "@/lib/http/api";
 import { secureJson } from "@/lib/security/http";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { verifyApprovedShowcaseArtifacts } from "@/lib/security/artifact-scanner";
-import { queuePublishedResult } from "@/lib/data/results";
+import { scheduleShowcaseEnrichment } from "@/lib/data/showcase-enrichment";
 
 export async function POST(
   request: Request,
@@ -31,27 +31,36 @@ export async function POST(
     }
     await verifyApprovedShowcaseArtifacts(id);
     const showcase = await publishShowcase(id, user.id);
-    let run: Awaited<ReturnType<typeof queuePublishedResult>>["run"] | null =
-      null;
-    let judgeQueueDeferred = false;
+    let enrichment = {
+      dispatchDeferred: false,
+      eligible: false,
+      enrichmentId: null as string | null,
+    };
     try {
-      const queued = await queuePublishedResult(showcase.id);
-      run = queued.run;
-      judgeQueueDeferred = queued.judgeQueueDeferred;
+      enrichment = await scheduleShowcaseEnrichment(showcase.id);
     } catch {
-      judgeQueueDeferred = true;
+      enrichment = {
+        dispatchDeferred: true,
+        eligible: true,
+        enrichmentId: null,
+      };
     }
     await appendAuditEvent({
       actorUserId: user.id,
       entityType: "showcase",
       entityId: showcase.id,
       action: "showcase.published",
-      metadata: { judgeQueueDeferred },
+      metadata: {
+        enrichmentDeferred: enrichment.dispatchDeferred,
+        enrichmentEligible: enrichment.eligible,
+        reviewStatus: "awaiting_review",
+      },
     });
-    return secureJson(
-      { showcase, run, judgeQueueDeferred },
-      { status: judgeQueueDeferred ? 202 : 200 },
-    );
+    return secureJson({
+      showcase,
+      enrichment,
+      reviewStatus: "awaiting_review",
+    });
   } catch (error) {
     return apiErrorResponse(error);
   }

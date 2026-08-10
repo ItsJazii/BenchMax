@@ -18,6 +18,7 @@ type ArtifactRow = {
   content_type: string;
   byte_size: number;
   sha256: string;
+  origin?: "contributor" | "enrichment";
 };
 
 const PLAYABLE_PATH = /^\/run\/([0-9a-f-]{36})\/(.+)$/i;
@@ -40,6 +41,9 @@ const RESULT_CONTENT_TYPES: Readonly<Record<string, ReadonlySet<string>>> = {
     "application/json",
     "application/x-ndjson",
   ]),
+  screenshot: new Set(["image/png"]),
+  console: new Set(["application/json"]),
+  accessibility: new Set(["application/json"]),
 };
 
 const LEGACY_CONTENT_TYPES: Readonly<Record<string, ReadonlySet<string>>> = {
@@ -130,13 +134,14 @@ async function serveResultArtifact(
   artifactId: string,
 ): Promise<Response> {
   try {
-    const row = await env.DB.prepare(
+    let row = await env.DB.prepare(
       `SELECT
          a.object_key,
          a.kind,
          a.content_type,
          a.byte_size,
-         a.sha256
+         a.sha256,
+         'contributor' AS origin
        FROM showcases s
        JOIN artifacts a ON a.showcase_id = s.id
        WHERE s.slug = ?
@@ -150,6 +155,30 @@ async function serveResultArtifact(
     )
       .bind(slug, artifactId)
       .first<ArtifactRow>();
+    if (!row) {
+      row = await env.DB.prepare(
+        `SELECT
+           enrichment_artifact.object_key,
+           enrichment_artifact.kind,
+           enrichment_artifact.content_type,
+           enrichment_artifact.byte_size,
+           enrichment_artifact.sha256,
+           'enrichment' AS origin
+         FROM showcases s
+         JOIN showcase_enrichments enrichment
+           ON enrichment.showcase_id = s.id
+         JOIN showcase_enrichment_artifacts enrichment_artifact
+           ON enrichment_artifact.enrichment_id = enrichment.id
+         WHERE s.slug = ?
+           AND s.status = 'published'
+           AND s.safety_status = 'approved'
+           AND enrichment.status = 'completed'
+           AND enrichment_artifact.id = ?
+         LIMIT 1`,
+      )
+        .bind(slug, artifactId)
+        .first<ArtifactRow>();
+    }
     if (!row || !RESULT_CONTENT_TYPES[row.kind]?.has(row.content_type)) {
       return isolatedResponse("Not found.", 404);
     }
@@ -209,7 +238,10 @@ async function serveStoredArtifact(
   if (
     !object ||
     object.size !== row.byte_size ||
-    object.httpMetadata?.contentType !== row.content_type
+    object.httpMetadata?.contentType !== row.content_type ||
+    (row.origin === "enrichment" &&
+      (object.customMetadata?.automatedEnrichment !== "true" ||
+        object.customMetadata?.sha256 !== row.sha256))
   ) {
     return isolatedResponse("Not found.", 404);
   }

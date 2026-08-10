@@ -97,14 +97,23 @@ const worker = {
             name: errorName,
           });
           if (message.attempts >= 3) {
-            await appendAuditEvent({
-              actorUserId: body.actorUserId,
-              entityType: "judge-calibration",
-              entityId: "manual",
-              action: "judge.calibration_background_failed",
-              metadata: { errorName },
-            });
             message.ack();
+            try {
+              await appendAuditEvent({
+                actorUserId: body.actorUserId,
+                entityType: "judge-calibration",
+                entityId: "manual",
+                action: "judge.calibration_background_failed",
+                metadata: { errorName },
+              });
+            } catch (auditError) {
+              console.error("Benchmax queued calibration failure audit failed", {
+                name:
+                  auditError instanceof Error
+                    ? auditError.name
+                    : "UnknownError",
+              });
+            }
           } else {
             message.retry({ delaySeconds: Math.min(300, 15 * 2 ** message.attempts) });
           }

@@ -101,7 +101,7 @@ test("manual judge calibration stays owner-only, bounded, and reachable from ope
   assert.doesNotMatch(operationsSource, /evaluationStatus:/);
 });
 
-test("queued calibration never repeats paid work when its completion audit fails", () => {
+test("queued calibration never repeats paid work when an audit write fails", () => {
   const workerSource = readFileSync(
     new URL("../worker/index.ts", import.meta.url),
     "utf8",
@@ -118,6 +118,14 @@ test("queued calibration never repeats paid work when its completion audit fails
   assert.match(
     calibrationBranch,
     /Benchmax queued calibration completion audit failed/,
+  );
+  assert.match(
+    calibrationBranch,
+    /if \(message\.attempts >= 3\) \{\s*message\.ack\(\);\s*try \{\s*await appendAuditEvent\(\{[\s\S]*?action: "judge\.calibration_background_failed"/,
+  );
+  assert.match(
+    calibrationBranch,
+    /Benchmax queued calibration failure audit failed/,
   );
 });
 

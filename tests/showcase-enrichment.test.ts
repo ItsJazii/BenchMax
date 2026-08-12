@@ -165,6 +165,7 @@ test("staging and deploy preparation require the enrichment spend cap", async ()
     assert.match(source, /BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET/);
   }
   assert.match(config, /"BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET": "31200"/);
+  assert.match(prepare, /environmentName === "staging"/);
 });
 
 test("completed derived evidence is served only through every public safety gate", async () => {

@@ -15,9 +15,12 @@ const sourceConfig = readJsonc(rootDirectory, "wrangler.jsonc");
 const environment = sourceConfig.env?.[environmentName];
 if (!environment) throw new Error(`Missing main Worker environment: ${environmentName}`);
 
-const requiredEnvironmentVars = [
-  "BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET",
-];
+// Staging is the only submission-enabled environment today. Production config
+// preparation remains testable with its deliberate empty vars block, while the
+// runtime still fails closed if enrichment is invoked without this value.
+const requiredEnvironmentVars = environmentName === "staging"
+  ? ["BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET"]
+  : [];
 for (const key of requiredEnvironmentVars) {
   if (!/^[1-9][0-9]*$/.test(environment.vars?.[key] ?? "")) {
     throw new Error(

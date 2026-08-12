@@ -19,6 +19,7 @@ import {
   enrichmentBudgetDeferralAuditId,
   enrichmentBudgetWindow,
   isEnrichmentBudgetExhausted,
+  projectedEnrichmentAttemptMicrousd,
 } from "../lib/pipeline/enrichment-budget";
 import {
   usercontentWorker,
@@ -99,9 +100,9 @@ test("generic preview checks are complete but never become a judge rubric", () =
 
 test("preview enrichment has an explicit UTC daily spend cap and stable audit dedupe", () => {
   assert.equal(configuredDailyEnrichmentBudget("31200"), 31_200);
-  assert.equal(isEnrichmentBudgetExhausted(31_199, 31_200), false);
-  assert.equal(isEnrichmentBudgetExhausted(31_200, 31_200), true);
-  assert.equal(isEnrichmentBudgetExhausted(31_201, 31_200), true);
+  assert.equal(projectedEnrichmentAttemptMicrousd(117_000), 3_900);
+  assert.equal(isEnrichmentBudgetExhausted(27_300, 3_900, 31_200), false);
+  assert.equal(isEnrichmentBudgetExhausted(27_301, 3_900, 31_200), true);
   for (const value of [undefined, "", "0", "-1", "1.5", "1000000001", "nope"]) {
     assert.throws(
       () => configuredDailyEnrichmentBudget(value),
@@ -175,6 +176,10 @@ test("the enrichment core stays independent from runs and the judge budget", asy
   assert.equal(
     (dataModule.match(/nextDayStartedAt\.getTime\(\)/g) ?? []).length,
     2,
+  );
+  assert.match(
+    dataModule,
+    /count\(\*\) \* \$\{projectedAttemptMicrousd\}[\s\S]*?lease_expires_at > \$\{now\.getTime\(\)\}[\s\S]*?\+ \$\{projectedAttemptMicrousd\} <= \$\{dailyBudgetMicrousd\}/,
   );
 });
 

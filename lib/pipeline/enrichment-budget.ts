@@ -39,10 +39,29 @@ export function enrichmentBudgetConfigurationDeferralAuditId(
 }
 
 export function isEnrichmentBudgetExhausted(
-  spentMicrousd: number,
+  committedMicrousd: number,
+  projectedAttemptMicrousd: number,
   budgetMicrousd: number,
 ) {
-  return spentMicrousd >= budgetMicrousd;
+  return committedMicrousd + projectedAttemptMicrousd > budgetMicrousd;
+}
+
+export function projectedEnrichmentAttemptMicrousd(
+  rateMicrousdPerHour: number,
+  maximumDurationMs = 120_000,
+) {
+  if (
+    !Number.isSafeInteger(rateMicrousdPerHour) ||
+    rateMicrousdPerHour < 0 ||
+    !Number.isSafeInteger(maximumDurationMs) ||
+    maximumDurationMs < 1
+  ) {
+    throw new RangeError("Projected enrichment spend inputs are invalid.");
+  }
+  const numerator = BigInt(maximumDurationMs) * BigInt(rateMicrousdPerHour);
+  return Number(
+    (numerator + BigInt(3_599_999)) / BigInt(3_600_000),
+  );
 }
 
 export class EnrichmentBudgetConfigurationError extends Error {

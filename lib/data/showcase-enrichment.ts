@@ -11,7 +11,10 @@ import {
 } from "@/db/schema";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
 import { sha256Hex } from "@/lib/security/policy";
-import { sandboxRateFromEnv } from "@/lib/data/result-spend";
+import {
+  sandboxRateFromEnv,
+  SpendPricingConfigurationError,
+} from "@/lib/data/result-spend";
 import {
   showcaseEnrichmentMessage,
   type ShowcaseEnrichmentMessage,
@@ -24,6 +27,7 @@ import {
   enrichmentBudgetDeferralAuditId,
   enrichmentBudgetWindow,
   isEnrichmentBudgetExhausted,
+  projectedEnrichmentAttemptMicrousd,
 } from "@/lib/pipeline/enrichment-budget";
 
 const ZIP_CONTENT_TYPES = [
@@ -194,10 +198,17 @@ export async function claimShowcaseEnrichment(
 ): Promise<ShowcaseEnrichmentClaim> {
   const { dayStartedAt, nextDayStartedAt } = enrichmentBudgetWindow(now);
   let dailyBudgetMicrousd: number;
+  let projectedAttemptMicrousd: number;
   try {
     dailyBudgetMicrousd = configuredDailyEnrichmentBudget();
+    projectedAttemptMicrousd = projectedEnrichmentAttemptMicrousd(
+      sandboxRateFromEnv(),
+    );
   } catch (error) {
-    if (error instanceof EnrichmentBudgetConfigurationError) {
+    if (
+      error instanceof EnrichmentBudgetConfigurationError ||
+      error instanceof SpendPricingConfigurationError
+    ) {
       // Configuration must fail closed without consuming the durable queue
       // retry budget or turning an optional public preview terminally failed.
       await recordEnrichmentBudgetConfigurationDeferral({
@@ -235,7 +246,12 @@ export async function claimShowcaseEnrichment(
           FROM ${showcaseEnrichmentSpendRecords}
           WHERE ${showcaseEnrichmentSpendRecords.createdAt} >= ${dayStartedAt.getTime()}
             AND ${showcaseEnrichmentSpendRecords.createdAt} < ${nextDayStartedAt.getTime()}
-        ) < ${dailyBudgetMicrousd}`,
+        ) + (
+          SELECT count(*) * ${projectedAttemptMicrousd}
+          FROM showcase_enrichments inflight_enrichment
+          WHERE inflight_enrichment.status = 'running'
+            AND inflight_enrichment.lease_expires_at > ${now.getTime()}
+        ) + ${projectedAttemptMicrousd} <= ${dailyBudgetMicrousd}`,
       ),
     )
     .returning({ attemptCount: showcaseEnrichments.attemptCount });
@@ -249,6 +265,12 @@ export async function claimShowcaseEnrichment(
   const [existing] = await getDb()
     .select({
       leaseExpiresAt: showcaseEnrichments.leaseExpiresAt,
+      inFlightCount: sql<number>`(
+        SELECT count(*)
+        FROM showcase_enrichments inflight_enrichment
+        WHERE inflight_enrichment.status = 'running'
+          AND inflight_enrichment.lease_expires_at > ${now.getTime()}
+      )`,
       spentMicrousd: sql<number>`(
         SELECT coalesce(sum(${showcaseEnrichmentSpendRecords.costMicrousd}), 0)
         FROM ${showcaseEnrichmentSpendRecords}
@@ -267,7 +289,9 @@ export async function claimShowcaseEnrichment(
         existing.leaseExpiresAt &&
         existing.leaseExpiresAt <= now)) &&
     isEnrichmentBudgetExhausted(
-      Number(existing.spentMicrousd),
+      Number(existing.spentMicrousd) +
+        Number(existing.inFlightCount) * projectedAttemptMicrousd,
+      projectedAttemptMicrousd,
       dailyBudgetMicrousd,
     )
   ) {
@@ -288,6 +312,9 @@ export async function claimShowcaseEnrichment(
       dayStartedAt,
       enrichmentId,
       nextDayStartedAt,
+      projectedAttemptMicrousd,
+      reservedMicrousd:
+        Number(existing.inFlightCount) * projectedAttemptMicrousd,
       spentMicrousd: Number(existing.spentMicrousd),
     });
     return { action: "defer", retryAt: nextDayStartedAt };
@@ -329,6 +356,8 @@ async function recordEnrichmentBudgetDeferral(input: {
   dayStartedAt: Date;
   enrichmentId: string;
   nextDayStartedAt: Date;
+  projectedAttemptMicrousd: number;
+  reservedMicrousd: number;
   spentMicrousd: number;
 }) {
   await getDb()
@@ -346,6 +375,8 @@ async function recordEnrichmentBudgetDeferral(input: {
         budgetMicrousd: input.budgetMicrousd,
         dayStartedAt: input.dayStartedAt.toISOString(),
         retryAt: input.nextDayStartedAt.toISOString(),
+        projectedAttemptMicrousd: input.projectedAttemptMicrousd,
+        reservedMicrousd: input.reservedMicrousd,
         spentMicrousd: input.spentMicrousd,
       }),
       createdAt: new Date(),

@@ -19,6 +19,7 @@ import {
 import { sanitizeEnrichmentFailureCode } from "@/lib/pipeline/enrichment-policy";
 import {
   configuredDailyEnrichmentBudget,
+  EnrichmentBudgetConfigurationError,
   enrichmentBudgetDeferralAuditId,
   enrichmentBudgetWindow,
   isEnrichmentBudgetExhausted,
@@ -190,8 +191,18 @@ export async function claimShowcaseEnrichment(
   enrichmentId: string,
   now = new Date(),
 ): Promise<ShowcaseEnrichmentClaim> {
-  const dailyBudgetMicrousd = configuredDailyEnrichmentBudget();
   const { dayStartedAt, nextDayStartedAt } = enrichmentBudgetWindow(now);
+  let dailyBudgetMicrousd: number;
+  try {
+    dailyBudgetMicrousd = configuredDailyEnrichmentBudget();
+  } catch (error) {
+    if (error instanceof EnrichmentBudgetConfigurationError) {
+      // Configuration must fail closed without consuming the durable queue
+      // retry budget or turning an optional public preview terminally failed.
+      return { action: "defer", retryAt: nextDayStartedAt };
+    }
+    throw error;
+  }
   const leaseExpiresAt = new Date(now.getTime() + ENRICHMENT_LEASE_MS);
   const [claimed] = await getDb()
     .update(showcaseEnrichments)
@@ -216,8 +227,8 @@ export async function claimShowcaseEnrichment(
         sql`(
           SELECT coalesce(sum(${showcaseEnrichmentSpendRecords.costMicrousd}), 0)
           FROM ${showcaseEnrichmentSpendRecords}
-          WHERE ${showcaseEnrichmentSpendRecords.createdAt} >= ${dayStartedAt}
-            AND ${showcaseEnrichmentSpendRecords.createdAt} < ${nextDayStartedAt}
+          WHERE ${showcaseEnrichmentSpendRecords.createdAt} >= ${dayStartedAt.getTime()}
+            AND ${showcaseEnrichmentSpendRecords.createdAt} < ${nextDayStartedAt.getTime()}
         ) < ${dailyBudgetMicrousd}`,
       ),
     )
@@ -235,8 +246,8 @@ export async function claimShowcaseEnrichment(
       spentMicrousd: sql<number>`(
         SELECT coalesce(sum(${showcaseEnrichmentSpendRecords.costMicrousd}), 0)
         FROM ${showcaseEnrichmentSpendRecords}
-        WHERE ${showcaseEnrichmentSpendRecords.createdAt} >= ${dayStartedAt}
-          AND ${showcaseEnrichmentSpendRecords.createdAt} < ${nextDayStartedAt}
+        WHERE ${showcaseEnrichmentSpendRecords.createdAt} >= ${dayStartedAt.getTime()}
+          AND ${showcaseEnrichmentSpendRecords.createdAt} < ${nextDayStartedAt.getTime()}
       )`,
       status: showcaseEnrichments.status,
     })

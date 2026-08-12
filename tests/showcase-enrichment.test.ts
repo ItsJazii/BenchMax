@@ -152,6 +152,18 @@ test("the enrichment core stays independent from runs and the judge budget", asy
   assert.match(dataModule, /showcase\.preview_enrichment_budget_deferred/);
   assert.match(dataModule, /onConflictDoNothing\(\{ target: auditEvents\.id \}\)/);
   assert.match(dataModule, /status: "queued", leaseExpiresAt: null/);
+  assert.match(
+    dataModule,
+    /error instanceof EnrichmentBudgetConfigurationError[\s\S]*?action: "defer"/,
+  );
+  assert.equal(
+    (dataModule.match(/dayStartedAt\.getTime\(\)/g) ?? []).length,
+    2,
+  );
+  assert.equal(
+    (dataModule.match(/nextDayStartedAt\.getTime\(\)/g) ?? []).length,
+    2,
+  );
 });
 
 test("staging and deploy preparation require the enrichment spend cap", async () => {

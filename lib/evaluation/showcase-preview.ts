@@ -15,6 +15,7 @@ import {
 } from "@/lib/evaluation/preview-spec";
 import { canonicalJson } from "@/lib/security/canonical";
 import { constantTimeEqualHex, sha256Hex } from "@/lib/security/policy";
+import { SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS } from "@/lib/pipeline/enrichment-budget";
 
 const previewReportSchema = z
   .object({
@@ -72,7 +73,7 @@ export async function executeShowcasePreviewEnrichment(
   const templateId = requiredSecret("E2B_TEMPLATE_ID");
   const templateBuildHash = requiredSha256("E2B_TEMPLATE_BUILD_HASH");
   const attemptKey = `sandbox:${enrichmentId}:preview:${crypto.randomUUID()}`;
-  const startedAt = Date.now();
+  const attemptStartedAt = Date.now();
   let sandbox: Sandbox | null = null;
   let spendStatus: "completed" | "failed" = "failed";
   try {
@@ -80,7 +81,7 @@ export async function executeShowcasePreviewEnrichment(
       apiKey: requiredSecret("E2B_API_KEY"),
       allowInternetAccess: false,
       secure: true,
-      timeoutMs: EVALUATION_ENVIRONMENT_V1.wallClockSeconds * 1_000,
+      timeoutMs: SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS,
       lifecycle: { onTimeout: "kill" },
       metadata: {
         benchmaxEnrichmentId: enrichmentId,
@@ -178,7 +179,13 @@ export async function executeShowcasePreviewEnrichment(
     await sandbox?.kill().catch(() => false);
     await recordShowcaseEnrichmentSpend({
       attemptKey,
-      durationMs: Math.max(0, Date.now() - startedAt),
+      // Conservatively include provisioning and cleanup. The stored duration
+      // and claim reservation share the sandbox lifecycle ceiling, which has
+      // explicit headroom above the inner evaluator command timeout.
+      durationMs: Math.min(
+        Math.max(0, Date.now() - attemptStartedAt),
+        SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS,
+      ),
       enrichmentId,
       status: spendStatus,
     }).catch((error) => {

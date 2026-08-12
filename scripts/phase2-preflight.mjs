@@ -34,6 +34,7 @@ const environments = {
   },
 };
 const requiredCrons = ["*/2 * * * *", "0 3 * * 1"];
+const MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD = 1_000_000_000;
 
 const databaseIds = {};
 const queueNamesByEnvironment = {};
@@ -116,10 +117,21 @@ const requiredEnvNames = [
   "BENCHMAX_JUDGE_DAILY_SAMPLE_BUDGET",
   "BENCHMAX_JUDGE_INPUT_MICROUSD_PER_MILLION_TOKENS",
   "BENCHMAX_JUDGE_OUTPUT_MICROUSD_PER_MILLION_TOKENS",
+  "BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET",
   "BENCHMAX_SANDBOX_MICROUSD_PER_HOUR",
   "BENCHMAX_APP_ORIGIN",
 ];
 for (const name of requiredEnvNames) assert(envNames.has(name), `missing .env.example key: ${name}`);
+
+const stagingEnrichmentBudget = Number(
+  environments.staging.main.vars?.BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET,
+);
+assert(
+  Number.isSafeInteger(stagingEnrichmentBudget) &&
+    stagingEnrichmentBudget >= 1 &&
+    stagingEnrichmentBudget <= MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD,
+  "main Worker staging must configure BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET",
+);
 
 const forbiddenBindingPattern = /\bIMAGES\b/;
 for (const filePath of sourceFiles(rootDirectory)) {

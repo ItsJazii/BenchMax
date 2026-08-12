@@ -86,6 +86,9 @@
         "BENCHMAX_JUDGE_DAILY_SAMPLE_BUDGET": "30",
         "BENCHMAX_JUDGE_INPUT_MICROUSD_PER_MILLION_TOKENS": "950000",
         "BENCHMAX_JUDGE_OUTPUT_MICROUSD_PER_MILLION_TOKENS": "4000000",
+        // Eight launch-volume enrichments at the pinned 180-second ceiling,
+        // priced at the measured 117000 microUSD/hour staging rate.
+        "BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET": "46800",
         "BENCHMAX_SANDBOX_MICROUSD_PER_HOUR": "117000"
       },
       "d1_databases": [

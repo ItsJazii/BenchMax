@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   artifacts,
+  auditEvents,
   showcaseEnrichmentArtifacts,
   showcaseEnrichmentSpendRecords,
   showcaseEnrichments,
@@ -10,18 +11,31 @@ import {
 } from "@/db/schema";
 import { canonicalJson, canonicalSha256 } from "@/lib/security/canonical";
 import { sha256Hex } from "@/lib/security/policy";
-import { sandboxRateFromEnv } from "@/lib/data/result-spend";
+import {
+  sandboxRateFromEnv,
+  SpendPricingConfigurationError,
+} from "@/lib/data/result-spend";
 import {
   showcaseEnrichmentMessage,
   type ShowcaseEnrichmentMessage,
 } from "@/lib/pipeline/enrichment-messages";
 import { sanitizeEnrichmentFailureCode } from "@/lib/pipeline/enrichment-policy";
+import {
+  configuredDailyEnrichmentBudget,
+  EnrichmentBudgetConfigurationError,
+  enrichmentBudgetConfigurationDeferralAuditId,
+  enrichmentBudgetDeferralAuditId,
+  enrichmentBudgetWindow,
+  isEnrichmentBudgetExhausted,
+  projectedEnrichmentAttemptMicrousd,
+} from "@/lib/pipeline/enrichment-budget";
 
 const ZIP_CONTENT_TYPES = [
   "application/zip",
   "application/x-zip-compressed",
 ] as const;
 const ENRICHMENT_LEASE_MS = 5 * 60 * 1000;
+const ENRICHMENT_CONFIGURATION_RETRY_MS = 5 * 60 * 1000;
 const MICROS_PER_HOUR_DIVISOR = 3_600_000;
 
 export type ShowcaseEnrichmentArtifactKind =
@@ -32,6 +46,7 @@ export type ShowcaseEnrichmentArtifactKind =
 
 export type ShowcaseEnrichmentClaim =
   | { action: "execute"; attemptCount: number; leaseExpiresAt: Date }
+  | { action: "defer"; retryAt: Date }
   | { action: "retry"; leaseExpiresAt: Date }
   | { action: "skip" };
 
@@ -162,7 +177,12 @@ export async function reconcileShowcaseEnrichments(limit = 50) {
   const queued = await getDb()
     .select({ id: showcaseEnrichments.id })
     .from(showcaseEnrichments)
-    .where(eq(showcaseEnrichments.status, "queued"))
+    .where(
+      and(
+        eq(showcaseEnrichments.status, "queued"),
+        lte(showcaseEnrichments.updatedAt, now),
+      ),
+    )
     .orderBy(asc(showcaseEnrichments.updatedAt), asc(showcaseEnrichments.id))
     .limit(boundedLimit);
   const dispatched: string[] = [];
@@ -182,6 +202,38 @@ export async function claimShowcaseEnrichment(
   enrichmentId: string,
   now = new Date(),
 ): Promise<ShowcaseEnrichmentClaim> {
+  const { dayStartedAt, nextDayStartedAt } = enrichmentBudgetWindow(now);
+  let dailyBudgetMicrousd: number;
+  let projectedAttemptMicrousd: number;
+  try {
+    dailyBudgetMicrousd = configuredDailyEnrichmentBudget();
+    projectedAttemptMicrousd = projectedEnrichmentAttemptMicrousd(
+      sandboxRateFromEnv(),
+    );
+  } catch (error) {
+    if (
+      error instanceof EnrichmentBudgetConfigurationError ||
+      error instanceof SpendPricingConfigurationError
+    ) {
+      // Configuration must fail closed without consuming the durable queue
+      // retry budget or turning an optional public preview terminally failed.
+      const configurationRetryAt = new Date(
+        now.getTime() + ENRICHMENT_CONFIGURATION_RETRY_MS,
+      );
+      await recordEnrichmentBudgetConfigurationDeferral({
+        dayStartedAt,
+        enrichmentId,
+        retryAt: configurationRetryAt,
+      });
+      await deferShowcaseEnrichmentUntil(
+        enrichmentId,
+        now,
+        configurationRetryAt,
+      );
+      return { action: "defer", retryAt: configurationRetryAt };
+    }
+    throw error;
+  }
   const leaseExpiresAt = new Date(now.getTime() + ENRICHMENT_LEASE_MS);
   const [claimed] = await getDb()
     .update(showcaseEnrichments)
@@ -203,6 +255,17 @@ export async function claimShowcaseEnrichment(
             lte(showcaseEnrichments.leaseExpiresAt, now),
           ),
         ),
+        sql`(
+          SELECT coalesce(sum(${showcaseEnrichmentSpendRecords.costMicrousd}), 0)
+          FROM ${showcaseEnrichmentSpendRecords}
+          WHERE ${showcaseEnrichmentSpendRecords.createdAt} >= ${dayStartedAt.getTime()}
+            AND ${showcaseEnrichmentSpendRecords.createdAt} < ${nextDayStartedAt.getTime()}
+        ) + (
+          SELECT count(*) * ${projectedAttemptMicrousd}
+          FROM showcase_enrichments inflight_enrichment
+          WHERE inflight_enrichment.status = 'running'
+            AND inflight_enrichment.lease_expires_at > ${now.getTime()}
+        ) + ${projectedAttemptMicrousd} <= ${dailyBudgetMicrousd}`,
       ),
     )
     .returning({ attemptCount: showcaseEnrichments.attemptCount });
@@ -216,15 +279,161 @@ export async function claimShowcaseEnrichment(
   const [existing] = await getDb()
     .select({
       leaseExpiresAt: showcaseEnrichments.leaseExpiresAt,
+      inFlightCount: sql<number>`(
+        SELECT count(*)
+        FROM showcase_enrichments inflight_enrichment
+        WHERE inflight_enrichment.status = 'running'
+          AND inflight_enrichment.lease_expires_at > ${now.getTime()}
+      )`,
+      nextLeaseExpiresAt: sql<number | null>`(
+        SELECT min(inflight_enrichment.lease_expires_at)
+        FROM showcase_enrichments inflight_enrichment
+        WHERE inflight_enrichment.status = 'running'
+          AND inflight_enrichment.lease_expires_at > ${now.getTime()}
+      )`,
+      spentMicrousd: sql<number>`(
+        SELECT coalesce(sum(${showcaseEnrichmentSpendRecords.costMicrousd}), 0)
+        FROM ${showcaseEnrichmentSpendRecords}
+        WHERE ${showcaseEnrichmentSpendRecords.createdAt} >= ${dayStartedAt.getTime()}
+          AND ${showcaseEnrichmentSpendRecords.createdAt} < ${nextDayStartedAt.getTime()}
+      )`,
       status: showcaseEnrichments.status,
     })
     .from(showcaseEnrichments)
     .where(eq(showcaseEnrichments.id, enrichmentId))
     .limit(1);
+  if (
+    existing &&
+    (existing.status === "queued" ||
+      (existing.status === "running" &&
+        existing.leaseExpiresAt &&
+        existing.leaseExpiresAt <= now)) &&
+    isEnrichmentBudgetExhausted(
+      Number(existing.spentMicrousd) +
+        Number(existing.inFlightCount) * projectedAttemptMicrousd,
+      projectedAttemptMicrousd,
+      dailyBudgetMicrousd,
+    )
+  ) {
+    const spentMicrousd = Number(existing.spentMicrousd);
+    const reservedMicrousd =
+      Number(existing.inFlightCount) * projectedAttemptMicrousd;
+    const recordedSpendExhausted = isEnrichmentBudgetExhausted(
+      spentMicrousd,
+      projectedAttemptMicrousd,
+      dailyBudgetMicrousd,
+    );
+    const retryAt = recordedSpendExhausted
+      ? nextDayStartedAt
+      : new Date(
+          Math.min(
+            nextDayStartedAt.getTime(),
+            Number(existing.nextLeaseExpiresAt) ||
+              now.getTime() + ENRICHMENT_LEASE_MS,
+          ),
+        );
+    await deferShowcaseEnrichmentUntil(
+      enrichmentId,
+      now,
+      retryAt,
+    );
+    await recordEnrichmentBudgetDeferral({
+      budgetMicrousd: dailyBudgetMicrousd,
+      dayStartedAt,
+      enrichmentId,
+      retryAt,
+      projectedAttemptMicrousd,
+      reservedMicrousd,
+      spentMicrousd,
+    });
+    return { action: "defer", retryAt };
+  }
   if (existing?.status === "running" && existing.leaseExpiresAt) {
     return { action: "retry", leaseExpiresAt: existing.leaseExpiresAt };
   }
   return { action: "skip" };
+}
+
+async function deferShowcaseEnrichmentUntil(
+  enrichmentId: string,
+  now: Date,
+  retryAt: Date,
+) {
+  await getDb()
+    .update(showcaseEnrichments)
+    .set({ status: "queued", leaseExpiresAt: null, updatedAt: retryAt })
+    .where(
+      and(
+        eq(showcaseEnrichments.id, enrichmentId),
+        lte(showcaseEnrichments.updatedAt, now),
+        or(
+          eq(showcaseEnrichments.status, "queued"),
+          and(
+            eq(showcaseEnrichments.status, "running"),
+            lte(showcaseEnrichments.leaseExpiresAt, now),
+          ),
+        ),
+      ),
+    );
+}
+
+async function recordEnrichmentBudgetConfigurationDeferral(input: {
+  dayStartedAt: Date;
+  enrichmentId: string;
+  retryAt: Date;
+}) {
+  await getDb()
+    .insert(auditEvents)
+    .values({
+      id: enrichmentBudgetConfigurationDeferralAuditId(
+        input.enrichmentId,
+        input.dayStartedAt,
+      ),
+      actorUserId: null,
+      entityId: input.enrichmentId,
+      entityType: "showcase-enrichment",
+      action: "showcase.preview_enrichment_budget_configuration_deferred",
+      metadataJson: canonicalJson({
+        dayStartedAt: input.dayStartedAt.toISOString(),
+        reason: "invalid-runtime-configuration",
+        retryAt: input.retryAt.toISOString(),
+      }),
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing({ target: auditEvents.id });
+}
+
+async function recordEnrichmentBudgetDeferral(input: {
+  budgetMicrousd: number;
+  dayStartedAt: Date;
+  enrichmentId: string;
+  retryAt: Date;
+  projectedAttemptMicrousd: number;
+  reservedMicrousd: number;
+  spentMicrousd: number;
+}) {
+  await getDb()
+    .insert(auditEvents)
+    .values({
+      id: enrichmentBudgetDeferralAuditId(
+        input.enrichmentId,
+        input.dayStartedAt,
+      ),
+      actorUserId: null,
+      entityId: input.enrichmentId,
+      entityType: "showcase-enrichment",
+      action: "showcase.preview_enrichment_budget_deferred",
+      metadataJson: canonicalJson({
+        budgetMicrousd: input.budgetMicrousd,
+        dayStartedAt: input.dayStartedAt.toISOString(),
+        retryAt: input.retryAt.toISOString(),
+        projectedAttemptMicrousd: input.projectedAttemptMicrousd,
+        reservedMicrousd: input.reservedMicrousd,
+        spentMicrousd: input.spentMicrousd,
+      }),
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing({ target: auditEvents.id });
 }
 
 export async function readShowcaseEnrichmentContract(enrichmentId: string) {

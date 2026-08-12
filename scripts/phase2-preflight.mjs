@@ -34,6 +34,7 @@ const environments = {
   },
 };
 const requiredCrons = ["*/2 * * * *", "0 3 * * 1"];
+const MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD = 1_000_000_000;
 
 const databaseIds = {};
 const queueNamesByEnvironment = {};
@@ -122,9 +123,13 @@ const requiredEnvNames = [
 ];
 for (const name of requiredEnvNames) assert(envNames.has(name), `missing .env.example key: ${name}`);
 
-assert.match(
-  environments.staging.main.vars?.BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET ?? "",
-  /^[1-9][0-9]*$/,
+const stagingEnrichmentBudget = Number(
+  environments.staging.main.vars?.BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET,
+);
+assert(
+  Number.isSafeInteger(stagingEnrichmentBudget) &&
+    stagingEnrichmentBudget >= 1 &&
+    stagingEnrichmentBudget <= MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD,
   "main Worker staging must configure BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET",
 );
 

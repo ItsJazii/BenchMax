@@ -1,4 +1,4 @@
-const MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD = 1_000_000_000;
+export const MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD = 1_000_000_000;
 
 export function configuredDailyEnrichmentBudget(
   value = process.env.BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET,
@@ -29,6 +29,13 @@ export function enrichmentBudgetDeferralAuditId(
   dayStartedAt: Date,
 ) {
   return `showcase-enrichment-budget:${dayStartedAt.toISOString().slice(0, 10)}:${enrichmentId}`;
+}
+
+export function enrichmentBudgetConfigurationDeferralAuditId(
+  enrichmentId: string,
+  dayStartedAt: Date,
+) {
+  return `showcase-enrichment-budget-configuration:${dayStartedAt.toISOString().slice(0, 10)}:${enrichmentId}`;
 }
 
 export function isEnrichmentBudgetExhausted(

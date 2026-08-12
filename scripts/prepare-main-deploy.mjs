@@ -14,15 +14,22 @@ const builtConfig = JSON.parse(fs.readFileSync(builtConfigPath, "utf8"));
 const sourceConfig = readJsonc(rootDirectory, "wrangler.jsonc");
 const environment = sourceConfig.env?.[environmentName];
 if (!environment) throw new Error(`Missing main Worker environment: ${environmentName}`);
+const MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD = 1_000_000_000;
 
-// Staging is the only submission-enabled environment today. Production config
-// preparation remains testable with its deliberate empty vars block, while the
-// runtime still fails closed if enrichment is invoked without this value.
-const requiredEnvironmentVars = environmentName === "staging"
+// Staging is submission-enabled today. Any future environment with public
+// routes must also configure the cap before its deploy config can be prepared.
+const requiresEnrichmentBudget =
+  environmentName === "staging" || (environment.routes?.length ?? 0) > 0;
+const requiredEnvironmentVars = requiresEnrichmentBudget
   ? ["BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET"]
   : [];
 for (const key of requiredEnvironmentVars) {
-  if (!/^[1-9][0-9]*$/.test(environment.vars?.[key] ?? "")) {
+  const value = Number(environment.vars?.[key]);
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD
+  ) {
     throw new Error(
       `main Worker ${environmentName} environment must set a positive integer ${key} before deployment`,
     );

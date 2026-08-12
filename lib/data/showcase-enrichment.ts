@@ -20,6 +20,7 @@ import { sanitizeEnrichmentFailureCode } from "@/lib/pipeline/enrichment-policy"
 import {
   configuredDailyEnrichmentBudget,
   EnrichmentBudgetConfigurationError,
+  enrichmentBudgetConfigurationDeferralAuditId,
   enrichmentBudgetDeferralAuditId,
   enrichmentBudgetWindow,
   isEnrichmentBudgetExhausted,
@@ -199,6 +200,11 @@ export async function claimShowcaseEnrichment(
     if (error instanceof EnrichmentBudgetConfigurationError) {
       // Configuration must fail closed without consuming the durable queue
       // retry budget or turning an optional public preview terminally failed.
+      await recordEnrichmentBudgetConfigurationDeferral({
+        dayStartedAt,
+        enrichmentId,
+        nextDayStartedAt,
+      });
       return { action: "defer", retryAt: nextDayStartedAt };
     }
     throw error;
@@ -290,6 +296,32 @@ export async function claimShowcaseEnrichment(
     return { action: "retry", leaseExpiresAt: existing.leaseExpiresAt };
   }
   return { action: "skip" };
+}
+
+async function recordEnrichmentBudgetConfigurationDeferral(input: {
+  dayStartedAt: Date;
+  enrichmentId: string;
+  nextDayStartedAt: Date;
+}) {
+  await getDb()
+    .insert(auditEvents)
+    .values({
+      id: enrichmentBudgetConfigurationDeferralAuditId(
+        input.enrichmentId,
+        input.dayStartedAt,
+      ),
+      actorUserId: null,
+      entityId: input.enrichmentId,
+      entityType: "showcase-enrichment",
+      action: "showcase.preview_enrichment_budget_configuration_deferred",
+      metadataJson: canonicalJson({
+        dayStartedAt: input.dayStartedAt.toISOString(),
+        reason: "invalid-runtime-configuration",
+        retryAt: input.nextDayStartedAt.toISOString(),
+      }),
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing({ target: auditEvents.id });
 }
 
 async function recordEnrichmentBudgetDeferral(input: {

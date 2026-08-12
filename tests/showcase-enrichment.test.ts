@@ -15,6 +15,7 @@ import {
 import {
   configuredDailyEnrichmentBudget,
   EnrichmentBudgetConfigurationError,
+  enrichmentBudgetConfigurationDeferralAuditId,
   enrichmentBudgetDeferralAuditId,
   enrichmentBudgetWindow,
   isEnrichmentBudgetExhausted,
@@ -124,6 +125,13 @@ test("preview enrichment has an explicit UTC daily spend cap and stable audit de
     enrichmentBudgetDeferralAuditId(enrichmentId, beforeReset.dayStartedAt),
     enrichmentBudgetDeferralAuditId(enrichmentId, beforeReset.nextDayStartedAt),
   );
+  assert.notEqual(
+    enrichmentBudgetConfigurationDeferralAuditId(
+      enrichmentId,
+      beforeReset.dayStartedAt,
+    ),
+    enrichmentBudgetDeferralAuditId(enrichmentId, beforeReset.dayStartedAt),
+  );
 });
 
 test("the enrichment core stays independent from runs and the judge budget", async () => {
@@ -150,6 +158,10 @@ test("the enrichment core stays independent from runs and the judge budget", asy
     assert.doesNotMatch(implementation, new RegExp(forbidden));
   }
   assert.match(dataModule, /showcase\.preview_enrichment_budget_deferred/);
+  assert.match(
+    dataModule,
+    /showcase\.preview_enrichment_budget_configuration_deferred/,
+  );
   assert.match(dataModule, /onConflictDoNothing\(\{ target: auditEvents\.id \}\)/);
   assert.match(dataModule, /status: "queued", leaseExpiresAt: null/);
   assert.match(
@@ -178,6 +190,15 @@ test("staging and deploy preparation require the enrichment spend cap", async ()
   }
   assert.match(config, /"BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET": "31200"/);
   assert.match(prepare, /environmentName === "staging"/);
+  assert.match(prepare, /environment\.routes\?\.length/);
+  assert.equal(
+    (preflight.match(/MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD/g) ?? []).length,
+    2,
+  );
+  assert.equal(
+    (prepare.match(/MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD/g) ?? []).length,
+    2,
+  );
 });
 
 test("completed derived evidence is served only through every public safety gate", async () => {

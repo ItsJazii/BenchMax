@@ -176,7 +176,12 @@ export async function reconcileShowcaseEnrichments(limit = 50) {
   const queued = await getDb()
     .select({ id: showcaseEnrichments.id })
     .from(showcaseEnrichments)
-    .where(eq(showcaseEnrichments.status, "queued"))
+    .where(
+      and(
+        eq(showcaseEnrichments.status, "queued"),
+        lte(showcaseEnrichments.updatedAt, now),
+      ),
+    )
     .orderBy(asc(showcaseEnrichments.updatedAt), asc(showcaseEnrichments.id))
     .limit(boundedLimit);
   const dispatched: string[] = [];
@@ -216,6 +221,11 @@ export async function claimShowcaseEnrichment(
         enrichmentId,
         nextDayStartedAt,
       });
+      await deferShowcaseEnrichmentUntil(
+        enrichmentId,
+        now,
+        nextDayStartedAt,
+      );
       return { action: "defer", retryAt: nextDayStartedAt };
     }
     throw error;
@@ -295,18 +305,11 @@ export async function claimShowcaseEnrichment(
       dailyBudgetMicrousd,
     )
   ) {
-    if (existing.status === "running") {
-      await getDb()
-        .update(showcaseEnrichments)
-        .set({ status: "queued", leaseExpiresAt: null, updatedAt: now })
-        .where(
-          and(
-            eq(showcaseEnrichments.id, enrichmentId),
-            eq(showcaseEnrichments.status, "running"),
-            lte(showcaseEnrichments.leaseExpiresAt, now),
-          ),
-        );
-    }
+    await deferShowcaseEnrichmentUntil(
+      enrichmentId,
+      now,
+      nextDayStartedAt,
+    );
     await recordEnrichmentBudgetDeferral({
       budgetMicrousd: dailyBudgetMicrousd,
       dayStartedAt,
@@ -323,6 +326,29 @@ export async function claimShowcaseEnrichment(
     return { action: "retry", leaseExpiresAt: existing.leaseExpiresAt };
   }
   return { action: "skip" };
+}
+
+async function deferShowcaseEnrichmentUntil(
+  enrichmentId: string,
+  now: Date,
+  retryAt: Date,
+) {
+  await getDb()
+    .update(showcaseEnrichments)
+    .set({ status: "queued", leaseExpiresAt: null, updatedAt: retryAt })
+    .where(
+      and(
+        eq(showcaseEnrichments.id, enrichmentId),
+        lte(showcaseEnrichments.updatedAt, now),
+        or(
+          eq(showcaseEnrichments.status, "queued"),
+          and(
+            eq(showcaseEnrichments.status, "running"),
+            lte(showcaseEnrichments.leaseExpiresAt, now),
+          ),
+        ),
+      ),
+    );
 }
 
 async function recordEnrichmentBudgetConfigurationDeferral(input: {

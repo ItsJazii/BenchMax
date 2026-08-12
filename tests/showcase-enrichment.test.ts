@@ -20,6 +20,7 @@ import {
   enrichmentBudgetWindow,
   isEnrichmentBudgetExhausted,
   projectedEnrichmentAttemptMicrousd,
+  SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS,
 } from "../lib/pipeline/enrichment-budget";
 import {
   usercontentWorker,
@@ -100,6 +101,7 @@ test("generic preview checks are complete but never become a judge rubric", () =
 
 test("preview enrichment has an explicit UTC daily spend cap and stable audit dedupe", () => {
   assert.equal(configuredDailyEnrichmentBudget("31200"), 31_200);
+  assert.equal(SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS, 120_000);
   assert.equal(projectedEnrichmentAttemptMicrousd(117_000), 3_900);
   assert.equal(isEnrichmentBudgetExhausted(27_300, 3_900, 31_200), false);
   assert.equal(isEnrichmentBudgetExhausted(27_301, 3_900, 31_200), true);
@@ -167,6 +169,14 @@ test("the enrichment core stays independent from runs and the judge budget", asy
   assert.match(dataModule, /status: "queued", leaseExpiresAt: null/);
   assert.match(
     dataModule,
+    /eq\(showcaseEnrichments\.status, "queued"\),[\s\S]*?lte\(showcaseEnrichments\.updatedAt, now\)/,
+  );
+  assert.match(
+    dataModule,
+    /set\(\{ status: "queued", leaseExpiresAt: null, updatedAt: retryAt \}\)/,
+  );
+  assert.match(
+    dataModule,
     /error instanceof EnrichmentBudgetConfigurationError[\s\S]*?action: "defer"/,
   );
   assert.equal(
@@ -180,6 +190,14 @@ test("the enrichment core stays independent from runs and the judge budget", asy
   assert.match(
     dataModule,
     /count\(\*\) \* \$\{projectedAttemptMicrousd\}[\s\S]*?lease_expires_at > \$\{now\.getTime\(\)\}[\s\S]*?\+ \$\{projectedAttemptMicrousd\} <= \$\{dailyBudgetMicrousd\}/,
+  );
+  assert.match(
+    dataModule,
+    /eq\(showcaseEnrichments\.id, enrichmentId\),[\s\S]*?lte\(showcaseEnrichments\.updatedAt, now\),[\s\S]*?eq\(showcaseEnrichments\.status, "queued"\)/,
+  );
+  assert.match(
+    evaluatorModule,
+    /sandboxStartedAt = Date\.now\(\)[\s\S]*?durationMs:[\s\S]*?SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS/,
   );
 });
 

@@ -1,4 +1,8 @@
+import { EVALUATION_ENVIRONMENT_V1 } from "@/lib/domain/ranked-catalog";
+
 export const MAX_DAILY_ENRICHMENT_BUDGET_MICROUSD = 1_000_000_000;
+export const SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS =
+  EVALUATION_ENVIRONMENT_V1.wallClockSeconds * 1_000;
 
 export function configuredDailyEnrichmentBudget(
   value = process.env.BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET,
@@ -48,7 +52,7 @@ export function isEnrichmentBudgetExhausted(
 
 export function projectedEnrichmentAttemptMicrousd(
   rateMicrousdPerHour: number,
-  maximumDurationMs = 120_000,
+  maximumDurationMs = SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS,
 ) {
   if (
     !Number.isSafeInteger(rateMicrousdPerHour) ||

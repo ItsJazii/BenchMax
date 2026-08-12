@@ -15,6 +15,7 @@ import {
 } from "@/lib/evaluation/preview-spec";
 import { canonicalJson } from "@/lib/security/canonical";
 import { constantTimeEqualHex, sha256Hex } from "@/lib/security/policy";
+import { SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS } from "@/lib/pipeline/enrichment-budget";
 
 const previewReportSchema = z
   .object({
@@ -72,7 +73,7 @@ export async function executeShowcasePreviewEnrichment(
   const templateId = requiredSecret("E2B_TEMPLATE_ID");
   const templateBuildHash = requiredSha256("E2B_TEMPLATE_BUILD_HASH");
   const attemptKey = `sandbox:${enrichmentId}:preview:${crypto.randomUUID()}`;
-  const startedAt = Date.now();
+  let sandboxStartedAt: number | null = null;
   let sandbox: Sandbox | null = null;
   let spendStatus: "completed" | "failed" = "failed";
   try {
@@ -80,13 +81,14 @@ export async function executeShowcasePreviewEnrichment(
       apiKey: requiredSecret("E2B_API_KEY"),
       allowInternetAccess: false,
       secure: true,
-      timeoutMs: EVALUATION_ENVIRONMENT_V1.wallClockSeconds * 1_000,
+      timeoutMs: SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS,
       lifecycle: { onTimeout: "kill" },
       metadata: {
         benchmaxEnrichmentId: enrichmentId,
         sourceSha256,
       },
     });
+    sandboxStartedAt = Date.now();
     const specJson = canonicalJson(buildShowcasePreviewSpec(sourceSha256));
     await sandbox.files.write(
       "/workspace/input/source.zip",
@@ -178,7 +180,16 @@ export async function executeShowcasePreviewEnrichment(
     await sandbox?.kill().catch(() => false);
     await recordShowcaseEnrichmentSpend({
       attemptKey,
-      durationMs: Math.max(0, Date.now() - startedAt),
+      // The measured rate applies to live sandbox time. E2B kills that sandbox
+      // at the same lifecycle ceiling reserved during the claim; provisioning
+      // before Sandbox.create resolves is not counted as sandbox runtime.
+      durationMs:
+        sandboxStartedAt === null
+          ? 0
+          : Math.min(
+              Math.max(0, Date.now() - sandboxStartedAt),
+              SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS,
+            ),
       enrichmentId,
       status: spendStatus,
     }).catch((error) => {

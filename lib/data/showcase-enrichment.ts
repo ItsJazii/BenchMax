@@ -285,6 +285,12 @@ export async function claimShowcaseEnrichment(
         WHERE inflight_enrichment.status = 'running'
           AND inflight_enrichment.lease_expires_at > ${now.getTime()}
       )`,
+      nextLeaseExpiresAt: sql<number | null>`(
+        SELECT min(inflight_enrichment.lease_expires_at)
+        FROM showcase_enrichments inflight_enrichment
+        WHERE inflight_enrichment.status = 'running'
+          AND inflight_enrichment.lease_expires_at > ${now.getTime()}
+      )`,
       spentMicrousd: sql<number>`(
         SELECT coalesce(sum(${showcaseEnrichmentSpendRecords.costMicrousd}), 0)
         FROM ${showcaseEnrichmentSpendRecords}
@@ -309,22 +315,38 @@ export async function claimShowcaseEnrichment(
       dailyBudgetMicrousd,
     )
   ) {
+    const spentMicrousd = Number(existing.spentMicrousd);
+    const reservedMicrousd =
+      Number(existing.inFlightCount) * projectedAttemptMicrousd;
+    const recordedSpendExhausted = isEnrichmentBudgetExhausted(
+      spentMicrousd,
+      projectedAttemptMicrousd,
+      dailyBudgetMicrousd,
+    );
+    const retryAt = recordedSpendExhausted
+      ? nextDayStartedAt
+      : new Date(
+          Math.min(
+            nextDayStartedAt.getTime(),
+            Number(existing.nextLeaseExpiresAt) ||
+              now.getTime() + ENRICHMENT_LEASE_MS,
+          ),
+        );
     await deferShowcaseEnrichmentUntil(
       enrichmentId,
       now,
-      nextDayStartedAt,
+      retryAt,
     );
     await recordEnrichmentBudgetDeferral({
       budgetMicrousd: dailyBudgetMicrousd,
       dayStartedAt,
       enrichmentId,
-      nextDayStartedAt,
+      retryAt,
       projectedAttemptMicrousd,
-      reservedMicrousd:
-        Number(existing.inFlightCount) * projectedAttemptMicrousd,
-      spentMicrousd: Number(existing.spentMicrousd),
+      reservedMicrousd,
+      spentMicrousd,
     });
-    return { action: "defer", retryAt: nextDayStartedAt };
+    return { action: "defer", retryAt };
   }
   if (existing?.status === "running" && existing.leaseExpiresAt) {
     return { action: "retry", leaseExpiresAt: existing.leaseExpiresAt };
@@ -385,7 +407,7 @@ async function recordEnrichmentBudgetDeferral(input: {
   budgetMicrousd: number;
   dayStartedAt: Date;
   enrichmentId: string;
-  nextDayStartedAt: Date;
+  retryAt: Date;
   projectedAttemptMicrousd: number;
   reservedMicrousd: number;
   spentMicrousd: number;
@@ -404,7 +426,7 @@ async function recordEnrichmentBudgetDeferral(input: {
       metadataJson: canonicalJson({
         budgetMicrousd: input.budgetMicrousd,
         dayStartedAt: input.dayStartedAt.toISOString(),
-        retryAt: input.nextDayStartedAt.toISOString(),
+        retryAt: input.retryAt.toISOString(),
         projectedAttemptMicrousd: input.projectedAttemptMicrousd,
         reservedMicrousd: input.reservedMicrousd,
         spentMicrousd: input.spentMicrousd,

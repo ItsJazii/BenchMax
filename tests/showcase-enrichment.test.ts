@@ -187,7 +187,7 @@ test("the enrichment core stays independent from runs and the judge budget", asy
   );
   assert.equal(
     (dataModule.match(/nextDayStartedAt\.getTime\(\)/g) ?? []).length,
-    2,
+    3,
   );
   assert.match(
     dataModule,
@@ -204,6 +204,10 @@ test("the enrichment core stays independent from runs and the judge budget", asy
   assert.match(
     dataModule,
     /ENRICHMENT_CONFIGURATION_RETRY_MS = 5 \* 60 \* 1000[\s\S]*?retryAt: configurationRetryAt/,
+  );
+  assert.match(
+    dataModule,
+    /SELECT min\(inflight_enrichment\.lease_expires_at\)[\s\S]*?recordedSpendExhausted[\s\S]*?nextLeaseExpiresAt/,
   );
 });
 

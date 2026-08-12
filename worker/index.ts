@@ -428,6 +428,12 @@ async function consumeShowcaseEnrichmentMessage(
     message.ack();
     return;
   }
+  if (claim.action === "defer") {
+    // The row intentionally stays queued. The reconciliation sweep will send
+    // a fresh message after the UTC spend window resets.
+    message.ack();
+    return;
+  }
   if (claim.action === "retry") {
     message.retry({
       delaySeconds: enrichmentRetryDelaySeconds(claim.leaseExpiresAt),

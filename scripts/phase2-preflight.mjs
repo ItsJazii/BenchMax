@@ -116,10 +116,17 @@ const requiredEnvNames = [
   "BENCHMAX_JUDGE_DAILY_SAMPLE_BUDGET",
   "BENCHMAX_JUDGE_INPUT_MICROUSD_PER_MILLION_TOKENS",
   "BENCHMAX_JUDGE_OUTPUT_MICROUSD_PER_MILLION_TOKENS",
+  "BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET",
   "BENCHMAX_SANDBOX_MICROUSD_PER_HOUR",
   "BENCHMAX_APP_ORIGIN",
 ];
 for (const name of requiredEnvNames) assert(envNames.has(name), `missing .env.example key: ${name}`);
+
+assert.match(
+  environments.staging.main.vars?.BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET ?? "",
+  /^[1-9][0-9]*$/,
+  "main Worker staging must configure BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET",
+);
 
 const forbiddenBindingPattern = /\bIMAGES\b/;
 for (const filePath of sourceFiles(rootDirectory)) {

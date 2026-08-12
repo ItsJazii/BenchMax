@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   artifacts,
+  auditEvents,
   showcaseEnrichmentArtifacts,
   showcaseEnrichmentSpendRecords,
   showcaseEnrichments,
@@ -16,6 +17,12 @@ import {
   type ShowcaseEnrichmentMessage,
 } from "@/lib/pipeline/enrichment-messages";
 import { sanitizeEnrichmentFailureCode } from "@/lib/pipeline/enrichment-policy";
+import {
+  configuredDailyEnrichmentBudget,
+  enrichmentBudgetDeferralAuditId,
+  enrichmentBudgetWindow,
+  isEnrichmentBudgetExhausted,
+} from "@/lib/pipeline/enrichment-budget";
 
 const ZIP_CONTENT_TYPES = [
   "application/zip",
@@ -32,6 +39,7 @@ export type ShowcaseEnrichmentArtifactKind =
 
 export type ShowcaseEnrichmentClaim =
   | { action: "execute"; attemptCount: number; leaseExpiresAt: Date }
+  | { action: "defer"; retryAt: Date }
   | { action: "retry"; leaseExpiresAt: Date }
   | { action: "skip" };
 
@@ -182,6 +190,8 @@ export async function claimShowcaseEnrichment(
   enrichmentId: string,
   now = new Date(),
 ): Promise<ShowcaseEnrichmentClaim> {
+  const dailyBudgetMicrousd = configuredDailyEnrichmentBudget();
+  const { dayStartedAt, nextDayStartedAt } = enrichmentBudgetWindow(now);
   const leaseExpiresAt = new Date(now.getTime() + ENRICHMENT_LEASE_MS);
   const [claimed] = await getDb()
     .update(showcaseEnrichments)
@@ -203,6 +213,12 @@ export async function claimShowcaseEnrichment(
             lte(showcaseEnrichments.leaseExpiresAt, now),
           ),
         ),
+        sql`(
+          SELECT coalesce(sum(${showcaseEnrichmentSpendRecords.costMicrousd}), 0)
+          FROM ${showcaseEnrichmentSpendRecords}
+          WHERE ${showcaseEnrichmentSpendRecords.createdAt} >= ${dayStartedAt}
+            AND ${showcaseEnrichmentSpendRecords.createdAt} < ${nextDayStartedAt}
+        ) < ${dailyBudgetMicrousd}`,
       ),
     )
     .returning({ attemptCount: showcaseEnrichments.attemptCount });
@@ -216,15 +232,82 @@ export async function claimShowcaseEnrichment(
   const [existing] = await getDb()
     .select({
       leaseExpiresAt: showcaseEnrichments.leaseExpiresAt,
+      spentMicrousd: sql<number>`(
+        SELECT coalesce(sum(${showcaseEnrichmentSpendRecords.costMicrousd}), 0)
+        FROM ${showcaseEnrichmentSpendRecords}
+        WHERE ${showcaseEnrichmentSpendRecords.createdAt} >= ${dayStartedAt}
+          AND ${showcaseEnrichmentSpendRecords.createdAt} < ${nextDayStartedAt}
+      )`,
       status: showcaseEnrichments.status,
     })
     .from(showcaseEnrichments)
     .where(eq(showcaseEnrichments.id, enrichmentId))
     .limit(1);
+  if (
+    existing &&
+    (existing.status === "queued" ||
+      (existing.status === "running" &&
+        existing.leaseExpiresAt &&
+        existing.leaseExpiresAt <= now)) &&
+    isEnrichmentBudgetExhausted(
+      Number(existing.spentMicrousd),
+      dailyBudgetMicrousd,
+    )
+  ) {
+    if (existing.status === "running") {
+      await getDb()
+        .update(showcaseEnrichments)
+        .set({ status: "queued", leaseExpiresAt: null, updatedAt: now })
+        .where(
+          and(
+            eq(showcaseEnrichments.id, enrichmentId),
+            eq(showcaseEnrichments.status, "running"),
+            lte(showcaseEnrichments.leaseExpiresAt, now),
+          ),
+        );
+    }
+    await recordEnrichmentBudgetDeferral({
+      budgetMicrousd: dailyBudgetMicrousd,
+      dayStartedAt,
+      enrichmentId,
+      nextDayStartedAt,
+      spentMicrousd: Number(existing.spentMicrousd),
+    });
+    return { action: "defer", retryAt: nextDayStartedAt };
+  }
   if (existing?.status === "running" && existing.leaseExpiresAt) {
     return { action: "retry", leaseExpiresAt: existing.leaseExpiresAt };
   }
   return { action: "skip" };
+}
+
+async function recordEnrichmentBudgetDeferral(input: {
+  budgetMicrousd: number;
+  dayStartedAt: Date;
+  enrichmentId: string;
+  nextDayStartedAt: Date;
+  spentMicrousd: number;
+}) {
+  await getDb()
+    .insert(auditEvents)
+    .values({
+      id: enrichmentBudgetDeferralAuditId(
+        input.enrichmentId,
+        input.dayStartedAt,
+      ),
+      actorUserId: null,
+      entityId: input.enrichmentId,
+      entityType: "showcase-enrichment",
+      action: "showcase.preview_enrichment_budget_deferred",
+      metadataJson: canonicalJson({
+        budgetMicrousd: input.budgetMicrousd,
+        dayStartedAt: input.dayStartedAt.toISOString(),
+        retryAt: input.nextDayStartedAt.toISOString(),
+        spentMicrousd: input.spentMicrousd,
+      }),
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing({ target: auditEvents.id });
 }
 
 export async function readShowcaseEnrichmentContract(enrichmentId: string) {

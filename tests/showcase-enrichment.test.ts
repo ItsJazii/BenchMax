@@ -13,6 +13,13 @@ import {
   sanitizeEnrichmentFailureCode,
 } from "../lib/pipeline/enrichment-policy";
 import {
+  configuredDailyEnrichmentBudget,
+  EnrichmentBudgetConfigurationError,
+  enrichmentBudgetDeferralAuditId,
+  enrichmentBudgetWindow,
+  isEnrichmentBudgetExhausted,
+} from "../lib/pipeline/enrichment-budget";
+import {
   usercontentWorker,
   type UsercontentEnv,
 } from "../usercontent/worker";
@@ -89,7 +96,37 @@ test("generic preview checks are complete but never become a judge rubric", () =
   );
 });
 
-test("the independent enrichment core has no run, judge, or budget dependency", async () => {
+test("preview enrichment has an explicit UTC daily spend cap and stable audit dedupe", () => {
+  assert.equal(configuredDailyEnrichmentBudget("31200"), 31_200);
+  assert.equal(isEnrichmentBudgetExhausted(31_199, 31_200), false);
+  assert.equal(isEnrichmentBudgetExhausted(31_200, 31_200), true);
+  assert.equal(isEnrichmentBudgetExhausted(31_201, 31_200), true);
+  for (const value of [undefined, "", "0", "-1", "1.5", "1000000001", "nope"]) {
+    assert.throws(
+      () => configuredDailyEnrichmentBudget(value),
+      EnrichmentBudgetConfigurationError,
+    );
+  }
+
+  const beforeReset = enrichmentBudgetWindow(
+    new Date("2026-08-12T23:59:59.999Z"),
+  );
+  assert.equal(beforeReset.dayStartedAt.toISOString(), "2026-08-12T00:00:00.000Z");
+  assert.equal(beforeReset.nextDayStartedAt.toISOString(), "2026-08-13T00:00:00.000Z");
+  assert.equal(
+    enrichmentBudgetDeferralAuditId(enrichmentId, beforeReset.dayStartedAt),
+    enrichmentBudgetDeferralAuditId(
+      enrichmentId,
+      new Date("2026-08-12T00:00:00.000Z"),
+    ),
+  );
+  assert.notEqual(
+    enrichmentBudgetDeferralAuditId(enrichmentId, beforeReset.dayStartedAt),
+    enrichmentBudgetDeferralAuditId(enrichmentId, beforeReset.nextDayStartedAt),
+  );
+});
+
+test("the enrichment core stays independent from runs and the judge budget", async () => {
   const [dataModule, evaluatorModule] = await Promise.all([
     readFile(
       path.join(projectRoot, "lib", "data", "showcase-enrichment.ts"),
@@ -112,6 +149,22 @@ test("the independent enrichment core has no run, judge, or budget dependency", 
   ]) {
     assert.doesNotMatch(implementation, new RegExp(forbidden));
   }
+  assert.match(dataModule, /showcase\.preview_enrichment_budget_deferred/);
+  assert.match(dataModule, /onConflictDoNothing\(\{ target: auditEvents\.id \}\)/);
+  assert.match(dataModule, /status: "queued", leaseExpiresAt: null/);
+});
+
+test("staging and deploy preparation require the enrichment spend cap", async () => {
+  const [config, envExample, preflight, prepare] = await Promise.all([
+    readFile(path.join(projectRoot, "wrangler.jsonc"), "utf8"),
+    readFile(path.join(projectRoot, ".env.example"), "utf8"),
+    readFile(path.join(projectRoot, "scripts", "phase2-preflight.mjs"), "utf8"),
+    readFile(path.join(projectRoot, "scripts", "prepare-main-deploy.mjs"), "utf8"),
+  ]);
+  for (const source of [config, envExample, preflight, prepare]) {
+    assert.match(source, /BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET/);
+  }
+  assert.match(config, /"BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET": "31200"/);
 });
 
 test("completed derived evidence is served only through every public safety gate", async () => {

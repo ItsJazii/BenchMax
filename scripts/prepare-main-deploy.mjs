@@ -15,6 +15,17 @@ const sourceConfig = readJsonc(rootDirectory, "wrangler.jsonc");
 const environment = sourceConfig.env?.[environmentName];
 if (!environment) throw new Error(`Missing main Worker environment: ${environmentName}`);
 
+const requiredEnvironmentVars = [
+  "BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET",
+];
+for (const key of requiredEnvironmentVars) {
+  if (!/^[1-9][0-9]*$/.test(environment.vars?.[key] ?? "")) {
+    throw new Error(
+      `main Worker ${environmentName} environment must set a positive integer ${key} before deployment`,
+    );
+  }
+}
+
 // Every key the environment block must override. An absent key would previously
 // serialize as undefined and silently DELETE the section from the deploy config
 // (e.g. no triggers -> every cron sweep dead but preflight green).

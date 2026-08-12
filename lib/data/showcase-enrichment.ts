@@ -35,6 +35,7 @@ const ZIP_CONTENT_TYPES = [
   "application/x-zip-compressed",
 ] as const;
 const ENRICHMENT_LEASE_MS = 5 * 60 * 1000;
+const ENRICHMENT_CONFIGURATION_RETRY_MS = 5 * 60 * 1000;
 const MICROS_PER_HOUR_DIVISOR = 3_600_000;
 
 export type ShowcaseEnrichmentArtifactKind =
@@ -216,17 +217,20 @@ export async function claimShowcaseEnrichment(
     ) {
       // Configuration must fail closed without consuming the durable queue
       // retry budget or turning an optional public preview terminally failed.
+      const configurationRetryAt = new Date(
+        now.getTime() + ENRICHMENT_CONFIGURATION_RETRY_MS,
+      );
       await recordEnrichmentBudgetConfigurationDeferral({
         dayStartedAt,
         enrichmentId,
-        nextDayStartedAt,
+        retryAt: configurationRetryAt,
       });
       await deferShowcaseEnrichmentUntil(
         enrichmentId,
         now,
-        nextDayStartedAt,
+        configurationRetryAt,
       );
-      return { action: "defer", retryAt: nextDayStartedAt };
+      return { action: "defer", retryAt: configurationRetryAt };
     }
     throw error;
   }
@@ -354,7 +358,7 @@ async function deferShowcaseEnrichmentUntil(
 async function recordEnrichmentBudgetConfigurationDeferral(input: {
   dayStartedAt: Date;
   enrichmentId: string;
-  nextDayStartedAt: Date;
+  retryAt: Date;
 }) {
   await getDb()
     .insert(auditEvents)
@@ -370,7 +374,7 @@ async function recordEnrichmentBudgetConfigurationDeferral(input: {
       metadataJson: canonicalJson({
         dayStartedAt: input.dayStartedAt.toISOString(),
         reason: "invalid-runtime-configuration",
-        retryAt: input.nextDayStartedAt.toISOString(),
+        retryAt: input.retryAt.toISOString(),
       }),
       createdAt: new Date(),
     })

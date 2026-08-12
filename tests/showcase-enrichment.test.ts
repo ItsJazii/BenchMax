@@ -21,6 +21,7 @@ import {
   isEnrichmentBudgetExhausted,
   projectedEnrichmentAttemptMicrousd,
   SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS,
+  SHOWCASE_ENRICHMENT_SANDBOX_OVERHEAD_MS,
 } from "../lib/pipeline/enrichment-budget";
 import {
   usercontentWorker,
@@ -100,11 +101,12 @@ test("generic preview checks are complete but never become a judge rubric", () =
 });
 
 test("preview enrichment has an explicit UTC daily spend cap and stable audit dedupe", () => {
-  assert.equal(configuredDailyEnrichmentBudget("31200"), 31_200);
-  assert.equal(SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS, 120_000);
-  assert.equal(projectedEnrichmentAttemptMicrousd(117_000), 3_900);
-  assert.equal(isEnrichmentBudgetExhausted(27_300, 3_900, 31_200), false);
-  assert.equal(isEnrichmentBudgetExhausted(27_301, 3_900, 31_200), true);
+  assert.equal(configuredDailyEnrichmentBudget("46800"), 46_800);
+  assert.equal(SHOWCASE_ENRICHMENT_SANDBOX_OVERHEAD_MS, 60_000);
+  assert.equal(SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS, 180_000);
+  assert.equal(projectedEnrichmentAttemptMicrousd(117_000), 5_850);
+  assert.equal(isEnrichmentBudgetExhausted(40_950, 5_850, 46_800), false);
+  assert.equal(isEnrichmentBudgetExhausted(40_951, 5_850, 46_800), true);
   for (const value of [undefined, "", "0", "-1", "1.5", "1000000001", "nope"]) {
     assert.throws(
       () => configuredDailyEnrichmentBudget(value),
@@ -197,7 +199,11 @@ test("the enrichment core stays independent from runs and the judge budget", asy
   );
   assert.match(
     evaluatorModule,
-    /sandboxStartedAt = Date\.now\(\)[\s\S]*?durationMs:[\s\S]*?SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS/,
+    /attemptStartedAt = Date\.now\(\)[\s\S]*?durationMs: Math\.min[\s\S]*?SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS/,
+  );
+  assert.match(
+    dataModule,
+    /ENRICHMENT_CONFIGURATION_RETRY_MS = 5 \* 60 \* 1000[\s\S]*?retryAt: configurationRetryAt/,
   );
 });
 
@@ -211,7 +217,7 @@ test("staging and deploy preparation require the enrichment spend cap", async ()
   for (const source of [config, envExample, preflight, prepare]) {
     assert.match(source, /BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET/);
   }
-  assert.match(config, /"BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET": "31200"/);
+  assert.match(config, /"BENCHMAX_ENRICHMENT_DAILY_MICROUSD_BUDGET": "46800"/);
   assert.match(prepare, /environmentName === "staging"/);
   assert.match(prepare, /environment\.routes\?\.length/);
   assert.equal(

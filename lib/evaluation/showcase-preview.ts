@@ -73,7 +73,7 @@ export async function executeShowcasePreviewEnrichment(
   const templateId = requiredSecret("E2B_TEMPLATE_ID");
   const templateBuildHash = requiredSha256("E2B_TEMPLATE_BUILD_HASH");
   const attemptKey = `sandbox:${enrichmentId}:preview:${crypto.randomUUID()}`;
-  let sandboxStartedAt: number | null = null;
+  const attemptStartedAt = Date.now();
   let sandbox: Sandbox | null = null;
   let spendStatus: "completed" | "failed" = "failed";
   try {
@@ -88,7 +88,6 @@ export async function executeShowcasePreviewEnrichment(
         sourceSha256,
       },
     });
-    sandboxStartedAt = Date.now();
     const specJson = canonicalJson(buildShowcasePreviewSpec(sourceSha256));
     await sandbox.files.write(
       "/workspace/input/source.zip",
@@ -180,16 +179,13 @@ export async function executeShowcasePreviewEnrichment(
     await sandbox?.kill().catch(() => false);
     await recordShowcaseEnrichmentSpend({
       attemptKey,
-      // The measured rate applies to live sandbox time. E2B kills that sandbox
-      // at the same lifecycle ceiling reserved during the claim; provisioning
-      // before Sandbox.create resolves is not counted as sandbox runtime.
-      durationMs:
-        sandboxStartedAt === null
-          ? 0
-          : Math.min(
-              Math.max(0, Date.now() - sandboxStartedAt),
-              SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS,
-            ),
+      // Conservatively include provisioning and cleanup. The stored duration
+      // and claim reservation share the sandbox lifecycle ceiling, which has
+      // explicit headroom above the inner evaluator command timeout.
+      durationMs: Math.min(
+        Math.max(0, Date.now() - attemptStartedAt),
+        SHOWCASE_ENRICHMENT_SANDBOX_MAX_DURATION_MS,
+      ),
       enrichmentId,
       status: spendStatus,
     }).catch((error) => {

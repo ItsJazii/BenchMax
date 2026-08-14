@@ -208,6 +208,20 @@ export function validateArtifactIntent(input: unknown) {
   };
 }
 
+export function validateArtifactIntentFromUploadRequest(input: {
+  kind: unknown;
+  fileName: unknown;
+  contentType: unknown;
+  byteSize: unknown;
+}) {
+  return validateArtifactIntent({
+    kind: input.kind,
+    fileName: input.fileName,
+    contentType: input.contentType,
+    byteSize: input.byteSize,
+  });
+}
+
 export function normalizeUploadFilename(value: string): string | null {
   const normalized = value.normalize("NFKC").trim();
   if (

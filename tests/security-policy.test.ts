@@ -10,6 +10,7 @@ import {
   parseShowcaseSlug,
   showcaseDraftSchema,
   validateArtifactIntent,
+  validateArtifactIntentFromUploadRequest,
 } from "../lib/security/policy";
 import { secureJson } from "../lib/security/http";
 import { zipSync, strToU8 } from "fflate";
@@ -459,6 +460,26 @@ test("upload intent accepts only the declared kind, MIME, and size contract", ()
     }).ok,
     false,
   );
+});
+
+test("upload request validation projects out the owning showcase id", () => {
+  const request = {
+    showcaseId: "11111111-2222-4333-8444-555555555555",
+    kind: "image",
+    fileName: "proof.png",
+    contentType: "image/png",
+    byteSize: 1024,
+  } as const;
+
+  assert.deepEqual(validateArtifactIntentFromUploadRequest(request), {
+    ok: true,
+    value: {
+      kind: "image",
+      fileName: "proof.png",
+      contentType: "image/png",
+      byteSize: 1024,
+    },
+  });
 });
 
 test("direct R2 uploads cryptographically bind size, type, and session", async () => {

@@ -6,7 +6,7 @@ import { apiErrorResponse, parseJson } from "@/lib/http/api";
 import { secureJson } from "@/lib/security/http";
 import {
   artifactIntentSchema,
-  validateArtifactIntent,
+  validateArtifactIntentFromUploadRequest,
 } from "@/lib/security/policy";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { createR2PresignedUpload } from "@/lib/storage/r2-presign";
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
       windowMs: 24 * 60 * 60 * 1000,
     });
     const input = await parseJson(request, requestSchema);
-    const validated = validateArtifactIntent(input);
+    const validated = validateArtifactIntentFromUploadRequest(input);
     if (!validated.ok) {
       return secureJson({ error: validated.error }, { status: 400 });
     }

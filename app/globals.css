@@ -1518,6 +1518,31 @@ summary:focus-visible {
   background: var(--panel);
 }
 
+/* Test-detail pages: contain long contributor content so it cannot
+   force a horizontal scroll on narrow (390px) screens. */
+.context-grid > article,
+.showcase-hero > div,
+.showcase-spec {
+  min-width: 0;
+}
+
+.context-grid > article > pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.showcase-spec div {
+  min-width: 0;
+}
+
+.showcase-spec strong,
+.showcase-spec small {
+  overflow-wrap: anywhere;
+}
+
 .upload-wizard {
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
@@ -2740,6 +2765,16 @@ summary:focus-visible {
   display: block;
   min-height: 280px;
   aspect-ratio: 16 / 10;
+}
+
+/* Below ~472px viewport the 16/10 ratio combined with the 280px height
+   floor would force a 448px-wide box and side-scroll the page; drop the
+   floor so the image scales with the column. This override must live
+   after the base rule above — same specificity, later declaration wins. */
+@media (max-width: 640px) {
+  .artifact-image {
+    min-height: 0;
+  }
 }
 
 .artifact-image img {
